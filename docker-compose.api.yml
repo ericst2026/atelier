@@ -23,7 +23,7 @@ x-atelier-env: &atelier-env
   ATELIER_JWT_SECRET: ${ATELIER_JWT_SECRET:?set a secret in .env}
   ATELIER_ADMIN_USERNAME: ${ATELIER_ADMIN_USERNAME:-teacher}
   ATELIER_ADMIN_PASSWORD: ${ATELIER_ADMIN_PASSWORD:-teacher}
-  # no ATELIER_GPU_COUNT here: the API learns the cluster's size from the workers
+  # no ATELIER_GPU_COUNT here: each worker detects its own GPUs and reports them
   ATELIER_DISPLAY_COUNT: ${ATELIER_DISPLAY_COUNT:-5}
   ATELIER_NODE_NAME: ${ATELIER_NODE_NAME:-control}
 

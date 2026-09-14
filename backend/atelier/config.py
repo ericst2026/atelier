@@ -1,6 +1,7 @@
 """Runtime configuration. Everything comes from environment variables so the same
 code runs in docker-compose, a systemd unit, or a developer shell."""
 import os
+from functools import cached_property
 from pathlib import Path
 
 
@@ -11,6 +12,21 @@ def _get(name: str, default, cast=str):
     if cast is bool:
         return raw.strip().lower() in ("1", "true", "yes", "on")
     return cast(raw)
+
+
+def detect_gpu_count() -> int:
+    """How many GPUs the NVIDIA driver shows this process. 0 when there is no driver,
+    no nvidia runtime in the container, or no GPU at all."""
+    try:
+        import pynvml  # nvidia-ml-py
+
+        pynvml.nvmlInit()
+        try:
+            return int(pynvml.nvmlDeviceGetCount())
+        finally:
+            pynvml.nvmlShutdown()
+    except Exception:
+        return 0
 
 
 class Settings:
@@ -31,10 +47,12 @@ class Settings:
         self.admin_username = _get("ATELIER_ADMIN_USERNAME", "teacher")
         self.admin_password = _get("ATELIER_ADMIN_PASSWORD", "teacher")
 
-        # How many GPUs *this machine* has. Only the worker needs it: the API learns
-        # the cluster's size from the workers' heartbeats and uses this as a fallback
-        # for the moments before any worker has checked in.
-        self.gpu_count = _get("ATELIER_GPU_COUNT", 8, int)
+        # How many GPUs this machine has comes from the driver (see gpu_count below).
+        # ATELIER_GPU_COUNT only overrides it, e.g. to hold some GPUs back from jobs.
+        self.gpu_count_override = _get("ATELIER_GPU_COUNT", None, int)
+        # A node with no GPUs runs jobs on CPU, this many at a time. Each takes all the
+        # cores it is given, so more than one mostly makes them all slower.
+        self.cpu_slots = max(1, _get("ATELIER_CPU_SLOTS", 1, int))
         self.max_running_per_student = _get("ATELIER_MAX_RUNNING_PER_STUDENT", 2, int)
         self.max_gpus_per_student_run = _get("ATELIER_MAX_GPUS_PER_STUDENT_RUN", 2, int)
         self.default_timeout_min = _get("ATELIER_DEFAULT_TIMEOUT_MIN", 360, int)
@@ -73,6 +91,14 @@ class Settings:
         # a worker has no web server of its own, so it listens here for Prometheus.
         # 0 turns it off.
         self.worker_metrics_port = _get("ATELIER_WORKER_METRICS_PORT", 9101, int)
+
+    @cached_property
+    def gpu_count(self) -> int:
+        """GPUs on *this machine*. Only the worker needs it: the API learns the
+        cluster's size from the workers' heartbeats. Read once, on first use."""
+        if self.gpu_count_override is not None:
+            return self.gpu_count_override
+        return detect_gpu_count()
 
     @property
     def is_worker(self) -> bool:

@@ -34,8 +34,10 @@ def visible_submission(db: Session, submission_id: int, user: User) -> Submissio
 def check_capacity(db: Session, user: User, gpus: int) -> None:
     if user.role == "teacher":
         cap = cluster_capacity(SyncBus())
-        # a single run stays on one machine, so the biggest node is the limit
-        if gpus > cap["largest_node"]:
+        # a single run stays on one machine, so the biggest node is the limit. With no GPU
+        # anywhere the run goes to CPU, and with no worker checked in the size is unknown:
+        # either way let it queue.
+        if cap["largest_node"] and gpus > cap["largest_node"]:
             where = f" (largest of {cap['nodes']} nodes; {cap['total']} in total)" if cap["nodes"] > 1 else ""
             raise HTTPException(400, f"The biggest GPU node has {cap['largest_node']} GPUs{where}, and one run cannot span machines")
         return

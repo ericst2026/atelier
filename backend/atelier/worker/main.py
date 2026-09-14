@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import select
 
@@ -75,13 +76,32 @@ class Worker:
         except Exception:
             log.exception("could not reconcile the queue")
 
+    @property
+    def cpu_only(self) -> bool:
+        return settings.gpu_count == 0
+
     def drain(self) -> None:
+        # a run this node just handed back stays in the queue for the others; taking it
+        # again at once would keep it away from them
+        now, handed_back = time.time(), []
         while True:
+            if self.cpu_only and len(self.running) + len(self.pending) >= settings.cpu_slots:
+                break  # take only what can start here, and leave the rest to other nodes
             rid = self.bus.pop()
             if rid is None:
-                return
-            if rid not in self.pending and rid not in self.running:
+                break
+            if self.deferred.get(rid, 0) > now:
+                handed_back.append(rid)
+            elif rid not in self.pending and rid not in self.running:
                 self.pending.append(rid)
+        for rid in handed_back:
+            self.bus.enqueue(rid)
+
+    def gpu_nodes_alive(self) -> bool:
+        try:
+            return any(int(st.get("gpu_count") or 0) > 0 for st in self.bus.worker_states())
+        except Exception:
+            return False
 
     def reap(self) -> None:
         with self.lock:
@@ -123,6 +143,7 @@ class Worker:
 
     def schedule(self) -> None:
         now = time.time()
+        gpu_nodes: Optional[bool] = None  # asked of redis at most once a pass
         for rid in list(self.pending):
             if self.deferred.get(rid, 0) > now:
                 continue
@@ -137,9 +158,23 @@ class Worker:
                 self.pending.remove(rid)
                 self.defer(rid, missing)
                 continue
-            ids = self.pool.allocate(need)
-            if ids is None:
-                continue  # not enough free GPUs; let smaller jobs pass
+            if self.cpu_only:
+                # a node without GPUs runs everything on CPU, but a run that asked for
+                # GPUs goes to a GPU node whenever one is up
+                if need and (gpu_nodes if gpu_nodes is not None else (gpu_nodes := self.gpu_nodes_alive())):
+                    self.pending.remove(rid)
+                    self.deferred[rid] = now + 10
+                    self.bus.enqueue(rid)
+                    log.info("run %s asks for %d GPU(s) and a GPU node is up — leaving it for that node", rid, need)
+                    continue
+                with self.lock:
+                    if len(self.running) >= settings.cpu_slots:
+                        continue
+                ids = []
+            else:
+                ids = self.pool.allocate(need)
+                if ids is None:
+                    continue  # not enough free GPUs; let smaller jobs pass
             self.pending.remove(rid)
             t = threading.Thread(target=self._safe_execute, args=(rid, ids), name=f"run-{rid}", daemon=True)
             with self.lock:
@@ -162,7 +197,7 @@ class Worker:
     def heartbeat(self) -> None:
         with self.lock:
             running = {str(rid): ids for rid, (_, ids) in self.running.items()}
-        self.bus.set_worker_state({"gpu_count": settings.gpu_count, "free_gpus": sorted(self.pool.free), "running": running, "pending": list(self.pending), "backend": settings.runner_backend, "node": settings.node_name, "storage_mode": settings.storage_mode, "at": datetime.utcnow().isoformat()})
+        self.bus.set_worker_state({"gpu_count": settings.gpu_count, "device": "cpu" if self.cpu_only else "cuda", "cpu_slots": settings.cpu_slots if self.cpu_only else None, "free_gpus": sorted(self.pool.free), "running": running, "pending": list(self.pending), "backend": settings.runner_backend, "node": settings.node_name, "storage_mode": settings.storage_mode, "at": datetime.utcnow().isoformat()})
         # an API on another machine has no GPUs of its own to sample, and no
         # materials either — both are published from here
         metrics.publish_snapshot(self.bus)
@@ -178,7 +213,11 @@ class Worker:
                 self.bus.clear_cancel(rid)
 
     def loop(self) -> None:
-        log.info("worker up on %s: %d gpus, backend=%s, storage=%s", settings.node_name, settings.gpu_count, settings.runner_backend, settings.storage_mode)
+        source = "from ATELIER_GPU_COUNT" if settings.gpu_count_override is not None else "detected"
+        log.info("worker up on %s: %d gpus (%s), backend=%s, storage=%s", settings.node_name, settings.gpu_count, source, settings.runner_backend, settings.storage_mode)
+        if self.cpu_only:
+            log.warning("no GPUs visible on %s: running as a CPU-only node, %d run(s) at a time. Runs that ask for GPUs go to a GPU node when one is up and run here on CPU when none is. "
+                        "If this machine does have GPUs, check the NVIDIA driver and the nvidia container runtime", settings.node_name, settings.cpu_slots)
         if settings.uploads and not upload.check_api():
             log.error("refusing to start: ATELIER_STORAGE_MODE=upload but the API is unreachable or rejects this worker")
             raise SystemExit(2)

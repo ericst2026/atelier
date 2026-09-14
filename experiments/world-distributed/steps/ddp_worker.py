@@ -27,11 +27,13 @@ ap.add_argument("--checkpointing", type=int, default=0)
 ap.add_argument("--out", required=True)
 args = ap.parse_args()
 
-dist.init_process_group("nccl")
+cuda = os.environ.get("ATELIER_DEVICE") != "cpu" and torch.cuda.is_available()
+dist.init_process_group("nccl" if cuda else "gloo")
 rank, world = dist.get_rank(), dist.get_world_size()
 local = int(os.environ.get("LOCAL_RANK", 0))
-device = f"cuda:{local}"
-torch.cuda.set_device(device)
+device = f"cuda:{local}" if cuda else "cpu"
+if cuda:
+    torch.cuda.set_device(device)
 torch.manual_seed(1234 + rank)
 
 cfg = MiniConfig(**json.loads(args.config))
@@ -43,16 +45,18 @@ if args.checkpointing:
     for block in model.blocks:
         inner = block.forward
         block.forward = (lambda inner: lambda *a, **kw: checkpoint(inner, *a, use_reentrant=False, **kw))(inner)
-ddp = DDP(model, device_ids=[local])
+ddp = DDP(model, device_ids=[local]) if cuda else DDP(model)
 opt = model.optimizers(0.1, 1e-4)
-autocast = torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=args.precision == "bf16")
+autocast = torch.autocast(device_type="cuda" if cuda else "cpu", dtype=torch.bfloat16, enabled=cuda and args.precision == "bf16")
+sync = torch.cuda.synchronize if cuda else (lambda: None)
 
-torch.cuda.reset_peak_memory_stats()
+if cuda:
+    torch.cuda.reset_peak_memory_stats()
 comm_time, step_time = 0.0, 0.0
 for i in range(args.iters + args.warmup):
     if i == args.warmup:
         dist.barrier()
-        torch.cuda.synchronize()
+        sync()
         comm_time, step_time = 0.0, 0.0
     t0 = time.perf_counter()
     for micro in range(args.grad_accum):
@@ -61,12 +65,12 @@ for i in range(args.iters + args.warmup):
         with autocast:
             _, loss = ddp(x, y)
         (loss / args.grad_accum).backward()
-    torch.cuda.synchronize()
+    sync()
     t1 = time.perf_counter()
     torch.nn.utils.clip_grad_norm_(ddp.parameters(), 1.0)
     opt.step()
     opt.zero_grad(set_to_none=True)
-    torch.cuda.synchronize()
+    sync()
     t2 = time.perf_counter()
     if i >= args.warmup:
         step_time += t2 - t0
@@ -75,7 +79,7 @@ for i in range(args.iters + args.warmup):
 local_tokens = args.batch * cfg.block_size * args.grad_accum * args.iters
 total = torch.tensor([local_tokens, step_time], dtype=torch.float64, device=device)
 dist.all_reduce(total, op=dist.ReduceOp.SUM)
-peak = torch.tensor([torch.cuda.max_memory_allocated() / 1e9], device=device)
+peak = torch.tensor([torch.cuda.max_memory_allocated() / 1e9 if cuda else 0.0], device=device)
 dist.all_reduce(peak, op=dist.ReduceOp.MAX)
 if rank == 0:
     mean_step = float(total[1]) / world
@@ -88,7 +92,8 @@ if rank == 0:
         "peak_gb": float(peak[0]),
         "batch_per_gpu": args.batch,
         "grad_accum": args.grad_accum,
-        "precision": args.precision,
+        "precision": args.precision if cuda else "fp32",
+        "device": "cuda" if cuda else "cpu",
         "checkpointing": bool(args.checkpointing),
         "final_loss": float(loss),
     }, open(args.out, "w"), indent=2)

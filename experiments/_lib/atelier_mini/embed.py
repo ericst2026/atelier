@@ -138,7 +138,7 @@ class MiniEmbedder(torch.nn.Module):
         return np.concatenate(out) if out else np.zeros((0, self.dim), dtype=np.float32)
 
 
-def train_contrastive(embedder, pairs: list[dict], out_dir, val_pairs: Optional[list[dict]] = None, epochs: float = 2.0, batch_size: int = 32, lr: float = 1e-4, temperature: float = 0.05, hard_negatives: bool = False, freeze_body: bool = False, device: str = "cuda", on_log: Optional[Callable[[dict], None]] = None) -> dict:
+def train_contrastive(embedder, pairs: list[dict], out_dir, val_pairs: Optional[list[dict]] = None, epochs: float = 2.0, batch_size: int = 32, lr: float = 1e-4, temperature: float = 0.05, hard_negatives: bool = False, freeze_body: bool = False, device: Optional[str] = None, on_log: Optional[Callable[[dict], None]] = None) -> dict:
     """InfoNCE with in-batch negatives.
 
     Every other document in the batch is a negative for every query, so one batch of
@@ -150,6 +150,7 @@ def train_contrastive(embedder, pairs: list[dict], out_dir, val_pairs: Optional[
 
     from .train import cosine_lr
 
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     out_dir = Path(out_dir)
     if freeze_body:
         for p in embedder.model.parameters():

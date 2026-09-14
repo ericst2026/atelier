@@ -20,6 +20,10 @@
   .\scripts\offline\push-to-harbor.ps1 -Registry harbor.local -Project atelier `
       -CudaImage nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 -CudaWheel cu126 -CudaVersion 12.6
 
+.EXAMPLE
+  # also the image for worker nodes without GPUs (atelier-worker-cpu)
+  .\scripts\offline\push-to-harbor.ps1 -Registry harbor.local -Project atelier -Cpu
+
 .NOTES
   Needs Docker Desktop running and `docker login harbor.local` to have succeeded.
   If Harbor uses a self-signed certificate, add it under
@@ -40,7 +44,8 @@ param(
     [string]$CudaWheel = "cu128",
     [string]$CudaVersion = "12.8",
     [string]$TorchVersion = "2.8.0",
-    [string]$PythonVersion = "3.12"
+    [string]$PythonVersion = "3.12",
+    [switch]$Cpu                                              # also atelier-worker-cpu, for nodes without GPUs
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..\..")
@@ -51,6 +56,9 @@ $atelier = [ordered]@{
     "atelier-api"    = @{ Dockerfile = "backend\Dockerfile";        Context = "backend" }
     "atelier-worker" = @{ Dockerfile = "backend\Dockerfile.worker"; Context = "." }
     "atelier-web"    = @{ Dockerfile = "frontend\Dockerfile";       Context = "frontend" }
+}
+if ($Cpu) {
+    $atelier["atelier-worker-cpu"] = @{ Dockerfile = "backend\Dockerfile.worker"; Context = "." }
 }
 $third = @(
     "postgres:16-alpine",
@@ -81,6 +89,15 @@ if ($Skip -ne "Atelier") {
                     "--build-arg", "CUDA_IMAGE=$CudaImage",
                     "--build-arg", "CUDA_WHEEL=$CudaWheel",
                     "--build-arg", "CUDA_MM=$CudaVersion",
+                    "--build-arg", "TORCH_VERSION=$TorchVersion",
+                    "--build-arg", "PYTHON_VERSION=$PythonVersion"
+                )
+            }
+            if ($name -eq "atelier-worker-cpu") {
+                Write-Host "    runtime: CPU only · torch $TorchVersion · python $PythonVersion" -ForegroundColor DarkGray
+                $buildArgs = @(
+                    "--build-arg", "CUDA_IMAGE=ubuntu:24.04",
+                    "--build-arg", "CUDA_WHEEL=cpu",
                     "--build-arg", "TORCH_VERSION=$TorchVersion",
                     "--build-arg", "PYTHON_VERSION=$PythonVersion"
                 )

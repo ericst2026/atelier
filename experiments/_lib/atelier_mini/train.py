@@ -29,7 +29,8 @@ def estimate_loss(model, stream: TokenStream, batch_size: int, block_size: int, 
     return total / iters
 
 
-def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir: Path, max_iters: int = 2000, batch_size: int = 32, grad_accum: int = 1, block_size: int | None = None, lr: float = 6e-4, warmup: int = 100, weight_decay: float = 0.1, eval_every: int = 100, eval_iters: int = 20, grad_clip: float = 1.0, device: str = "cuda", on_log: Optional[Callable[[dict], None]] = None) -> dict:
+def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir: Path, max_iters: int = 2000, batch_size: int = 32, grad_accum: int = 1, block_size: int | None = None, lr: float = 6e-4, warmup: int = 100, weight_decay: float = 0.1, eval_every: int = 100, eval_iters: int = 20, grad_clip: float = 1.0, device: str | None = None, on_log: Optional[Callable[[dict], None]] = None) -> dict:
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     block_size = block_size or model.config.block_size
     opt = model.optimizers(weight_decay, lr)
     tokens_per_step = batch_size * block_size * grad_accum
@@ -64,10 +65,11 @@ def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir:
     return {"history": history, "best_val_loss": best, "elapsed_sec": time.time() - t0, "tokens_seen": max_iters * tokens_per_step, "checkpoint": str(out_dir / "model.pt")}
 
 
-def sft(model, tok, rows: list[dict], out_dir: Path, val_rows: Optional[list[dict]] = None, epochs: float = 2.0, batch_size: int = 16, lr: float = 3e-4, warmup: int = 20, weight_decay: float = 0.1, block_size: int | None = None, system: Optional[str] = None, device: str = "cuda", eval_every: int = 50, on_log: Optional[Callable[[dict], None]] = None) -> dict:
+def sft(model, tok, rows: list[dict], out_dir: Path, val_rows: Optional[list[dict]] = None, epochs: float = 2.0, batch_size: int = 16, lr: float = 3e-4, warmup: int = 20, weight_decay: float = 0.1, block_size: int | None = None, system: Optional[str] = None, device: str | None = None, eval_every: int = 50, on_log: Optional[Callable[[dict], None]] = None) -> dict:
     """Fine-tune on {prompt, target} pairs with the prompt masked out of the loss."""
     import random
 
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     block_size = block_size or model.config.block_size
     opt = model.optimizers(weight_decay, lr)
     steps = max(1, int(len(rows) * epochs / batch_size))

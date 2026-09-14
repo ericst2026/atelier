@@ -45,6 +45,18 @@ docker build -f backend/Dockerfile.worker \
 | Ampere and newer — **A6000**, A100, L40S, H100, RTX 40/50 | `nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04` | `cu128` | 2.7 – current |
 | Anything back to Maxwell — GTX 10-series, V100, Titan V | `nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04` | `cu126` | 2.6 – current |
 | Newest toolkit, Turing and up only | `nvidia/cuda:13.0.1-cudnn-runtime-ubuntu24.04` | `cu130` | recent releases only |
+| No GPU at all — CPU-only worker nodes | `ubuntu:24.04` | `cpu` | any; `CUDA_MM` is ignored |
+
+The `cpu` row builds `atelier-worker-cpu`, the image `docker-compose.worker-cpu.yml`
+runs. It has the same Python, experiment requirements and worker code, with PyTorch's
+CPU-only wheel and no CUDA libraries, so it is a fraction of the GPU image's size. Its
+build check asserts the opposite of the GPU one: that the wheel has no CUDA at all.
+
+```bash
+docker build -f backend/Dockerfile.worker \
+  --build-arg CUDA_IMAGE=ubuntu:24.04 --build-arg CUDA_WHEEL=cpu \
+  -t atelier-worker-cpu .
+```
 
 Ubuntu 24.04 ships Python 3.12. If you move the base image back to a 22.04 tag, set
 `PYTHON_VERSION=3.10` to match what that image carries, or install a newer Python
@@ -132,7 +144,10 @@ tqdm, which is all the difference there was. The laptop stack in
 `docker-compose.windows.yml` runs both services from it.
 
 `backend/Dockerfile.worker` is the GPU image: CUDA base, torch from the wheel index,
-the full experiment requirements.
+the full experiment requirements. Built with `CUDA_WHEEL=cpu` on `ubuntu:24.04` it is
+also `atelier-worker-cpu`, for worker nodes without GPUs that still run the torch
+experiments. The API image with `WITH_EXPERIMENTS=1` has no torch, so it only covers
+the steps that do not need it.
 
 There used to be a third, `Dockerfile.cpu`, which differed from the API image by
 three lines. It is gone.

@@ -47,7 +47,9 @@ def job_env(run: Run, gpu_ids: list[int], run_dir: Path) -> dict[str, str]:
         "ATELIER_EXPERIMENTS": str(settings.experiments_dir),
         "ATELIER_WORKSPACE": run.inputs.get("workspace_dir", ""),
         "ATELIER_GPUS": str(len(gpu_ids)),
-        "OMP_NUM_THREADS": "8",
+        "ATELIER_DEVICE": "cuda" if gpu_ids else "cpu",
+        # on a CPU-only node the run is the compute, so it gets the cores
+        "OMP_NUM_THREADS": str(max(1, (os.cpu_count() or 8) // settings.cpu_slots)) if settings.gpu_count == 0 else "8",
     }
     for k in ("LD_LIBRARY_PATH", "VIRTUAL_ENV", "CONDA_PREFIX", "NVIDIA_VISIBLE_DEVICES"):
         if k in os.environ:
@@ -136,7 +138,8 @@ def execute(run_id: int, gpu_ids: list[int], bus: SyncBus) -> None:
     cancelled = threading.Event()
 
     with upload.LogStreamer(run_id, run_dir), open(log_path, "ab") as logf:
-        header = f"[atelier] run {run_id} · {run.kind} · gpus {gpu_ids or 'none'} · on {settings.node_name} · {datetime.utcnow().isoformat()}Z\n[atelier] cwd {cwd}\n[atelier] $ {cmd}\n"
+        device = f"gpus {gpu_ids}" if gpu_ids else (f"cpu (asked for {run.gpus} GPU(s); no GPU node is up)" if run.gpus else "cpu")
+        header = f"[atelier] run {run_id} · {run.kind} · {device} · on {settings.node_name} · {datetime.utcnow().isoformat()}Z\n[atelier] cwd {cwd}\n[atelier] $ {cmd}\n"
         logf.write(header.encode())
         logf.flush()
         try:

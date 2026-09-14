@@ -59,7 +59,7 @@ else:
     steps_per_epoch = max(1, len(train_pairs) // 16)
     total = int(steps_per_epoch * float(P["rm_epochs"]))
     cb = hf.ProgressCallback(total, "reward model")
-    cfg = RewardConfig(output_dir=str(run_dir / "trainer"), num_train_epochs=float(P["rm_epochs"]), per_device_train_batch_size=4, gradient_accumulation_steps=4, learning_rate=1e-5, max_length=1024, logging_steps=5, eval_strategy="no", save_strategy="no", bf16=True, report_to="none")
+    cfg = RewardConfig(output_dir=str(run_dir / "trainer"), num_train_epochs=float(P["rm_epochs"]), per_device_train_batch_size=4, gradient_accumulation_steps=4, learning_rate=1e-5, max_length=1024, logging_steps=5, eval_strategy="no", save_strategy="no", bf16=torch.cuda.is_available(), report_to="none")
     trainer = RewardTrainer(model=model, args=cfg, train_dataset=Dataset.from_list(train_pairs), processing_class=tok, callbacks=[cb.callback])
     trainer.train()
     rm_dir = run_dir / "reward_model"

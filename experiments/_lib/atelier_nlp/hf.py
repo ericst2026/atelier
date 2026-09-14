@@ -246,8 +246,8 @@ def sft_train(model_path: Path, train_rows: list[dict[str, Any]], out_dir: Path,
         eval_strategy="steps" if val_ds is not None else "no",
         eval_steps=max(10, total // 8),
         save_strategy="no",
-        bf16=dtype == "bf16",
-        fp16=dtype == "fp16",
+        bf16=dtype == "bf16" and torch.cuda.is_available(),
+        fp16=dtype == "fp16" and torch.cuda.is_available(),
         gradient_checkpointing=gradient_checkpointing,
         report_to="none",
         seed=1,
@@ -287,6 +287,7 @@ def eval_loss(model, tok, rows: list[dict[str, Any]], max_length: int = 1024, ba
 
 def grpo_train(model_path: Path, rows: list[dict[str, Any]], reward_funcs: list[Callable], out_dir: Path, num_generations: int = 8, max_completion_length: int = 256, max_prompt_length: int = 512, temperature: float = 0.9, beta: float = 0.04, lr: float = 1e-6, max_steps: int = 200, prompts_per_step: int = 4, dtype: str = "bf16", label: str = "grpo") -> dict[str, Any]:
     """GRPO with TRL on rows shaped {"prompt": [messages], <extra columns passed to reward funcs>}."""
+    import torch
     from datasets import Dataset
     from transformers import AutoModelForCausalLM
     from trl import GRPOConfig, GRPOTrainer
@@ -307,7 +308,7 @@ def grpo_train(model_path: Path, rows: list[dict[str, Any]], reward_funcs: list[
         max_steps=max_steps,
         logging_steps=1,
         save_strategy="no",
-        bf16=dtype == "bf16",
+        bf16=dtype == "bf16" and torch.cuda.is_available(),
         report_to="none",
         seed=1,
     )

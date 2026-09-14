@@ -58,12 +58,13 @@ def grpo(
     max_steps: int = 200,
     clip_eps: float = 0.2,
     system: Optional[str] = None,
-    device: str = "cuda",
+    device: Optional[str] = None,
     on_log: Optional[Callable[[dict], None]] = None,
     seed: int = 1,
 ) -> dict:
     import random
 
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     rng = random.Random(seed)
     opt = model.optimizers(0.0, lr)
     history, t0 = [], time.time()

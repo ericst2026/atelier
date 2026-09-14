@@ -1,0 +1,23 @@
+# A worker node without GPUs. Layer it on top of the worker file:
+#
+#   ATELIER_CONTROL_HOST=192.168.1.20 docker compose -f docker-compose.worker.yml -f docker-compose.worker-cpu.yml up -d
+#
+# It runs the atelier-worker-cpu image (plain Ubuntu, CPU-only PyTorch, no CUDA) and
+# drops the NVIDIA reservation, which docker refuses on a machine without the nvidia
+# runtime. The worker then finds no GPUs and runs jobs on CPU, ATELIER_CPU_SLOTS at a
+# time. Runs that ask for GPUs go to a GPU node when one is up, and run here only
+# when none is. Needs Docker Compose 2.24 or newer for !reset.
+# See docs/topologies.md.
+services:
+  worker:
+    image: ${ATELIER_REGISTRY:-}atelier-worker-cpu:${ATELIER_TAG:-latest}
+    build:
+      args:
+        CUDA_IMAGE: ubuntu:24.04
+        CUDA_WHEEL: cpu
+    environment:
+      ATELIER_NODE_NAME: ${ATELIER_NODE_NAME:-cpu-node}
+      ATELIER_GPU_COUNT: "0"
+      ATELIER_CPU_SLOTS: ${ATELIER_CPU_SLOTS:-1}
+      ATELIER_RUNNER_IMAGE: ${ATELIER_REGISTRY:-}atelier-worker-cpu:${ATELIER_TAG:-latest}
+    deploy: !reset {}

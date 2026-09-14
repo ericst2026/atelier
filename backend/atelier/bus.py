@@ -31,16 +31,16 @@ def run_channel(run_id: int) -> str:
 def cluster_capacity(bus: "SyncBus") -> dict[str, int]:
     """How many GPUs the cluster actually has, according to the workers themselves.
 
-    The API does not need ATELIER_GPU_COUNT: every worker reports its own count in its
-    heartbeat, and this reads them. The setting is only a fallback for the moments
-    before any worker has checked in.
+    Every worker detects its own count and reports it in its heartbeat, and this reads
+    them. Until one has checked in, the fallback is whatever GPUs this process can see
+    itself: the real count on a single machine, 0 on an API with no GPUs.
     """
     try:
         state = bus.worker_state()
     except Exception:
         state = None
     if not state or not state.get("gpu_count"):
-        return {"total": settings.gpu_count, "largest_node": settings.gpu_count, "nodes": 0, "source": "setting"}
+        return {"total": settings.gpu_count, "largest_node": settings.gpu_count, "nodes": 0, "source": "local"}
     return {"total": int(state["gpu_count"]), "largest_node": int(state.get("largest_node") or state["gpu_count"]), "nodes": len(state.get("nodes") or []), "source": "workers"}
 
 

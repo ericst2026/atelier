@@ -58,7 +58,7 @@ def get_batch(split: str):
 
 model = GPT(cfg).to(device)
 raw_model = model
-if bool(P["compile"]):
+if bool(P["compile"]) and device.startswith("cuda"):
     model = torch.compile(model)
 if ddp:
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -66,7 +66,7 @@ if ddp:
     model = DDP(model, device_ids=[local_rank])
 opt = raw_model.configure_optimizers(float(P["weight_decay"]), float(P["lr"]))
 amp_dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[P["dtype"]]
-scaler = torch.cuda.amp.GradScaler(enabled=(P["dtype"] == "fp16"))
+scaler = torch.cuda.amp.GradScaler(enabled=(P["dtype"] == "fp16" and device.startswith("cuda")))
 ctx = torch.autocast(device_type="cuda", dtype=amp_dtype) if device.startswith("cuda") and P["dtype"] != "fp32" else __import__("contextlib").nullcontext()
 
 max_iters, warmup, lr_max = int(P["max_iters"]), int(P["warmup_iters"]), float(P["lr"])
@@ -98,7 +98,7 @@ def evaluate(n: int) -> dict[str, float]:
 
 
 if master:
-    print(f"[train] {raw_model.num_params():,} params · {world} gpu(s) · {tokens_per_step:,} tokens/step · {max_iters} steps", flush=True)
+    print(f"[train] {raw_model.num_params():,} params · {world} {'gpu(s)' if device.startswith('cuda') else 'cpu process'} · {tokens_per_step:,} tokens/step · {max_iters} steps", flush=True)
 history, t_start, best_val = [], time.time(), float("inf")
 t_last = time.time()
 for it in range(max_iters + 1):
@@ -141,7 +141,7 @@ if master:
     R.metric("val_loss", "Best validation loss", best_val, "num", "hold")
     R.metric("perplexity", "Validation perplexity", math.exp(best_val), "num", "hold")
     R.metric("tokens_seen", "Tokens seen", tokens_per_step * max_iters, "int", "raw")
-    R.metric("tokens_per_sec", "Throughput", tokens_per_step * max_iters / total_sec, "num", "sky", help=f"{world} GPU(s), {P['dtype']}")
+    R.metric("tokens_per_sec", "Throughput", tokens_per_step * max_iters / total_sec, "num", "sky", help=f"{world} GPU(s), {P['dtype']}" if device.startswith("cuda") else "CPU, fp32" + (" (compile skipped)" if bool(P["compile"]) else ""))
     R.metric("train_time", "Training time", total_sec * 1000, "ms", "sky")
     R.metric("params", "Parameters", raw_model.num_params(False), "int", "kept")
     R.chart("loss", "Loss", [{"step": h["step"], "train": h["train_loss"], "val": h["val_loss"]} for h in history], "step", [{"key": "train", "label": "Train", "color": "kept"}, {"key": "val", "label": "Validation", "color": "hold"}], "line", y_log=True, note="Evaluated on random batches every eval_interval steps.")

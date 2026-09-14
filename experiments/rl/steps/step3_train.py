@@ -37,7 +37,7 @@ else:
     from transformers import AutoModelForSequenceClassification
 
     rm_tok = hf.load_tokenizer(spec["reward_model"], padding_side="right")
-    rm = AutoModelForSequenceClassification.from_pretrained(spec["reward_model"], torch_dtype=torch.bfloat16, local_files_only=True).cuda().eval()
+    rm = AutoModelForSequenceClassification.from_pretrained(spec["reward_model"], torch_dtype=torch.bfloat16, local_files_only=True).to("cuda" if torch.cuda.is_available() else "cpu").eval()
 
     def reward_model(prompts, completions, **kw):
         texts = ["\n\nHuman: " + prompts[i][-1]["content"] + "\n\nAssistant: " + hf.completion_text(c) for i, c in enumerate(completions)]

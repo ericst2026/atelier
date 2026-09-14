@@ -18,7 +18,7 @@ ap.add_argument("--grad-accum", type=int, default=1)
 ap.add_argument("--lr", type=float, default=6e-4)
 args = ap.parse_args()
 
-gpus = int(os.environ.get("ATELIER_GPUS", "1") or 1)
+gpus = int(os.environ.get("ATELIER_GPUS", "1") or 1)  # 0 on a CPU-only node: one process on the CPU
 if gpus > 1 and "RANK" not in os.environ:
     sys.exit(subprocess.call(["torchrun", "--standalone", f"--nproc_per_node={gpus}", __file__] + sys.argv[1:]))
 
@@ -30,14 +30,16 @@ from atelier_mini.model import MiniConfig, MiniLM  # noqa: E402
 from atelier_mini.train import cosine_lr  # noqa: E402
 
 ddp_mode = "RANK" in os.environ
+cuda = os.environ.get("ATELIER_DEVICE") != "cpu" and torch.cuda.is_available()
 if ddp_mode:
-    dist.init_process_group("nccl")
+    dist.init_process_group("nccl" if cuda else "gloo")
     rank, world = dist.get_rank(), dist.get_world_size()
     local = int(os.environ.get("LOCAL_RANK", 0))
-    device = f"cuda:{local}"
-    torch.cuda.set_device(device)
+    device = f"cuda:{local}" if cuda else "cpu"
+    if cuda:
+        torch.cuda.set_device(device)
 else:
-    rank, world, device, local = 0, 1, ("cuda" if torch.cuda.is_available() else "cpu"), 0
+    rank, world, device, local = 0, 1, ("cuda" if cuda else "cpu"), 0
 
 data = Path(args.data)
 meta = json.loads((data / "meta.json").read_text())
@@ -48,11 +50,11 @@ net = model
 if ddp_mode:
     from torch.nn.parallel import DistributedDataParallel as DDP
 
-    net = DDP(model, device_ids=[local])
+    net = DDP(model, device_ids=[local]) if cuda else DDP(model)
 opt = model.optimizers(0.1, args.lr)
 train = TokenStream(data / "train.bin", meta["dtype"])
 val = TokenStream(data / "val.bin", meta["dtype"])
-autocast = torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda"))
+autocast = torch.autocast(device_type="cuda" if cuda else "cpu", dtype=torch.bfloat16, enabled=cuda)
 t0 = time.time()
 model.train()
 for it in range(args.iters):
@@ -81,7 +83,7 @@ if rank == 0:
     model.save(out / "model.pt", {"config": cfg.to_dict()})
     (out / "throughput.json").write_text(json.dumps({
         "tokens_per_sec": args.batch * cfg.block_size * args.grad_accum * world * args.iters / elapsed,
-        "gpus": world, "val_loss": vl, "elapsed_sec": elapsed, "config": cfg.to_dict(),
+        "gpus": world, "device": "cuda" if cuda else "cpu", "val_loss": vl, "elapsed_sec": elapsed, "config": cfg.to_dict(),
     }, indent=2))
     print(f"val loss {vl:.4f} · {elapsed:.0f}s")
 if ddp_mode:

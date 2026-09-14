@@ -9,7 +9,8 @@ from atelier_mini.tok import MiniTokenizer
 _state = {}
 
 
-def load_embedder(path: str, device: str = "cuda"):
+def load_embedder(path: str, device: str | None = None):
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     ck = torch.load(path, map_location=device, weights_only=False)
     model = MiniLM(MiniConfig(**ck["config"])).to(device)
     model.load_state_dict(ck["model_state"])

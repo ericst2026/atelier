@@ -45,10 +45,11 @@ def sequence_logprob(model, idx, mask):
     return (tok_lp * m).sum(dim=1), m.sum(dim=1)
 
 
-def dpo(model, reference, tok, pairs: list[dict], out_dir: Path, val_pairs: Optional[list[dict]] = None, beta: float = 0.1, epochs: float = 1.0, batch_size: int = 8, lr: float = 5e-6, warmup: int = 20, block_size: Optional[int] = None, system: Optional[str] = None, label_smoothing: float = 0.0, device: str = "cuda", eval_every: int = 50, on_log: Optional[Callable[[dict], None]] = None) -> dict:
+def dpo(model, reference, tok, pairs: list[dict], out_dir: Path, val_pairs: Optional[list[dict]] = None, beta: float = 0.1, epochs: float = 1.0, batch_size: int = 8, lr: float = 5e-6, warmup: int = 20, block_size: Optional[int] = None, system: Optional[str] = None, label_smoothing: float = 0.0, device: Optional[str] = None, eval_every: int = 50, on_log: Optional[Callable[[dict], None]] = None) -> dict:
     """pairs: [{"prompt", "chosen", "rejected"}]. Returns history with accuracy and margins."""
     import random
 
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     from .train import cosine_lr
 
     block_size = block_size or model.config.block_size

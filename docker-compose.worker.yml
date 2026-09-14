@@ -35,7 +35,10 @@ services:
       ATELIER_DATA_DIR: /srv/atelier/data
       ATELIER_DATABASE_URL: postgresql+psycopg://atelier:${ATELIER_DB_PASSWORD:-atelier}@${ATELIER_CONTROL_HOST}:${ATELIER_DB_PORT:-5432}/atelier
       ATELIER_REDIS_URL: redis://:${ATELIER_REDIS_PASSWORD:-atelier}@${ATELIER_CONTROL_HOST}:${ATELIER_REDIS_PORT:-6379}/0
-      ATELIER_GPU_COUNT: ${ATELIER_GPU_COUNT:-8}
+      # empty means detect from the driver; set only to override
+      ATELIER_GPU_COUNT: ${ATELIER_GPU_COUNT:-}
+      # a node without GPUs runs this many jobs at a time, on CPU
+      ATELIER_CPU_SLOTS: ${ATELIER_CPU_SLOTS:-1}
       ATELIER_RUNNER_BACKEND: ${ATELIER_RUNNER_BACKEND:-subprocess}
       ATELIER_RUNNER_IMAGE: ${ATELIER_REGISTRY:-}atelier-worker:${ATELIER_TAG:-latest}
       ATELIER_WORKER_METRICS_PORT: ${ATELIER_WORKER_METRICS_PORT:-9101}

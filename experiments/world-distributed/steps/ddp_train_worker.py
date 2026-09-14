@@ -27,19 +27,21 @@ ap.add_argument("--out", required=True)
 ap.add_argument("--out-dir", required=True)
 args = ap.parse_args()
 
-dist.init_process_group("nccl")
+cuda = os.environ.get("ATELIER_DEVICE") != "cpu" and torch.cuda.is_available()
+dist.init_process_group("nccl" if cuda else "gloo")
 rank, world = dist.get_rank(), dist.get_world_size()
 local = int(os.environ.get("LOCAL_RANK", 0))
-device = f"cuda:{local}"
-torch.cuda.set_device(device)
+device = f"cuda:{local}" if cuda else "cpu"
+if cuda:
+    torch.cuda.set_device(device)
 torch.manual_seed(1 + rank)
 
 cfg = MiniConfig(**json.loads(args.config))
 train, val = TokenStream(args.train_bin, args.dtype_name), TokenStream(args.val_bin, args.dtype_name)
 model = MiniLM(cfg).to(device)
-ddp = DDP(model, device_ids=[local])
+ddp = DDP(model, device_ids=[local]) if cuda else DDP(model)
 opt = model.optimizers(0.1, args.lr)
-autocast = torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+autocast = torch.autocast(device_type="cuda" if cuda else "cpu", dtype=torch.bfloat16, enabled=cuda)
 tokens_per_step = args.batch * cfg.block_size * args.grad_accum * world
 eval_every = max(25, args.iters // 8)
 history, t0 = [], time.time()
@@ -86,7 +88,7 @@ if rank == 0:
     os.makedirs(out_dir, exist_ok=True)
     model.save(os.path.join(out_dir, "model.pt"), {"ddp": True, "gpus": world})
     json.dump({
-        "gpus": world, "val_loss": min(h["val_loss"] for h in history), "history": history,
+        "gpus": world, "device": "cuda" if cuda else "cpu", "val_loss": min(h["val_loss"] for h in history), "history": history,
         "elapsed_sec": elapsed, "tokens_per_sec": tokens_per_step * args.iters / max(elapsed, 1e-9),
         "checkpoint": os.path.join(out_dir, "model.pt"),
     }, open(args.out, "w"), indent=2)

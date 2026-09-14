@@ -9,10 +9,15 @@ from pathlib import Path
 import torch
 
 
+def on_cpu() -> bool:
+    """True on a CPU-only node (ATELIER_DEVICE=cpu) or wherever CUDA is missing."""
+    return os.environ.get("ATELIER_DEVICE") == "cpu" or not torch.cuda.is_available()
+
+
 def time_steps(model, stream, batch_size: int, block_size: int, device: str, iters: int, grad_accum: int = 1, dtype: str = "bf16", checkpointing: bool = False, warmup: int = 5) -> dict:
     """Returns tokens/s, seconds per step, peak memory and the share spent on data."""
     opt = model.optimizers(0.1, 1e-4)
-    autocast = torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=(device.startswith("cuda") and dtype == "bf16"))
+    autocast = torch.autocast(device_type="cuda" if device.startswith("cuda") else "cpu", dtype=torch.bfloat16, enabled=(device.startswith("cuda") and dtype == "bf16"))
     if checkpointing:
         from torch.utils.checkpoint import checkpoint
 
@@ -59,7 +64,9 @@ def time_steps(model, stream, batch_size: int, block_size: int, device: str, ite
 
 
 def mfu(tokens_per_sec: float, flops_per_token: int, gpus: int = 1, peak_tflops: float = 155.0) -> float:
-    """Model FLOPs utilisation: what share of the hardware's arithmetic you are using."""
+    """Model FLOPs utilisation: what share of the hardware's arithmetic you are using. 0 on CPU, where the GPU peak means nothing."""
+    if on_cpu():
+        return 0.0
     return tokens_per_sec * flops_per_token / (gpus * peak_tflops * 1e12)
 
 

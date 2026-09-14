@@ -20,6 +20,8 @@ push to it instead of copying tarballs — see [harbor.md](harbor.md), and
 ./scripts/offline/export-images.sh /media/usb/atelier-images
 # or one worker tarball per CUDA variant (atelier-worker-cu126.tar.gz, …):
 CUDA_VARIANTS="cu126 cu128 cu130" ./scripts/offline/export-images.sh /media/usb/atelier-images
+# add "cpu" for worker nodes without GPUs (atelier-worker-cpu.tar.gz):
+CUDA_VARIANTS="cu128 cpu" ./scripts/offline/export-images.sh /media/usb/atelier-images
 
 # 2. materials (~11 GB with the list as shipped; trim scripts/offline/materials.yaml first)
 pip install huggingface_hub datasets pyyaml

@@ -8,7 +8,7 @@ from atelier_sdk import Result, inputs, params, parse_args, progress
 from atelier_mini.model import MiniConfig, estimate
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib_bench import mfu, run_torchrun  # noqa: E402
+from lib_bench import mfu, on_cpu, run_torchrun  # noqa: E402
 
 parse_args()
 P = params({"gpus": 4, "grad_accum_values": ["1", "2", "4"], "try_checkpointing": True, "try_fp32": True, "iters": 25})
@@ -20,7 +20,8 @@ cfg = MiniConfig(**profile["config"])
 est = estimate(cfg)
 worker = Path(__file__).resolve().parent / "ddp_worker.py"
 available = int(os.environ.get("ATELIER_GPUS", "1") or 1)
-gpus = min(int(P["gpus"]), max(available, 1))
+cpu = on_cpu()
+gpus = 1 if cpu else min(int(P["gpus"]), max(available, 1))
 batch = profile["best"]["batch"]
 
 settings = [{"name": f"accumulation {g}", "grad_accum": int(g), "checkpointing": 0, "precision": "bf16", "batch": batch} for g in sorted(int(x) for x in P["grad_accum_values"])]
@@ -52,11 +53,11 @@ for r in rows:
 (run_dir / "optimise.json").write_text(json.dumps({"rows": rows, "best": best, "gpus": gpus}, indent=2))
 
 R = Result()
-R.metric("best_throughput", "Best throughput", best["tokens_per_sec"], "num", "kept", help=f"{best['name']} on {gpus} GPUs")
+R.metric("best_throughput", "Best throughput", best["tokens_per_sec"], "num", "kept", help=f"{best['name']} on CPU, one process" if cpu else f"{best['name']} on {gpus} GPUs")
 R.metric("gain", "Against the plain recipe", best["relative"], "num", "sky", help="1.0 means nothing was gained")
-R.metric("best_memory", "Peak memory of the best setting", best["peak_gb"], "num", "hold")
-R.metric("mfu", "Utilisation", best.get("mfu", 0), "pct", "raw")
-R.chart("throughput", "Throughput by setting", rows, "name", [{"key": "tokens_per_sec", "label": "Tokens per second", "color": "kept"}], "bar")
+R.metric("best_memory", "Peak memory of the best setting", best["peak_gb"], "num", "hold", help="not measured on CPU" if cpu else None)
+R.metric("mfu", "Utilisation", best.get("mfu", 0), "pct", "raw", help="not measured on CPU" if cpu else None)
+R.chart("throughput", "Throughput by setting", rows, "name", [{"key": "tokens_per_sec", "label": "Tokens per second", "color": "kept"}], "bar", note="Measured on a CPU-only node with one process: no GPU, no bf16, and nothing to scale across, so the numbers are not comparable with a GPU run. Every setting runs in float32 here, and there is no all-reduce to save." if cpu else None)
 R.chart("memory", "Memory against throughput", rows, "name", [{"key": "peak_gb", "label": "Peak GB", "color": "raw"}, {"key": "relative", "label": "Relative throughput", "color": "sky", "axis": "right"}], "bar", note="Checkpointing buys memory with compute: the bar on the left falls, and if you spend the saving on a larger batch the bar on the right can still rise.")
 R.chart("sync", "Share of the step spent synchronising", rows, "name", [{"key": "optimizer_share", "label": "Sync share", "color": "dup"}], "bar", note="Accumulating gradients all-reduces less often, so this falls — at the cost of a larger effective batch, which is a change to the recipe, not a free win.")
 R.table("rows", "Measurements", [{"key": "name", "label": "Setting"}, {"key": "tokens_per_sec", "label": "Tokens/s", "fmt": "int"}, {"key": "relative", "label": "Relative", "fmt": "num"}, {"key": "peak_gb", "label": "Peak GB", "fmt": "num"}, {"key": "tokens_per_step", "label": "Tokens/step", "fmt": "int"}, {"key": "error", "label": "Error"}], rows)

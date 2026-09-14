@@ -70,7 +70,7 @@ If your laptop has an NVIDIA card, WSL2 can reach it: install the normal Windows
 NVIDIA driver (not a driver inside WSL), then the container toolkit in Ubuntu.
 Check with `nvidia-smi` inside WSL and `docker run --rm --gpus all
 nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi`. With that working, the production
-`docker-compose.yml` runs on your laptop too — set `ATELIER_GPU_COUNT=1`. It is
+`docker-compose.yml` runs on your laptop too, and the worker finds the card itself. It is
 enough to shake out the SFT and Reasoning experiments on a small model before you
 touch the classroom node.
 
