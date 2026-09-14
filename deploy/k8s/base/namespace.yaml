@@ -1,0 +1,12 @@
+# The workers need hostPath volumes, a hostPort for metrics and, on GPU nodes, the
+# host's IPC namespace — all refused by the baseline and restricted Pod Security
+# levels. A cluster that enforces one of those by default admits them only in a
+# namespace labelled privileged.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: atelier
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged

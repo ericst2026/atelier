@@ -1,0 +1,13 @@
+# What every Atelier worker cluster has: the namespace and the CPU worker.
+#
+# Not applied on its own. The GPU workers, the settings and the secrets are added by
+# an overlay — the one scripts/deploy/k8s-workers.sh writes to deploy/k8s/local/, or
+# your own copy of deploy/k8s/overlay.example/. See docs/deploy-workers.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: atelier
+labels:
+  - pairs: {app.kubernetes.io/part-of: atelier}
+resources:
+  - namespace.yaml
+  - worker-cpu.yaml

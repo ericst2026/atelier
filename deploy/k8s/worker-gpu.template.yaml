@@ -1,0 +1,66 @@
+# The worker on GPU nodes with exactly __GPUS__ GPU(s). Not applied directly:
+# scripts/deploy/k8s-workers.sh writes one copy per GPU count found in the cluster,
+# with __GPUS__ filled in, because a pod has to ask the NVIDIA device plugin for a
+# fixed number of GPUs and a DaemonSet has one pod spec for all its nodes.
+#
+# It relies on NVIDIA's device plugin with GPU feature discovery — on its own, or as
+# part of the GPU Operator: nvidia.com/gpu.count is GFD's node label and
+# nvidia.com/gpu the plugin's resource. The "nvidia" runtime class is the one the
+# Operator installs; k8s-workers.sh leaves the line out when the cluster has no such
+# class, for nodes whose containerd runs everything through the nvidia runtime.
+# The worker then sees exactly its __GPUS__ GPU(s) and counts them itself.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: atelier-worker-gpu-__GPUS__
+  labels: {app.kubernetes.io/name: atelier-worker, atelier/kind: gpu}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: atelier-worker, atelier/kind: gpu, atelier/gpus: "__GPUS__"}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: atelier-worker, atelier/kind: gpu, atelier/gpus: "__GPUS__"}
+    spec:
+      runtimeClassName: __RUNTIME_CLASS__
+      # ipc: host in the compose file — PyTorch's DataLoader workers share tensors through it
+      hostIPC: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: nvidia.com/gpu.count, operator: In, values: ["__GPUS__"]}
+                  - {key: atelier/worker, operator: NotIn, values: ["false"]}
+      tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: atelier-worker
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: {name: atelier-worker-config}
+            - secretRef: {name: atelier-worker-secrets}
+          env:
+            - name: ATELIER_NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - {name: ATELIER_API_URL, value: "http://$(ATELIER_CONTROL_HOST):$(ATELIER_HTTP_PORT)"}
+            - {name: ATELIER_DATABASE_URL, value: "postgresql+psycopg://atelier:$(ATELIER_DB_PASSWORD)@$(ATELIER_CONTROL_HOST):$(ATELIER_DB_PORT)/atelier"}
+            - {name: ATELIER_REDIS_URL, value: "redis://:$(ATELIER_REDIS_PASSWORD)@$(ATELIER_CONTROL_HOST):$(ATELIER_REDIS_PORT)/0"}
+          resources:
+            limits: {nvidia.com/gpu: "__GPUS__"}
+          ports:
+            - {name: metrics, containerPort: 9101, hostPort: 9101}
+          volumeMounts:
+            - {name: experiments, mountPath: /srv/atelier/experiments, readOnly: true}
+            - {name: materials, mountPath: /srv/atelier/materials, readOnly: true}
+            - {name: data, mountPath: /srv/atelier/data}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - {name: experiments, hostPath: {path: /srv/atelier/experiments, type: DirectoryOrCreate}}
+        - {name: materials, hostPath: {path: /srv/atelier/materials, type: DirectoryOrCreate}}
+        - {name: data, hostPath: {path: /srv/atelier/data, type: DirectoryOrCreate}}
+        - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}

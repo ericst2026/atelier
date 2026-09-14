@@ -12,22 +12,24 @@ most of the course on an air-gapped machine with no licences to check and no dat
 to manage.
 
 - **Frontend** React 18 + Vite, served by nginx
-- **Backend** FastAPI + SQLAlchemy (Postgres or SQLite), a Redis queue, and a worker process that owns the GPUs
+- **Backend** FastAPI + SQLAlchemy (Postgres or SQLite), a Redis queue, and worker processes that take jobs from it — one per machine, on its GPUs or, on a machine without any, on its CPU
 - **Experiments** plain Python packages on disk, discovered from `experiment.yaml` — no code change to add one
 - **Offline** nothing reaches the internet at run time
 
 ```
 laptops ─┐
          ├─ nginx ─┬─ React build
-displays ┘         ├─ /api  → FastAPI ─┬─ Postgres
-                   ├─ /ws   → FastAPI ─┤  Redis ─── worker ─── 8 × RTX A6000
+displays ┘         ├─ /api  → FastAPI ─┬─ Postgres ─┬─ worker ── 8 × RTX A6000
+                   ├─ /ws   → FastAPI ─┘  Redis ────┼─ worker ── 4 × GPU
+                   │                                └─ worker ── CPU only
                    └─ /grafana → Grafana ← Prometheus ← /metrics (NVML) + node-exporter
 ```
 
-Installation in detail is in [INSTALL.md](INSTALL.md). The short version:
+Installation in detail is in [INSTALL.md](INSTALL.md). The short version, everything
+on one GPU machine:
 
 ```bash
-cp .env.example .env          # set ATELIER_JWT_SECRET and the passwords
+cp .env.example .env          # set ATELIER_JWT_SECRET, ATELIER_DB_PASSWORD, ATELIER_ADMIN_PASSWORD
 docker compose up -d --build
 ```
 
@@ -38,11 +40,14 @@ the class:
 docker compose exec api python -m atelier.seed_users --students 24 --password lab2026
 ```
 
+There is no GPU count to configure: each worker asks the NVIDIA driver how many GPUs
+it has, and a machine with none runs its jobs on CPU.
+
 ## The course
 
 Each experiment has exactly four steps. A step is a Python script with declared
-parameters; the platform runs it on a GPU, streams its log and charts, and passes its
-outputs to the next step. After the four steps the student writes their own
+parameters; the platform runs it on a worker, streams its log and charts, and passes
+its outputs to the next step. After the four steps the student writes their own
 implementation against a fixed interface, and a grader scores it.
 
 | # | Experiment | The four steps | Needs downloads |
@@ -90,10 +95,19 @@ Written to be read rather than called.
 When your own data is ready, step 1 of the Tokenizer experiment reads a folder of
 your text instead of generating one, and the rest of the course follows from it.
 
+### GPUs, and machines without them
+
+Every experiment runs on CPU as well as on GPUs. A worker on a machine with no GPU
+takes jobs like any other: runs that ask for no GPU run there straight away, and runs
+that ask for GPUs go to a GPU node whenever one is up and fall back to the CPU only
+when none is. Multi-GPU steps run as one process on CPU and say so in their results.
+It is slow — training steps sized for eight A6000s can take hours — but nothing
+crashes for want of CUDA.
+
 ## Repository layout
 
 ```
-backend/atelier/        FastAPI app, models, routers, and the GPU worker
+backend/atelier/        FastAPI app, models, routers, and the worker
   routers/              one module per API area
   worker/               the scheduler, the runner, GPU allocation, result upload
 experiments/            the course — see below
@@ -101,8 +115,10 @@ experiments/            the course — see below
   _template/            skeleton to copy when writing your own
   <slug>/               one experiment
 frontend/src/           React app: pages, components, api/ws clients
-deploy/                 nginx, Prometheus and Grafana configuration — see below
-scripts/                development, user seeding, and the offline tooling
+deploy/                 nginx, Prometheus, Grafana, and the worker deployments — see below
+scripts/                development, user seeding, deployment, and the offline tooling
+  deploy/               deploying workers to many nodes, over SSH or to Kubernetes
+  offline/              images, materials and registry for an air-gapped install
 docs/                   everything in depth
 ```
 
@@ -139,7 +155,9 @@ R.save()
 ```
 
 Whatever a step puts in `R.output(...)` arrives as `inputs()` in the next one. That is
-the whole contract between steps.
+the whole contract between steps. A step picks its device with
+`"cuda" if torch.cuda.is_available() else "cpu"`; the platform also passes
+`ATELIER_DEVICE` and `ATELIER_GPUS`.
 
 Four rules the registry enforces: exactly four steps, every script present, a grader
 present, a `sample/` directory present. A folder that breaks one is listed as an error
@@ -151,20 +169,23 @@ parameter types, the chart and table shapes, and how graders are run.
 
 ## The deploy folder
 
-Configuration for the three services that are not ours. Nothing here is code; it is
-mounted into the official images. It lives on whichever machine runs the web, Grafana
-and Prometheus containers — on a split install that is the control machine only, and
-a GPU node needs nothing from here.
+Configuration rather than code. The nginx, Prometheus and Grafana files are mounted
+into the official images on whichever machine runs those containers — on a split
+install that is the control machine only. The worker deployments are read by the
+scripts in `scripts/deploy/`.
 
 ```
 deploy/nginx/nginx.conf                  production: the React build, and /api, /ws, /grafana
 deploy/nginx/nginx.dev.conf              the laptop stack: the same without TLS or caching
 deploy/prometheus/prometheus.yml         one machine: scrapes the API and node-exporter
-deploy/prometheus/prometheus.split.yml   several GPU nodes, via the targets files below
-deploy/prometheus/targets/gpu-nodes.yml        edit to add a node; Prometheus re-reads it
+deploy/prometheus/prometheus.split.yml   several worker nodes, via the targets files below
+deploy/prometheus/targets/gpu-nodes.yml        every worker's metrics; the deploy scripts rewrite it
 deploy/prometheus/targets/node-exporters.yml   the same machines, for CPU and disk
 deploy/grafana/provisioning/             datasource and dashboard wiring, applied at startup
 deploy/grafana/dashboards/hardware.json  the dashboard the wall displays show
+deploy/workers.example                   the node list for the SSH deploy; copy to deploy/workers
+deploy/k8s/base/                         the namespace and the CPU worker DaemonSet
+deploy/k8s/worker-gpu.template.yaml      the GPU worker, one DaemonSet per GPU count
 ```
 
 Two things to know. Prometheus does not expand environment variables in its
@@ -180,6 +201,8 @@ dashboard in the Grafana UI, export it back over
 |---|---|
 | Everything on the GPU node | `docker compose up -d` |
 | Control plane and GPU node separate | `docker compose -f docker-compose.api.yml up -d`, and `-f docker-compose.worker.yml` on the node |
+| A worker node without GPUs | `-f docker-compose.worker.yml -f docker-compose.worker-cpu.yml` on that node |
+| Many worker nodes, from the control machine | `scripts/deploy/deploy-workers.sh up` over SSH, or `scripts/deploy/k8s-workers.sh apply` on Kubernetes |
 | Shared storage over NFS | add `-f docker-compose.nfs.yml` to either |
 | A laptop, no GPU | `docker compose -f docker-compose.windows.yml up -d --build` |
 | Development, no Docker | `./scripts/dev.sh`, or `scripts\dev.cmd` on Windows |
@@ -192,8 +215,9 @@ dashboard in the Grafana UI, export it back over
 - [docs/curriculum.md](docs/curriculum.md) — all eighteen experiments and what each needs
 - [docs/api.md](docs/api.md) — every endpoint
 - [docs/displays.md](docs/displays.md) — the wall screens
-- [docs/topologies.md](docs/topologies.md) — one machine, or a control plane and several GPU nodes
-- [docs/runtime.md](docs/runtime.md) — CUDA, PyTorch and Python versions, and how to change them
+- [docs/topologies.md](docs/topologies.md) — one machine, a control plane and several nodes, nodes without GPUs
+- [docs/deploy-workers.md](docs/deploy-workers.md) — deploying workers to many nodes over SSH or Kubernetes, with materials from NFS
+- [docs/runtime.md](docs/runtime.md) — CUDA, PyTorch and Python versions, the CPU image, and how to change them
 - [docs/offline-install.md](docs/offline-install.md) — air-gapped installation
 - [docs/harbor.md](docs/harbor.md) — serving the images from your own registry
 - [docs/windows.md](docs/windows.md) — trying it, developing and deploying from Windows
@@ -206,7 +230,13 @@ steps run. The world generator, the BPE trainer, the BM25 baseline and the corpu
 tooling are all executed and checked.
 
 Everything that needs a GPU is syntax-checked but unexecuted, because it was written
-without a GPU to run it on. Before the first lesson, run in this order:
+without a GPU to run it on. The CPU fallback in the experiments is the same: compiled,
+not yet run under torch. Before the first lesson, run in this order:
 `world-tokenizer`, then `world-pretrain` at the tiny preset for 200 steps, then
 `world-sft`. Those three exercise the model, both training loops, the sampler and the
 grader harness, and will surface anything that needs fixing in about ten minutes.
+
+The scheduler's CPU-node rules are tested against a simulated queue. The SSH deploy
+script is tested end to end against simulated nodes, and the Kubernetes overlay is
+checked by rendering it with `kubectl kustomize`; neither has yet met a real cluster
+or a real NFS server.

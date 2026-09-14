@@ -48,7 +48,6 @@ ATELIER_WORKER_TOKEN=a-long-random-string
 ATELIER_DB_PASSWORD=something
 ATELIER_REDIS_PASSWORD=something
 ATELIER_JWT_SECRET=something
-ATELIER_GPU_COUNT=8
 
 docker compose -f docker-compose.api.yml up -d
 ```
@@ -159,10 +158,17 @@ Yes — and it is the same worker file on each machine, with a different name:
 
 ```bash
 # node A
-ATELIER_NODE_NAME=gpu-a ATELIER_GPU_COUNT=8 docker compose -f docker-compose.worker.yml up -d
+ATELIER_NODE_NAME=gpu-a docker compose -f docker-compose.worker.yml up -d
 # node B
-ATELIER_NODE_NAME=gpu-b ATELIER_GPU_COUNT=4 docker compose -f docker-compose.worker.yml up -d
+ATELIER_NODE_NAME=gpu-b docker compose -f docker-compose.worker.yml up -d
 ```
+
+Each worker counts its own GPUs through the NVIDIA driver at startup and logs the
+number, so an 8-GPU and a 4-GPU node need no GPU setting at all.
+
+With more than a couple of nodes, deploy them all from the control machine instead —
+over SSH with `scripts/deploy/deploy-workers.sh`, or to a Kubernetes cluster with
+`scripts/deploy/k8s-workers.sh`. See [deploy-workers.md](deploy-workers.md).
 
 Both take jobs from the one Redis queue. `LPOP` is atomic, so two nodes never claim
 the same run, and a node that is full simply stops taking work until a job of its own
@@ -191,6 +197,34 @@ Materials must be on every node that might run an experiment needing them; the
 generated-data experiments need nothing. The experiments directory must be identical
 everywhere, and each worker says so at startup if it is not.
 
+## Worker nodes without GPUs
+
+A machine with no NVIDIA GPU can be a worker too. Layer the CPU file on the worker
+file. It runs the `atelier-worker-cpu` image — CPU-only PyTorch on plain Ubuntu, no
+CUDA libraries to copy around — and drops the NVIDIA reservation docker would
+otherwise refuse:
+
+```bash
+ATELIER_NODE_NAME=cpu-a docker compose -f docker-compose.worker.yml -f docker-compose.worker-cpu.yml up -d
+```
+
+The worker finds no GPUs and runs jobs on CPU, with `CUDA_VISIBLE_DEVICES` empty,
+`ATELIER_GPUS=0` and `ATELIER_DEVICE=cpu`. The experiments fall back to CPU when they
+see that. What it takes:
+
+- **Runs that ask for no GPUs** (tokenizers, data curation, most graders) run on the
+  CPU node like anywhere else.
+- **Runs that ask for GPUs go to a GPU node whenever one is up.** The CPU node puts
+  them back on the queue. When no GPU node has sent a heartbeat for fifteen seconds,
+  the CPU node runs them itself, on CPU, and the run log's first line says so. A
+  cluster of CPU nodes alone runs every step, slowly.
+- **One run at a time by default.** Training on CPU uses every core, so a second run
+  mostly slows the first. `ATELIER_CPU_SLOTS` raises it, and each run gets the cores
+  divided by the slots as `OMP_NUM_THREADS`. A full CPU node leaves the rest of the
+  queue to the other nodes rather than holding on to it.
+- **Multi-GPU steps run as a single process.** The distributed training experiment
+  measures one CPU process instead of a scaling curve and says so in its results.
+
 ## Settings that decide this
 
 | Variable | Values | Effect |
@@ -201,7 +235,8 @@ everywhere, and each worker says so at startup if it is not.
 | `ATELIER_WORKER_TOKEN` | a secret | must match on both machines |
 | `ATELIER_UPLOAD_MAX_MB` | a number | the point past which artifacts stay put |
 | `ATELIER_NODE_NAME` | a name | appears on the run page and in the logs |
-| `ATELIER_GPU_COUNT` | a number | **worker only** — how many GPUs that machine has. The API adds up what the workers report |
+| `ATELIER_GPU_COUNT` | a number, or unset | **worker only, usually unset** — the worker detects its GPUs itself; set it only to hold some back. The API adds up what the workers report |
+| `ATELIER_CPU_SLOTS` | a number, default 1 | **nodes without GPUs** — how many runs they run on CPU at once |
 
 `ATELIER_STORAGE_MODE=shared` is the third option: machines that *do* share a
 directory. See the next section.

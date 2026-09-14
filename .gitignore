@@ -7,4 +7,7 @@ node_modules/
 materials/
 data/
 accounts.csv
+# written by scripts/deploy: your node list, and a rendered overlay holding secrets
+deploy/workers
+deploy/k8s/local/
 .DS_Store

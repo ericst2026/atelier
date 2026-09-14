@@ -1,0 +1,63 @@
+# The worker on every node WITHOUT a GPU, running jobs on CPU.
+#
+# "Without a GPU" means the node has no nvidia.com/gpu.count label, which NVIDIA's
+# GPU feature discovery puts on every GPU node — it comes with both the GPU Operator
+# and the standalone device plugin. Without either, every node counts as a CPU node.
+# A node labelled atelier/worker=false gets no worker at all — use it for the control
+# machine if it is in the cluster.
+#
+# A worker restarting fails the runs it had in progress, so an image or config
+# change rolls through the nodes one at a time.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: atelier-worker-cpu
+  labels: {app.kubernetes.io/name: atelier-worker, atelier/kind: cpu}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: atelier-worker, atelier/kind: cpu}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: atelier-worker, atelier/kind: cpu}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: nvidia.com/gpu.count, operator: DoesNotExist}
+                  - {key: atelier/worker, operator: NotIn, values: ["false"]}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: atelier-worker-cpu
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: {name: atelier-worker-config}
+            - secretRef: {name: atelier-worker-secrets}
+          env:
+            - name: ATELIER_NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - {name: ATELIER_GPU_COUNT, value: "0"}
+            # $(VAR) takes values from the config map and secret above
+            - {name: ATELIER_API_URL, value: "http://$(ATELIER_CONTROL_HOST):$(ATELIER_HTTP_PORT)"}
+            - {name: ATELIER_DATABASE_URL, value: "postgresql+psycopg://atelier:$(ATELIER_DB_PASSWORD)@$(ATELIER_CONTROL_HOST):$(ATELIER_DB_PORT)/atelier"}
+            - {name: ATELIER_REDIS_URL, value: "redis://:$(ATELIER_REDIS_PASSWORD)@$(ATELIER_CONTROL_HOST):$(ATELIER_REDIS_PORT)/0"}
+          ports:
+            # on the node's own address, where Prometheus on the control machine scrapes it
+            - {name: metrics, containerPort: 9101, hostPort: 9101}
+          volumeMounts:
+            - {name: experiments, mountPath: /srv/atelier/experiments, readOnly: true}
+            - {name: materials, mountPath: /srv/atelier/materials, readOnly: true}
+            - {name: data, mountPath: /srv/atelier/data}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        # the node's own folders, the same ones the SSH deploy uses:
+        # scripts/deploy/deploy-workers.sh sync keeps experiments/ identical everywhere
+        - {name: experiments, hostPath: {path: /srv/atelier/experiments, type: DirectoryOrCreate}}
+        - {name: materials, hostPath: {path: /srv/atelier/materials, type: DirectoryOrCreate}}
+        - {name: data, hostPath: {path: /srv/atelier/data, type: DirectoryOrCreate}}
+        - {name: shm, emptyDir: {medium: Memory, sizeLimit: 2Gi}}

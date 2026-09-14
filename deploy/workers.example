@@ -1,0 +1,18 @@
+# Worker nodes for scripts/deploy/deploy-workers.sh. Copy to deploy/workers and edit.
+#
+# One node per line: an ssh destination, then optional settings. The machine running
+# the script must reach each one with a key (no password prompt), as a user who can
+# run docker and write to /srv/atelier.
+#
+#   user@host             an address or an ~/.ssh/config alias
+#   name=gpu-a            ATELIER_NODE_NAME. Default: the node's own hostname
+#   kind=auto|gpu|cpu     auto (default): GPUs and the nvidia container runtime -> gpu
+#   slots=2               ATELIER_CPU_SLOTS on a node without GPUs (default 1)
+#   gpus=4                ATELIER_GPU_COUNT on a GPU node, to hold GPUs back
+#
+# Nothing else differs between nodes: GPU counts, cards and CPU-only machines are
+# found on each node when it is deployed.
+
+atelier@192.168.1.30 name=gpu-a
+atelier@192.168.1.31 name=gpu-b
+atelier@192.168.1.40 name=cpu-a slots=2
