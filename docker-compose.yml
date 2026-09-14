@@ -14,7 +14,7 @@ x-atelier-env: &atelier-env
   ATELIER_EXPERIMENTS_DIR: /srv/atelier/experiments
   ATELIER_MATERIALS_DIR: /srv/atelier/materials
   ATELIER_DATA_DIR: /srv/atelier/data
-  ATELIER_DATABASE_URL: ${ATELIER_DATABASE_URL:-postgresql+psycopg://atelier:atelier@postgres:5432/atelier}
+  ATELIER_DATABASE_URL: postgresql+psycopg://atelier:${ATELIER_DB_PASSWORD:-atelier}@postgres:5432/atelier
   ATELIER_REDIS_URL: redis://redis:6379/0
   ATELIER_JWT_SECRET: ${ATELIER_JWT_SECRET:-change-me}
   ATELIER_JWT_EXPIRE_HOURS: ${ATELIER_JWT_EXPIRE_HOURS:-12}
@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: atelier
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atelier}
+      POSTGRES_PASSWORD: ${ATELIER_DB_PASSWORD:-atelier}
       POSTGRES_DB: atelier
     volumes:
       - pgdata:/var/lib/postgresql/data
