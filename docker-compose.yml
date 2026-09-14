@@ -1,0 +1,169 @@
+# Atelier — everything the classroom node runs.
+#   docker compose up -d          start
+#   docker compose logs -f worker follow the scheduler
+#
+# The API and the worker share the experiments, materials and data folders, so a
+# run started through the API is executed by the worker against the same files.
+# ATELIER_REGISTRY lets every image come from your own registry, e.g.
+#   ATELIER_REGISTRY=harbor.local/atelier/
+# (keep the trailing slash). Empty means Docker Hub and locally built images.
+name: atelier
+
+x-atelier-env: &atelier-env
+  ATELIER_ROOT: /srv/atelier
+  ATELIER_EXPERIMENTS_DIR: /srv/atelier/experiments
+  ATELIER_MATERIALS_DIR: /srv/atelier/materials
+  ATELIER_DATA_DIR: /srv/atelier/data
+  ATELIER_DATABASE_URL: ${ATELIER_DATABASE_URL:-postgresql+psycopg://atelier:atelier@postgres:5432/atelier}
+  ATELIER_REDIS_URL: redis://redis:6379/0
+  ATELIER_JWT_SECRET: ${ATELIER_JWT_SECRET:-change-me}
+  ATELIER_JWT_EXPIRE_HOURS: ${ATELIER_JWT_EXPIRE_HOURS:-12}
+  ATELIER_ADMIN_USERNAME: ${ATELIER_ADMIN_USERNAME:-teacher}
+  ATELIER_ADMIN_PASSWORD: ${ATELIER_ADMIN_PASSWORD:-teacher}
+  ATELIER_GPU_COUNT: ${ATELIER_GPU_COUNT:-8}
+  ATELIER_MAX_RUNNING_PER_STUDENT: ${ATELIER_MAX_RUNNING_PER_STUDENT:-2}
+  ATELIER_MAX_GPUS_PER_STUDENT_RUN: ${ATELIER_MAX_GPUS_PER_STUDENT_RUN:-2}
+  ATELIER_DEFAULT_TIMEOUT_MIN: ${ATELIER_DEFAULT_TIMEOUT_MIN:-360}
+  ATELIER_RUNNER_BACKEND: ${ATELIER_RUNNER_BACKEND:-subprocess}
+  ATELIER_RUNNER_IMAGE: ${ATELIER_RUNNER_IMAGE:-atelier-worker:latest}
+  ATELIER_DISPLAY_COUNT: ${ATELIER_DISPLAY_COUNT:-5}
+  ATELIER_DISPLAYS_PUBLIC: ${ATELIER_DISPLAYS_PUBLIC:-true}
+  ATELIER_BOARD_INTERVAL_SEC: ${ATELIER_BOARD_INTERVAL_SEC:-5}
+  ATELIER_GRAFANA_URL: ${ATELIER_GRAFANA_URL:-/grafana/d/atelier-hw/hardware?orgId=1&kiosk&refresh=5s}
+  ATELIER_SUBMISSION_MAX_MB: ${ATELIER_SUBMISSION_MAX_MB:-2048}
+  ATELIER_WORKSPACE_MAX_MB: ${ATELIER_WORKSPACE_MAX_MB:-4096}
+
+x-atelier-volumes: &atelier-volumes
+  - ${ATELIER_EXPERIMENTS_DIR:-./experiments}:/srv/atelier/experiments:ro
+  - ${ATELIER_MATERIALS_DIR:-/srv/atelier/materials}:/srv/atelier/materials:ro
+  - ${ATELIER_DATA_DIR:-/srv/atelier/data}:/srv/atelier/data
+
+services:
+  postgres:
+    image: ${ATELIER_REGISTRY:-}postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atelier
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atelier}
+      POSTGRES_DB: atelier
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atelier"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: ${ATELIER_REGISTRY:-}redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${ATELIER_REGISTRY:-}atelier-api:${ATELIER_TAG:-latest}
+    build: ./backend
+    restart: unless-stopped
+    environment: *atelier-env
+    volumes: *atelier-volumes
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # NVML reads the host driver through the nvidia runtime; the API itself does no compute.
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu, utility] }]
+
+  worker:
+    image: ${ATELIER_REGISTRY:-}atelier-worker:${ATELIER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.worker
+      args:
+        CUDA_IMAGE: ${ATELIER_CUDA_IMAGE:-nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04}
+        CUDA_WHEEL: ${ATELIER_CUDA_WHEEL:-cu128}
+        CUDA_MM: ${ATELIER_CUDA_MM:-12.8}
+        TORCH_VERSION: ${ATELIER_TORCH_VERSION:-2.8.0}
+        PYTHON_VERSION: ${ATELIER_PYTHON_VERSION:-3.12}
+    restart: unless-stopped
+    environment: *atelier-env
+    volumes:
+      - ${ATELIER_EXPERIMENTS_DIR:-./experiments}:/srv/atelier/experiments:ro
+      - ${ATELIER_MATERIALS_DIR:-/srv/atelier/materials}:/srv/atelier/materials:ro
+      - ${ATELIER_DATA_DIR:-/srv/atelier/data}:/srv/atelier/data
+      # only needed when ATELIER_RUNNER_BACKEND=docker (one container per run)
+      - /var/run/docker.sock:/var/run/docker.sock
+    shm_size: "16gb"
+    ipc: host
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu, utility, compute] }]
+
+  web:
+    image: ${ATELIER_REGISTRY:-}atelier-web:${ATELIER_TAG:-latest}
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${ATELIER_HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [api, grafana]
+
+  prometheus:
+    image: ${ATELIER_REGISTRY:-}prom/prometheus:v2.54.1
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+
+  node-exporter:
+    image: ${ATELIER_REGISTRY:-}prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+
+  grafana:
+    image: ${ATELIER_REGISTRY:-}grafana/grafana:11.2.0
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    depends_on: [prometheus]
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:

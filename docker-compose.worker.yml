@@ -1,0 +1,73 @@
+# The GPU node, for when the control plane is on another machine.
+#
+# Runs on the Ubuntu box with the A6000s: the worker and nothing else. It reaches
+# the Postgres and Redis published by docker-compose.api.yml, and posts results back
+# to the API over HTTP.
+#
+#   ATELIER_CONTROL_HOST=192.168.1.20 docker compose -f docker-compose.worker.yml up -d
+#
+# See docs/topologies.md.
+name: atelier-worker
+
+services:
+  worker:
+    image: ${ATELIER_REGISTRY:-}atelier-worker:${ATELIER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.worker
+      args:
+        CUDA_IMAGE: ${ATELIER_CUDA_IMAGE:-nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04}
+        CUDA_WHEEL: ${ATELIER_CUDA_WHEEL:-cu128}
+        CUDA_MM: ${ATELIER_CUDA_MM:-12.8}
+        TORCH_VERSION: ${ATELIER_TORCH_VERSION:-2.8.0}
+        PYTHON_VERSION: ${ATELIER_PYTHON_VERSION:-3.12}
+    restart: unless-stopped
+    environment:
+      ATELIER_ROLE: worker
+      ATELIER_STORAGE_MODE: ${ATELIER_STORAGE_MODE:-upload}
+      ATELIER_API_URL: http://${ATELIER_CONTROL_HOST:?set the control machine's address}:${ATELIER_HTTP_PORT:-80}
+      ATELIER_WORKER_TOKEN: ${ATELIER_WORKER_TOKEN:?must match the API}
+      ATELIER_UPLOAD_MAX_MB: ${ATELIER_UPLOAD_MAX_MB:-64}
+      ATELIER_NODE_NAME: ${ATELIER_NODE_NAME:-gpu-node}
+      ATELIER_ROOT: /srv/atelier
+      ATELIER_EXPERIMENTS_DIR: /srv/atelier/experiments
+      ATELIER_MATERIALS_DIR: /srv/atelier/materials
+      ATELIER_DATA_DIR: /srv/atelier/data
+      ATELIER_DATABASE_URL: postgresql+psycopg://atelier:${ATELIER_DB_PASSWORD:-atelier}@${ATELIER_CONTROL_HOST}:${ATELIER_DB_PORT:-5432}/atelier
+      ATELIER_REDIS_URL: redis://:${ATELIER_REDIS_PASSWORD:-atelier}@${ATELIER_CONTROL_HOST}:${ATELIER_REDIS_PORT:-6379}/0
+      ATELIER_GPU_COUNT: ${ATELIER_GPU_COUNT:-8}
+      ATELIER_RUNNER_BACKEND: ${ATELIER_RUNNER_BACKEND:-subprocess}
+      ATELIER_RUNNER_IMAGE: ${ATELIER_REGISTRY:-}atelier-worker:${ATELIER_TAG:-latest}
+      ATELIER_WORKER_METRICS_PORT: ${ATELIER_WORKER_METRICS_PORT:-9101}
+    ports:
+      # prometheus on the control machine scrapes this
+      - "${ATELIER_WORKER_METRICS_PORT:-9101}:9101"
+    volumes:
+      # the same experiments tree as the API, and the materials, which only the
+      # worker needs — they are large and never leave this machine
+      - ${ATELIER_EXPERIMENTS_DIR:-./experiments}:/srv/atelier/experiments:ro
+      - ${ATELIER_MATERIALS_DIR:-/srv/atelier/materials}:/srv/atelier/materials:ro
+      - ${ATELIER_DATA_DIR:-/srv/atelier/data}:/srv/atelier/data
+      # only needed when ATELIER_RUNNER_BACKEND=docker
+      - /var/run/docker.sock:/var/run/docker.sock
+    shm_size: "16gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Scraped by the Prometheus on the control machine. Reports this node's GPUs.
+  node-exporter:
+    image: ${ATELIER_REGISTRY:-}prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    pid: host
+    command: ["--path.rootfs=/host"]
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    profiles: ["dashboards"]

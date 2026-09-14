@@ -1,0 +1,16 @@
+# Installed in the worker image on top of the CUDA base. torch itself is installed
+# separately in the Dockerfile from the cu128 index — do not add it here, or pip will
+# pull the PyPI build, which is compiled against a different CUDA minor version.
+#
+# Versions below are floors, chosen for compatibility with Python 3.12 and torch 2.8+.
+numpy>=1.26,<3
+transformers>=4.51
+datasets>=3.0
+tokenizers>=0.21
+accelerate>=1.4
+peft>=0.14
+trl>=0.15
+safetensors>=0.5
+sentencepiece>=0.2
+pyyaml>=6.0
+tqdm>=4.66

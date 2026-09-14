@@ -1,0 +1,117 @@
+slug: rl
+title: RLHF on GSM8K
+order: 23
+difficulty: advanced
+tags: [downloaded data, rlhf, grpo, rewards, gpu]
+summary: Define a reward — verifiable or learned from preferences — then optimise a policy with GRPO and check what it really learned.
+description: |
+  After SFT a model imitates; with reinforcement learning it optimises. This
+  experiment walks the modern recipe: a reward that is either checkable (GSM8K
+  answers) or learned from human preference pairs, a policy trained with GRPO
+  (group-relative PPO, the algorithm behind DeepSeek-R1), a KL leash to the
+  starting model, and an evaluation that looks for reward hacking.
+
+materials:
+  - {key: policy, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: Default starting policy.}
+  - {key: policy15, name: Qwen2.5-1.5B-Instruct, path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Stronger policy; slower.}
+  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: 7.5k grade-school maths problems with worked answers (question, answer with '#### number').}
+  - {key: hh, name: Anthropic HH-RLHF, path: datasets/rl/hh-rlhf, kind: dataset, format: jsonl, description: Human preference pairs (chosen, rejected) for training a reward model.}
+
+steps:
+  - id: reward
+    title: Reward
+    summary: A checkable reward, or a reward model learned from preferences
+    description: |
+      **Verifiable**: the reward is 1 when the final number matches GSM8K's answer
+      (plus a small bonus for a clearly marked answer). Cheap, exact, impossible
+      to fool. **Reward model**: a classifier head on a small LM trained on
+      HH-RLHF pairs to score responses; general, but learnable to game. The step
+      prepares the prompt sets either way.
+    script: steps/step1_reward.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: reward_type, label: reward}]
+    params:
+      - {key: reward_type, label: Reward, type: select, default: verifiable, options: [{value: verifiable, label: Verifiable (GSM8K correctness)}, {value: reward_model, label: Reward model (HH-RLHF preferences)}]}
+      - {key: n_train, label: Training prompts, type: int, min: 100, max: 7000, step: 100, default: 2000}
+      - {key: n_test, label: Test prompts, type: int, min: 50, max: 1300, step: 50, default: 300}
+      - {key: rm_base, label: Reward-model base, type: select, default: Qwen2.5-0.5B-Instruct, options: [{value: Qwen2.5-0.5B-Instruct, label: Qwen2.5-0.5B-Instruct}]}
+      - {key: rm_pairs, label: Preference pairs for the reward model, type: int, min: 500, max: 40000, step: 500, default: 4000}
+      - {key: rm_epochs, label: Reward-model epochs, type: float, min: 0.2, max: 3, step: 0.1, default: 1}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: policy
+    title: Policy
+    summary: Choose the starting policy and the GRPO settings
+    description: |
+      GRPO samples a group of completions per prompt, scores each with the reward,
+      and pushes up the ones above the group mean. `beta` weights the KL penalty
+      that keeps the policy near its starting point; `num_generations` is the group
+      size. Start from an instruct model, or from your own SFT run.
+    script: steps/step2_policy.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: num_generations, label: group}]
+    params:
+      - {key: policy_source, label: Start from, type: select, default: model, options: [{value: model, label: A prepared model}, {value: sft_run, label: My SFT experiment run}]}
+      - {key: policy_model, label: Model, type: select, default: Qwen2.5-0.5B-Instruct, options: [{value: Qwen2.5-0.5B-Instruct, label: Qwen2.5-0.5B-Instruct}, {value: Qwen2.5-1.5B-Instruct, label: Qwen2.5-1.5B-Instruct}]}
+      - {key: sft_run, label: SFT run (step 3 of Supervised fine-tuning), type: run, experiment: sft, step: 3, default: null}
+      - {key: num_generations, label: Group size, type: int, min: 2, max: 16, default: 8}
+      - {key: prompts_per_step, label: Prompts per optimizer step, type: int, min: 1, max: 32, default: 4}
+      - {key: max_completion_length, label: Max completion tokens, type: int, min: 64, max: 1024, step: 64, default: 256}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.3, max: 1.5, step: 0.1, default: 0.9}
+      - {key: beta, label: KL coefficient (beta), type: float, min: 0, max: 0.5, step: 0.01, default: 0.04}
+      - {key: lr, label: Learning rate, type: float, min: 0.0000001, max: 0.00005, step: 0.0000001, default: 0.000001}
+      - {key: max_steps, label: Optimizer steps, type: int, min: 10, max: 5000, default: 200}
+  - id: train
+    title: Train
+    summary: Run GRPO and watch reward, KL and length
+    description: |
+      Mean reward should rise. Watch two other lines: KL to the reference (is the
+      policy drifting?) and completion length (is it learning to talk more, or to
+      answer?). With a learned reward model the reward can rise while quality
+      does not — that is reward hacking, and step 4 checks for it.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: final_reward, label: reward}, {key: final_kl, label: KL}]
+    params:
+      - {key: dtype, label: Precision, type: select, default: bf16, options: [{value: bf16, label: bfloat16}]}
+  - id: eval
+    title: Evaluate
+    summary: Accuracy before and after, lengths, and reward-hacking checks
+    description: |
+      The starting policy and the trained policy answer the same held-out
+      prompts greedily. Accuracy (or reward-model score), answer length, the
+      share of answers with a marked final number, and flagged completions
+      (no answer, repeated text, very long) tell you whether the gain is real.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: acc_after, label: accuracy}]
+    params:
+      - {key: n_eval, label: Held-out prompts, type: int, min: 50, max: 1300, step: 50, default: 300}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 64, max: 1024, step: 64, default: 384}
+
+project:
+  entry: project/reward.py
+  run_command: python project/train.py --steps 200
+  timeout_min: 360
+  interface: |
+    Two files. `project/reward.py` defines
+    `reward(question: str, completion: str, gold: str) -> float` — your reward
+    shaping. `project/train.py` trains a policy from `Qwen2.5-0.5B-Instruct`
+    and saves it to `outputs/policy/` (HF checkpoint). The grader checks that your
+    reward prefers correct solutions, then measures your policy's accuracy on a
+    hidden GSM8K slice. Reward design (partial credit, format, length penalties)
+    is the whole game — a reward the model can game will show up as a low score.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

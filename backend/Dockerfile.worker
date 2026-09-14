@@ -1,0 +1,51 @@
+# Worker and experiment runtime.
+#
+# Three things are chosen at build time: the CUDA base image, which PyTorch wheel
+# index to install from, and which PyTorch version. They have to agree, so they are
+# set together — see docs/runtime.md for the combinations that work.
+#
+#   docker build -f backend/Dockerfile.worker -t atelier-worker .
+#   docker build -f backend/Dockerfile.worker \
+#       --build-arg CUDA_IMAGE=nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 \
+#       --build-arg CUDA_WHEEL=cu126 --build-arg CUDA_MM=12.6 \
+#       --build-arg TORCH_VERSION=2.8.0 -t atelier-worker .
+#
+# Build from the repository root — the context includes experiments/.
+ARG CUDA_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+FROM ${CUDA_IMAGE}
+
+# CUDA_WHEEL selects the wheel index (cu126, cu128, cu130); CUDA_MM is the same
+# version in x.y form, used only to check that what got installed is what you asked for.
+ARG CUDA_WHEEL=cu128
+ARG CUDA_MM=12.8
+ARG TORCH_VERSION=2.8.0
+ARG PYTHON_VERSION=3.12
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1
+
+# Ubuntu 24.04 ships Python 3.12 as its system Python; 22.04 ships 3.10, so if you
+# move the base image back a release, set PYTHON_VERSION to match what it carries.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python3-pip git build-essential ca-certificates \
+    && ln -sf /usr/bin/python${PYTHON_VERSION} /usr/local/bin/python \
+    && ln -sf /usr/bin/python${PYTHON_VERSION} /usr/local/bin/python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch first and on its own, so a change to the other requirements does not
+# re-download two gigabytes. The index matters: the PyPI build is compiled against
+# whichever CUDA minor version PyPI defaults to, which may not be the base image's.
+RUN python -m pip install --upgrade pip \
+    && python -m pip install "torch==${TORCH_VERSION}" --index-url "https://download.pytorch.org/whl/${CUDA_WHEEL}"
+
+COPY backend/requirements.txt ./requirements-backend.txt
+COPY experiments/requirements.txt ./requirements-experiments.txt
+RUN python -m pip install -r requirements-backend.txt -r requirements-experiments.txt
+
+# Fail the build rather than the first lesson: a mismatched wheel installs cleanly
+# and then dies on the first kernel launch.
+RUN python -c "import sys, torch; print('python', sys.version.split()[0], '· torch', torch.__version__, '· cuda', torch.version.cuda); assert torch.version.cuda.startswith('${CUDA_MM}'), f'wanted CUDA ${CUDA_MM}, wheel was built for {torch.version.cuda}'" \
+    && python -c "import torch; archs = torch.cuda.get_arch_list(); print('compiled for:', ' '.join(archs))"
+
+COPY backend/atelier ./atelier
+CMD ["python", "-m", "atelier.worker"]

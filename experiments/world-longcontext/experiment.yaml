@@ -1,0 +1,112 @@
+slug: world-longcontext
+title: Long context
+order: 15
+difficulty: advanced
+tags: [our data, rope, gpu]
+summary: Stretch a model trained at 512 tokens to four times that, and find the depth at which it stops finding what you hid.
+description: |
+  A model trained with a 512-token window does not simply work at 2048. Position
+  interpolation is the cheap fix: divide every position by a scale factor so the
+  angles the model already understands now cover a longer sequence. It costs one
+  line and a short continuation run.
+
+  The evaluation is a needle in a haystack — a fact planted at a known depth in a
+  long document, and a question that can only be answered by finding it. Because the
+  haystack is generated, the needle is never something the model saw in training.
+
+materials: []
+
+steps:
+  - id: measure
+    title: Measure
+    summary: Where the trained window ends
+    description: |
+      Perplexity as the input grows past what the model was trained on. It stays flat
+      to the training length and then rises sharply — that cliff is the real context
+      limit, whatever the configuration says. The needle test at each length shows
+      the same thing from the other side.
+    script: steps/step1_measure.py
+    gpus: 1
+    timeout_min: 90
+    needs_previous: false
+    figures: [{key: cliff, label: cliff}]
+    params:
+      - {key: base_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: lengths, label: Lengths to test, type: multiselect, default: ["256", "512", "1024", "2048"], options: [{value: "256", label: "256"}, {value: "512", label: "512"}, {value: "1024", label: "1024"}, {value: "2048", label: "2048"}, {value: "4096", label: "4096"}]}
+      - {key: n_docs, label: Documents per length, type: int, min: 10, max: 300, step: 10, default: 60}
+      - {key: n_needles, label: Needle questions per length, type: int, min: 10, max: 200, step: 10, default: 40}
+  - id: extend
+    title: Extend
+    summary: Stretch the positions
+    description: |
+      Two knobs. Interpolation divides positions by a scale factor, keeping every
+      angle inside the range the model was trained on. Raising the RoPE base instead
+      slows every frequency down, which reaches further but distorts short-range
+      relations. Try both before training anything — the effect is visible
+      immediately in perplexity.
+    script: steps/step2_extend.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: best_scale, label: scale}]
+    params:
+      - {key: target_length, label: Target context length, type: int, min: 512, max: 8192, step: 256, default: 2048}
+      - {key: scales, label: Interpolation scales to try, type: multiselect, default: ["1", "2", "4"], options: [{value: "1", label: "1 (none)"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}]}
+      - {key: bases, label: RoPE bases to try, type: multiselect, default: ["10000", "100000"], options: [{value: "10000", label: "10,000 (default)"}, {value: "50000", label: "50,000"}, {value: "100000", label: "100,000"}, {value: "500000", label: "500,000"}]}
+      - {key: n_docs, label: Documents to evaluate on, type: int, min: 10, max: 200, step: 10, default: 60}
+  - id: train
+    title: Train
+    summary: A short continuation at the new length
+    description: |
+      Interpolation alone gets most of the way; a few hundred steps on long documents
+      at the stretched scale recovers the rest. The data is the point: documents that
+      are genuinely long, not short ones concatenated, or the model learns that
+      distant text is always irrelevant.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: val_loss, label: val loss}]
+    params:
+      - {key: max_iters, label: Steps, type: int, min: 50, max: 5000, step: 50, default: 400}
+      - {key: batch_size, label: Sequences per step, type: int, min: 1, max: 32, default: 4}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.00005}
+      - {key: docs, label: Long documents to generate, type: int, min: 200, max: 20000, step: 100, default: 3000}
+      - {key: needle_share, label: Share containing a planted fact, type: float, min: 0, max: 0.6, step: 0.05, default: 0.2, help: Training on some needle-style documents teaches the model that distant text can matter}
+  - id: eval
+    title: Evaluate
+    summary: Needle at every depth
+    description: |
+      The fact is planted at ten depths from the start of the document to the end,
+      and the question asked at each. The usual result is a U: strong at the
+      beginning, strong at the end, weakest in the middle — the same shape larger
+      models show, at a scale you can train in an afternoon.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: needle_accuracy, label: needle}]
+    params:
+      - {key: lengths, label: Lengths to test, type: multiselect, default: ["512", "1024", "2048"], options: [{value: "512", label: "512"}, {value: "1024", label: "1024"}, {value: "2048", label: "2048"}, {value: "4096", label: "4096"}]}
+      - {key: depths, label: Depths to plant at, type: int, min: 3, max: 20, default: 10}
+      - {key: per_cell, label: Questions per length and depth, type: int, min: 3, max: 40, default: 8}
+
+project:
+  entry: project/extend.py
+  run_command: python project/extend.py --model <model.pt> --tokenizer <tok.json>
+  timeout_min: 240
+  interface: |
+    `project/extend.py` defines `extend(model, target_length: int) -> None`, modifying
+    the model in place, and trains if it wants to. Save `outputs/model.pt`.
+
+    The grader runs a needle test at 2048 tokens across ten depths and scores
+    accuracy, then checks the model has not become worse at short inputs — the usual
+    cost of a careless stretch, and easy to miss if you only test what you extended.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: needle_accuracy
+  higher_is_better: true

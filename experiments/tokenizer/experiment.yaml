@@ -1,0 +1,147 @@
+slug: tokenizer
+title: Tokenizer on public text
+order: 20
+difficulty: intro
+tags: [downloaded data, data, bpe, cpu]
+summary: Pick a corpus, strip the duplicates, train a byte-pair vocabulary, then measure what it covers on text it never saw.
+description: |
+  Every language model starts with a tokenizer, and every tokenizer starts with data.
+  In this experiment you build one end to end: choose sources, remove exact and
+  near-duplicate documents with MinHash, train a BPE vocabulary, and measure
+  compression and coverage on a held-out split. All four steps run on CPU.
+
+materials:
+  - key: pools
+    name: Sample pools (shipped with the experiment)
+    path: datasets/tokenizer/pools
+    kind: dataset
+    format: txt
+    description: 122 hand-written sentences in three pools — field notes, code fragments, twenty languages. Always available.
+  - key: wikitext
+    name: WikiText-103 (raw)
+    path: datasets/tokenizer/wikitext-103-raw
+    kind: dataset
+    format: txt
+    description: 100M tokens of Wikipedia articles. Paragraph per document.
+  - key: code
+    name: Source code sample
+    path: datasets/tokenizer/code
+    kind: dataset
+    format: jsonl
+    description: A small multi-language slice of permissively licensed source files (one file per line, "text" field).
+  - key: multilingual
+    name: Multilingual web text
+    path: datasets/tokenizer/multilingual
+    kind: dataset
+    format: jsonl
+    description: Web paragraphs in 20 languages and 6 scripts (one paragraph per line, "text" + "lang" fields).
+
+steps:
+  - id: corpus
+    title: Corpus
+    summary: Choose sources and build a document set
+    description: |
+      Documents are read from the selected sources and mixed with a seeded shuffle.
+      For teaching, the step can also *plant* exact and near duplicates so the next
+      step has known targets. Files you upload to `data/` in your project are picked up
+      by the **My project files** source.
+    script: steps/step1_corpus.py
+    gpus: 0
+    timeout_min: 30
+    figures: [{key: docs, label: docs}]
+    params:
+      - {key: sources, label: Sources, type: multiselect, default: [pools], options: [{value: pools, label: Sample pools}, {value: wikitext, label: WikiText-103}, {value: code, label: Source code}, {value: multilingual, label: Multilingual}, {value: workspace, label: My project files (data/)}]}
+      - {key: max_docs, label: Documents, type: int, min: 50, max: 200000, step: 50, default: 2000, help: Upper bound after mixing all sources}
+      - {key: split, label: Split files into documents by, type: select, default: auto, options: [{value: auto, label: blank line if any, else line}, {value: paragraph, label: blank line}, {value: line, label: line}, {value: whole, label: whole file}]}
+      - {key: min_chars, label: Minimum characters per document, type: int, min: 1, max: 5000, default: 20}
+      - {key: exact_dup_rate, label: Planted exact duplicates, type: float, min: 0, max: 0.5, step: 0.01, default: 0.1, help: Fraction of documents copied verbatim}
+      - {key: near_dup_rate, label: Planted near duplicates, type: float, min: 0, max: 0.5, step: 0.01, default: 0.1, help: Fraction of documents copied with small edits}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7}
+  - id: dedup
+    title: Dedup
+    summary: Remove exact and near duplicates
+    description: |
+      Exact duplicates are found by hashing normalized text. Near duplicates use
+      MinHash signatures (128 hashes) bucketed with locality-sensitive hashing;
+      candidate pairs are verified with the true Jaccard similarity of their
+      shingle sets and merged with union-find. Lower the threshold to catch
+      looser paraphrases at the cost of false positives.
+    script: steps/step2_dedup.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: kept, label: kept}, {key: removed, label: removed}]
+    params:
+      - {key: lowercase, label: Lowercase before comparing, type: bool, default: true}
+      - {key: collapse_ws, label: Collapse whitespace, type: bool, default: true}
+      - {key: strip_punct, label: Ignore punctuation, type: bool, default: false}
+      - {key: near, label: Near-duplicate pass, type: bool, default: true}
+      - {key: shingle, label: Shingles, type: select, default: word, options: [{value: word, label: words}, {value: char, label: characters}]}
+      - {key: n, label: Shingle size, type: int, min: 2, max: 12, default: 3}
+      - {key: threshold, label: Jaccard threshold, type: float, min: 0.3, max: 0.95, step: 0.05, default: 0.7}
+      - {key: keep, label: Keep, type: select, default: first, options: [{value: first, label: first seen}, {value: longest, label: longest}]}
+  - id: train
+    title: Train
+    summary: Learn a byte-pair vocabulary
+    description: |
+      Words are pre-tokenized GPT-2 style; the trainer repeatedly merges the most
+      frequent adjacent pair until the vocabulary is full. Byte mode can encode any
+      text; character mode learns only the characters it saw. A seeded share of the
+      corpus is held out for the coverage step.
+    script: steps/step3_train.py
+    gpus: 0
+    timeout_min: 120
+    figures: [{key: vocab_size, label: vocab}, {key: chars_per_token, label: chars/token}]
+    params:
+      - {key: mode, label: Base alphabet, type: select, default: byte, options: [{value: byte, label: 256 bytes}, {value: char, label: characters seen}]}
+      - {key: vocab_size, label: Vocabulary size, type: int, min: 300, max: 32000, step: 100, default: 2000}
+      - {key: min_freq, label: Minimum pair frequency, type: int, min: 1, max: 100, default: 2}
+      - {key: lowercase, label: Lowercase, type: bool, default: false}
+      - {key: holdout, label: Held-out share, type: float, min: 0, max: 0.5, step: 0.05, default: 0.1}
+      - {key: max_train_chars, label: Training characters (cap), type: int, min: 100000, max: 50000000, step: 100000, default: 3000000, help: The pure-Python trainer is fast up to a few million characters}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7}
+  - id: coverage
+    title: Coverage
+    summary: Measure compression and coverage on held-out text
+    description: |
+      The trained tokenizer encodes the held-out split (text it never saw during
+      training). Because the encoder records which merge ranks it used, the
+      compression curve for every smaller vocabulary comes for free — no retraining.
+    script: steps/step4_coverage.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: char_coverage, label: coverage}, {key: chars_per_token, label: chars/token}]
+    params:
+      - {key: series, label: Evaluate on, type: select, default: both, options: [{value: both, label: held-out and training}, {value: holdout, label: held-out only}, {value: train, label: training only}]}
+      - {key: sample_text, label: Try it on any text, type: textarea, default: "The lighthouse keeper logged the tide at dawn. print(f\"{x:.2f}\")  東京の朝は静かだ。"}
+      - {key: top_k, label: Top-k tokens for the coverage curve, type: int, min: 100, max: 20000, default: 2000}
+
+project:
+  entry: project/tokenizer.py
+  run_command: python project/train.py --vocab-size 2000
+  timeout_min: 60
+  interface: |
+    Implement `Tokenizer` in `project/tokenizer.py`:
+
+    ```python
+    class Tokenizer:
+        def train(self, texts: list[str], vocab_size: int) -> None: ...
+        def encode(self, text: str) -> list[int]: ...
+        def decode(self, ids: list[int]) -> str: ...
+        @property
+        def vocab_size(self) -> int: ...
+    ```
+
+    The grader trains your class on a fixed corpus, checks that `decode(encode(x)) == x`
+    on held-out documents, measures characters per token and encoding speed, and
+    compares compression against the reference BPE at the same vocabulary size.
+
+grader:
+  script: grader/grade.py
+  gpus: 0
+  timeout_min: 30
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: chars_per_token
+  higher_is_better: true

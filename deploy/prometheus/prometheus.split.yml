@@ -1,0 +1,31 @@
+# Prometheus on the control machine, scraping every GPU node.
+#
+# The node list is NOT in this file. Prometheus does not expand environment
+# variables in its configuration, so a ${VAR} here would be scraped literally and
+# silently fail. The targets live in targets/*.yml instead, which Prometheus re-reads
+# on its own — add a node to that file and it is scraped within seconds, no restart.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: atelier
+
+scrape_configs:
+  - job_name: atelier-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+        labels: { node: control }
+
+  # every GPU node's worker: atelier_gpu_* and the run gauges
+  - job_name: atelier-gpu-nodes
+    metrics_path: /metrics
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/gpu-nodes.yml"]
+        refresh_interval: 30s
+
+  # the machines themselves: cpu, memory, disk, network
+  - job_name: node-exporter
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/node-exporters.yml"]
+        refresh_interval: 30s

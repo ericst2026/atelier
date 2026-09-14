@@ -1,0 +1,108 @@
+slug: world-tools
+title: Tool use
+order: 14
+difficulty: advanced
+tags: [our data, agents, gpu]
+summary: Give a small model a calculator and a lookup table, teach it to call them, and measure how often it calls the right one with valid arguments.
+description: |
+  A 30M model cannot multiply three-digit numbers reliably. It can learn to write
+  `calc(387 * 24)` and use what comes back, which is the whole idea behind tool use:
+  stop asking the model to be a computer and let it drive one.
+
+  Three things are measured separately, because they fail separately: does it decide
+  to call a tool, does it call the right one with arguments that parse, and does it
+  use the result rather than ignoring it.
+
+materials: []
+
+steps:
+  - id: tools
+    title: Tools
+    summary: Define the tools and see where they would help
+    description: |
+      Three tools: a calculator, a lookup over the world's facts, and a counter.
+      The step measures, per task family, how often a tool could give the answer
+      directly — families where no tool helps are families where tool training can
+      only add noise.
+    script: steps/step1_tools.py
+    gpus: 1
+    timeout_min: 60
+    needs_previous: false
+    figures: [{key: coverage, label: coverage}]
+    params:
+      - {key: sft_run, label: Model (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: enabled, label: Tools to enable, type: multiselect, default: [calc, lookup, count], options: [{value: calc, label: "calc(expression)"}, {value: lookup, label: "lookup(key)"}, {value: count, label: "count(list)"}]}
+      - {key: n_probe, label: Questions to probe, type: int, min: 50, max: 1000, step: 50, default: 300}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 384, step: 16, default: 192}
+  - id: traces
+    title: Traces
+    summary: Generate demonstrations of calling them
+    description: |
+      Each demonstration shows the model writing a call, receiving a result, and
+      continuing. Because the generator knows every answer, a trace is kept only when
+      the tool's output actually leads to the right answer — no incorrect
+      demonstrations enter the training set.
+    script: steps/step2_traces.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: traces, label: traces}]
+    params:
+      - {key: n_traces, label: Demonstrations, type: int, min: 500, max: 40000, step: 500, default: 8000}
+      - {key: no_tool_share, label: Share showing no tool call, type: float, min: 0, max: 0.6, step: 0.05, default: 0.25, help: Without these the model calls a tool for everything, including questions that need none}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 33}
+  - id: train
+    title: Train
+    summary: Fine-tune on the traces
+    description: |
+      Ordinary supervised fine-tuning, with one difference: the tool's returned
+      result is in the context but masked out of the loss. The model is learning to
+      write calls and to use results, not to predict what the calculator will say.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: eval_loss, label: val loss}]
+    params:
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 8, step: 0.5, default: 3}
+      - {key: lr, label: Learning rate, type: float, min: 0.00001, max: 0.001, step: 0.00001, default: 0.0002}
+      - {key: batch_size, label: Examples per step, type: int, min: 4, max: 64, default: 24}
+  - id: eval
+    title: Evaluate
+    summary: Called, parsed, used
+    description: |
+      Accuracy with tools against accuracy without, then the three failure modes
+      separately: never calling, calling with arguments that do not parse, and
+      calling correctly then ignoring the answer. The last is the most common and the
+      easiest to miss if you only look at the final score.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: accuracy, label: accuracy}, {key: valid_calls, label: valid}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 1000, step: 50, default: 300}
+      - {key: max_turns, label: Tool calls allowed per question, type: int, min: 1, max: 5, default: 2}
+      - {key: max_new_tokens, label: Tokens per turn, type: int, min: 32, max: 256, step: 16, default: 128}
+
+project:
+  entry: project/tools.py
+  run_command: python project/train.py --model <sft-run>/model.pt --tokenizer <tok.json>
+  timeout_min: 240
+  interface: |
+    `project/tools.py` defines `TOOLS`, a dict of name to callable, and
+    `render(name, args, result) -> str` controlling how a call and its result appear
+    in the context. `project/train.py` generates traces and trains.
+
+    The grader runs your model through its own tool loop on unseen questions and
+    scores accuracy, the share of calls whose arguments parse, and how often the
+    result is used. Adding a tool that answers the questions directly is not
+    forbidden and will be visible in the call log.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

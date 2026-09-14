@@ -1,0 +1,122 @@
+slug: rag
+title: Retrieval on Wikipedia
+order: 12
+difficulty: core
+tags: [downloaded data, embeddings, gpu]
+summary: Index a Wikipedia slice with a downloaded embedder, measure what it actually finds, then answer questions with and without it.
+description: |
+  Retrieval is two problems wearing one name. The first is search: given a question,
+  put the right passage in the top few. The second is reading: given a passage that
+  may be wrong, produce an answer that is right — or admit the passage does not
+  contain one.
+
+  Most of this experiment is spent on the first, because that is where the errors
+  are. Recall@k is measured before any model generates anything, so when the answers
+  are wrong you already know whether it was the retriever or the reader.
+
+materials:
+  - {key: wiki, name: Simple Wikipedia, path: datasets/rag/wikipedia-simple, kind: dataset, format: jsonl, description: The corpus to chunk, embed and search.}
+  - {key: squad, name: SQuAD v2, path: datasets/rag/squad-v2, kind: dataset, format: jsonl, description: Questions with the paragraph that answers them — and questions with no answer at all, which is the interesting half.}
+  - {key: hotpot, name: HotpotQA, path: datasets/rag/hotpotqa, kind: dataset, format: jsonl, description: Multi-hop questions where one retrieval is never enough.}
+  - {key: minilm, name: all-MiniLM-L6-v2, path: models/all-MiniLM-L6-v2, kind: model, description: A small, fast sentence embedder.}
+  - {key: bge, name: bge-small-en-v1.5, path: models/bge-small-en-v1.5, kind: model, description: A stronger embedder to compare against.}
+  - {key: reranker, name: ms-marco-MiniLM-L-6-v2, path: models/ms-marco-MiniLM-L-6-v2, kind: model, description: A cross-encoder that rescores the top candidates.}
+  - {key: reader, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: The model that reads the retrieved passage and answers.}
+
+steps:
+  - id: index
+    title: Index
+    summary: Chunk, embed, store
+    description: |
+      Chunk size is the first real decision. Long chunks carry context and dilute the
+      embedding; short ones are precise and lose the sentence that made them make
+      sense. The overlap exists so a fact split across a boundary survives in at
+      least one chunk.
+    script: steps/step1_index.py
+    gpus: 1
+    timeout_min: 120
+    needs_previous: false
+    figures: [{key: chunks, label: chunks}]
+    params:
+      - {key: embedder, label: Embedder, type: select, default: all-MiniLM-L6-v2, options: [{value: all-MiniLM-L6-v2, label: MiniLM (384d, fast)}, {value: bge-small-en-v1.5, label: BGE-small (384d, stronger)}]}
+      - {key: n_articles, label: Articles to index, type: int, min: 1000, max: 120000, step: 1000, default: 20000}
+      - {key: chunk_size, label: Chunk size (characters), type: int, min: 100, max: 2000, step: 50, default: 400}
+      - {key: overlap, label: Overlap (characters), type: int, min: 0, max: 400, step: 20, default: 80}
+      - {key: query_prefix, label: Prefix for queries, type: text, default: "", help: "BGE was trained with 'Represent this sentence for searching relevant passages: ' on queries; MiniLM wants nothing"}
+  - id: retrieve
+    title: Retrieve
+    summary: Measure the search before you measure the answers
+    description: |
+      Recall@k on questions whose answering passage is known. Then the same with a
+      cross-encoder rescoring the top candidates: slower, and usually worth it. The
+      gap between recall@1 and recall@10 tells you whether a reranker can help at
+      all — if the passage is not in the top ten, nothing downstream can save it.
+    script: steps/step2_retrieve.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: recall_5, label: recall@5}]
+    params:
+      - {key: n_questions, label: Questions to evaluate, type: int, min: 50, max: 2000, step: 50, default: 400}
+      - {key: k_values, label: Values of k, type: multiselect, default: ["1", "3", "5", "10", "20"], options: [{value: "1", label: "1"}, {value: "3", label: "3"}, {value: "5", label: "5"}, {value: "10", label: "10"}, {value: "20", label: "20"}]}
+      - {key: rerank, label: Rerank the top candidates, type: bool, default: true}
+      - {key: rerank_candidates, label: Candidates to rerank, type: int, min: 10, max: 100, default: 30}
+      - {key: include_unanswerable, label: Include questions with no answer in the corpus, type: bool, default: true}
+  - id: generate
+    title: Generate
+    summary: Answer with the passage, and without
+    description: |
+      Three conditions on the same questions: no context, retrieved context, and the
+      correct passage handed over directly. The third is the ceiling — what the
+      reader could do if retrieval were perfect. The distance between the second and
+      the third is the retriever's fault; the distance between the third and 100% is
+      the reader's.
+    script: steps/step3_generate.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: with_context, label: with context}]
+    params:
+      - {key: reader, label: Reader model, type: select, default: Qwen2.5-0.5B-Instruct, options: [{value: Qwen2.5-0.5B-Instruct, label: Qwen2.5-0.5B-Instruct}, {value: SmolLM2-360M-Instruct, label: SmolLM2-360M-Instruct}, {value: Qwen2.5-1.5B-Instruct, label: Qwen2.5-1.5B-Instruct}]}
+      - {key: n_questions, label: Questions, type: int, min: 50, max: 1000, step: 50, default: 250}
+      - {key: k, label: Passages in the prompt, type: int, min: 1, max: 10, default: 3}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 16, max: 256, step: 16, default: 64}
+      - {key: conditions, label: Conditions to run, type: multiselect, default: [none, retrieved, gold], options: [{value: none, label: no context}, {value: retrieved, label: retrieved context}, {value: gold, label: the correct passage}]}
+  - id: eval
+    title: Evaluate
+    summary: Right answers, wrong passages, and knowing when to refuse
+    description: |
+      Exact match and token overlap against the reference answers, then the two
+      behaviours that decide whether a retrieval system is usable: what the model
+      does when the retrieved passage is wrong, and whether it says so when the
+      answer is not there at all.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: exact_match, label: EM}, {key: refusal, label: refusal}]
+    params:
+      - {key: n_unanswerable, label: Unanswerable questions to test, type: int, min: 0, max: 500, step: 25, default: 100}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 16, max: 256, step: 16, default: 64}
+
+project:
+  entry: project/retriever.py
+  run_command: python project/run.py --n 200
+  timeout_min: 180
+  interface: |
+    `project/retriever.py` defines `build(corpus: list[dict]) -> object` and
+    `search(index, question: str, k: int) -> list[dict]` returning chunks with at
+    least `{"text", "doc_id"}`. `project/answer.py` defines
+    `answer(question: str, passages: list[dict], generate) -> str`.
+
+    The grader scores recall@5 on unseen questions and exact match on the answers,
+    and it counts how often your system claims an answer that is not in the corpus.
+    A retriever that returns the whole corpus scores nothing.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 90
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: exact_match
+  higher_is_better: true

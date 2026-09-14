@@ -1,0 +1,128 @@
+slug: world-rl
+title: Reinforcement learning
+order: 4
+difficulty: advanced
+tags: [our data, grpo, rewards, gpu]
+summary: Write a reward, run GRPO on your own model, and see what optimising a number does that imitating a demonstration cannot.
+description: |
+  Fine-tuning imitates; reinforcement learning optimises. GRPO samples a group of
+  answers to the same question, scores each one, and pushes the above-average
+  answers up — the group is its own baseline, so there is no value network to
+  train. A KL term to the starting policy stops the model wandering into text that
+  scores well and reads like nothing.
+
+  The reward here is a Python function you can read, not a learned model, so when
+  the reward goes up and the accuracy does not, you can find out exactly why. That
+  is the lesson: reward design is the work, and every reward is gameable until
+  proven otherwise.
+
+materials: []
+
+steps:
+  - id: reward
+    title: Reward
+    summary: Define what a good answer is worth
+    description: |
+      Start from correctness and add shaping: a little for marking the answer in the
+      right place, a little for showing the working, a penalty for rambling. Each
+      weight is a hypothesis about what the model will do with it. The step scores a
+      few hundred sampled answers with your weights so you can see the spread before
+      spending an hour of GPU on it — a reward that gives every answer in a group
+      the same score teaches nothing at all.
+    script: steps/step1_reward.py
+    gpus: 1
+    timeout_min: 60
+    needs_previous: false
+    figures: [{key: spread, label: spread}]
+    params:
+      - {key: sft_run, label: Starting policy (step 3 of Fine-tuning), type: run, experiment: world-sft, step: 3, default: null, help: RL on a base model that cannot answer at all mostly wastes GPU time}
+      - {key: w_correct, label: Weight — correct answer, type: float, min: 0, max: 4, step: 0.1, default: 1}
+      - {key: w_marked, label: Weight — answer on a marked line, type: float, min: 0, max: 1, step: 0.05, default: 0.2}
+      - {key: w_steps, label: Weight — shows its working, type: float, min: 0, max: 1, step: 0.05, default: 0.1}
+      - {key: w_length, label: Penalty — per 100 characters, type: float, min: 0, max: 1, step: 0.02, default: 0.05}
+      - {key: w_repeat, label: Penalty — repetition, type: float, min: 0, max: 2, step: 0.1, default: 0.5}
+      - {key: n_probe, label: Questions to probe, type: int, min: 20, max: 400, step: 20, default: 80}
+      - {key: group_size, label: Answers per question when probing, type: int, min: 2, max: 16, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.3, max: 1.5, step: 0.1, default: 1.0}
+  - id: prompts
+    title: Prompts
+    summary: Choose what to train on, and how hard
+    description: |
+      Prompts the policy always gets right teach nothing; prompts it never gets
+      right teach nothing either. The useful band is in between, and this step
+      measures where it is for your model by sampling each family and difficulty.
+      Pick the mix that leaves the most room to improve.
+    script: steps/step2_prompts.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: learnable, label: learnable}]
+    params:
+      - {key: n_prompts, label: Training prompts, type: int, min: 100, max: 20000, step: 100, default: 2000}
+      - {key: families, label: Task families, type: multiselect, default: [arith, count, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: difficulty, label: Difficulty, type: select, default: mixed, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
+      - {key: probe, label: Questions to probe per family, type: int, min: 5, max: 100, default: 24}
+      - {key: group_size, label: Answers per question when probing, type: int, min: 2, max: 16, default: 8}
+  - id: train
+    title: Train
+    summary: Run GRPO and watch three lines
+    description: |
+      Reward should rise. Watch KL — the distance from where you started — and the
+      answer length at the same time. Reward up with KL flat and length stable is
+      real learning. Reward up with length climbing is usually the model discovering
+      that your shaping pays for words.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: final_reward, label: reward}, {key: final_kl, label: KL}]
+    params:
+      - {key: max_steps, label: Optimizer steps, type: int, min: 20, max: 5000, default: 300}
+      - {key: group_size, label: Answers per question (group), type: int, min: 4, max: 16, default: 8}
+      - {key: prompts_per_step, label: Questions per step, type: int, min: 2, max: 32, default: 8}
+      - {key: max_new_tokens, label: Answer length cap, type: int, min: 32, max: 512, step: 16, default: 160}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.5, max: 1.5, step: 0.1, default: 1.0}
+      - {key: beta, label: KL coefficient, type: float, min: 0, max: 0.5, step: 0.005, default: 0.02}
+      - {key: lr, label: Learning rate, type: float, min: 0.0000001, max: 0.0001, step: 0.0000001, default: 0.00001}
+      - {key: clip_eps, label: Clip range, type: float, min: 0.05, max: 0.5, step: 0.05, default: 0.2}
+  - id: eval
+    title: Evaluate
+    summary: Did it get better, or just better paid?
+    description: |
+      Accuracy before and after on held-out questions, plus the checks that separate
+      learning from reward hacking: did answers get longer without getting righter,
+      did the model start marking answers it cannot compute, did whole families
+      collapse while the ones you trained on improved.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: accuracy, label: accuracy}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 2000, step: 50, default: 400}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+      - {key: held_out_families, label: Include families you did not train on, type: bool, default: true, help: The honest test of whether anything general was learned}
+
+project:
+  entry: project/reward.py
+  run_command: python project/train.py --policy <sft-run>/model.pt --tokenizer <tokenizer-run>/tokenizer.json --steps 300
+  timeout_min: 360
+  interface: |
+    `project/reward.py` defines `reward(task: dict, completion: str) -> float`.
+    `task` carries `prompt`, `answer`, `family` and `steps`; the return value is any
+    float — GRPO normalises within each group, so only differences matter.
+
+    `project/train.py` trains a policy with it and saves `outputs/model.pt`.
+
+    The grader first checks your reward is sane: it must prefer a correct answer to
+    a wrong one, and must not be trivially maximised by an empty or enormous
+    completion. Then it measures your policy's accuracy on unseen questions,
+    including families you may not have trained on.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 90
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

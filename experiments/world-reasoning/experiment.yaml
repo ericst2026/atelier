@@ -1,0 +1,118 @@
+slug: world-reasoning
+title: Reasoning
+order: 5
+difficulty: advanced
+tags: [our data, chain of thought, gpu]
+summary: Measure what prompting buys, then teach the model to reason from its own correct attempts.
+description: |
+  A small model that answers immediately is guessing. Given room to work, the same
+  model gets multi-step questions right — and it can be taught to use that room
+  without a single human-written solution: sample many attempts, keep the ones that
+  reach the correct answer, train on those. The model bootstraps from what it can
+  already do sometimes, which is the idea behind STaR and rejection-sampled
+  fine-tuning.
+
+  Because the generator knows every answer, the filter is exact. No teacher model,
+  no annotation, no trust required.
+
+materials: []
+
+steps:
+  - id: prompting
+    title: Prompting
+    summary: Four ways to ask, and what each costs
+    description: |
+      The same questions, four framings: answer straight away, work step by step,
+      work step by step after seeing two solved examples, and take the majority of
+      several sampled attempts. Accuracy is one axis, tokens generated is the other —
+      self-consistency usually wins on the first and always loses on the second.
+    script: steps/step1_prompting.py
+    gpus: 1
+    timeout_min: 120
+    needs_previous: false
+    figures: [{key: best_accuracy, label: best}]
+    params:
+      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, help: A fine-tuned model has more to show here than a raw base model}
+      - {key: n_eval, label: Questions, type: int, min: 50, max: 1000, step: 50, default: 250}
+      - {key: strategies, label: Strategies, type: multiselect, default: [direct, cot, fewshot, self_consistency], options: [{value: direct, label: answer straight away}, {value: cot, label: step by step}, {value: fewshot, label: two solved examples first}, {value: self_consistency, label: majority of k attempts}]}
+      - {key: k, label: Attempts for self-consistency, type: int, min: 2, max: 16, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.1, max: 1.5, step: 0.1, default: 0.8}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+  - id: collect
+    title: Collect
+    summary: Keep the attempts that got there
+    description: |
+      For every training question, sample k attempts and keep those that reach the
+      right answer. Two choices shape what you get: the temperature, which controls
+      how varied the attempts are, and how many to keep per question — keeping every
+      correct attempt biases the data towards easy questions the model solves eight
+      times out of eight.
+    script: steps/step2_collect.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: kept, label: kept}, {key: coverage, label: coverage}]
+    params:
+      - {key: n_problems, label: Training questions, type: int, min: 200, max: 40000, step: 200, default: 4000}
+      - {key: k, label: Attempts per question, type: int, min: 2, max: 16, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.3, max: 1.5, step: 0.1, default: 0.9}
+      - {key: max_keep, label: Keep at most per question, type: int, min: 1, max: 8, default: 2}
+      - {key: prefer, label: Which attempts to keep, type: select, default: shortest, options: [{value: shortest, label: the shortest}, {value: longest, label: the most detailed}, {value: first, label: the first found}]}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+      - {key: include_reference, label: Add the generator's own solutions for unsolved questions, type: bool, default: false, help: Turning this on is no longer self-improvement — it is distillation from the generator. Worth trying, worth labelling honestly.}
+  - id: train
+    title: Train
+    summary: Fine-tune on what it got right
+    description: |
+      Ordinary supervised fine-tuning, on data the model wrote itself. Keep an eye
+      on the validation loss: the set is small and a small model memorises it fast.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: eval_loss, label: val loss}]
+    params:
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 10, step: 0.5, default: 3}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.00015}
+      - {key: batch_size, label: Examples per step, type: int, min: 4, max: 128, default: 24}
+      - {key: warmup, label: Warmup steps, type: int, min: 0, max: 500, default: 20}
+  - id: eval
+    title: Evaluate
+    summary: pass@k before and after, and whether the chains got better or just longer
+    description: |
+      Both models sample n attempts at each held-out question. pass@1 says how often
+      a single attempt lands; pass@k says how often the answer was reachable at all.
+      When training works, pass@1 climbs towards the old pass@k — the model keeps its
+      reach and becomes reliable within it.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: pass1_after, label: pass@1}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 1000, step: 50, default: 250}
+      - {key: n_samples, label: Attempts per question, type: int, min: 1, max: 16, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.1, max: 1.5, step: 0.1, default: 0.8}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+
+project:
+  entry: project/solve.py
+  run_command: python project/run.py --model <model.pt> --tokenizer <tokenizer.json> --n 100
+  timeout_min: 180
+  interface: |
+    Implement `solve(task: dict, generate) -> str` in `project/solve.py`.
+    `generate(prompt, n=1, temperature=0.0, max_new_tokens=192) -> list[str]` is
+    supplied by the grader, backed by your own model, and **metered**.
+
+    Score: accuracy on unseen questions (70) plus efficiency (30, full marks at or
+    below 400 generated tokens per question, none at 3,000). Sampling twenty times
+    and voting will cost you more in efficiency than it gains in accuracy — find
+    the point where it pays.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 90
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

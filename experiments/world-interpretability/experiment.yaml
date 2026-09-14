@@ -1,0 +1,126 @@
+slug: world-interpretability
+title: Interpretability
+order: 18
+difficulty: advanced
+tags: [our data, probing, attention, gpu]
+summary: Open up a model you trained yourself — probe its layers, find its induction heads, watch a prediction form, and steer it with a vector.
+description: |
+  The downloaded version of this experiment looks inside Pythia, using published
+  checkpoints to watch induction heads appear during training. This one looks inside
+  the model from experiment 2 — which you trained, on data you generated, with a
+  tokenizer you built.
+
+  That changes what is answerable. When a probe finds a property in layer 4, you can
+  check whether that property was in the training data and in what proportion. When
+  induction heads appear, you can retrain with different data and see whether they
+  still do. Nothing is a black box here except the part that is genuinely hard.
+
+materials: []
+
+steps:
+  - id: probe
+    title: Probe
+    summary: Which layer knows what
+    description: |
+      Train a linear classifier on the hidden state at each layer and see where a
+      property becomes readable. Two targets: which kind of question the model is
+      looking at, and whether it is about to get it right.
+
+      A property readable from the embedding layer was in the input all along. One
+      that only becomes readable in the middle is something the model computed. And
+      a probe that succeeds does not prove the model uses what it found — the
+      steering step is the cheapest test of that.
+    script: steps/step1_probe.py
+    gpus: 1
+    timeout_min: 90
+    needs_previous: false
+    figures: [{key: best_layer, label: best layer}]
+    params:
+      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: targets, label: What to probe for, type: multiselect, default: [family, correctness], options: [{value: family, label: which kind of question}, {value: correctness, label: whether it will be right}, {value: difficulty, label: how hard the question is}]}
+      - {key: n_examples, label: Examples, type: int, min: 200, max: 8000, step: 100, default: 1500}
+      - {key: pooling, label: Which position to read, type: select, default: last, options: [{value: last, label: the final token}, {value: mean, label: the mean over all tokens}]}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: attention
+    title: Attention
+    summary: Find the heads that copy
+    description: |
+      An induction head completes a repeated pattern: having seen "… A B … A" it
+      attends back to the B that followed A last time. Feed the model a random
+      sequence twice and score every head by how much attention lands on the token
+      after the earlier copy.
+
+      Point the comparison at two or three of your own pretraining runs of different
+      lengths and you can watch the heads appear — the same observation the published
+      checkpoints are used for, on a model you trained this afternoon.
+    script: steps/step2_attention.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: top_induction, label: best head}]
+    params:
+      - {key: seq_len, label: Sequence length to repeat, type: int, min: 16, max: 128, step: 8, default: 48}
+      - {key: n_sequences, label: Sequences to average over, type: int, min: 4, max: 64, default: 16}
+      - {key: compare_a, label: Compare with another run, type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: compare_b, label: And another, type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: show_head, label: Show one head's pattern, type: text, default: "", help: "As layer.head, for example 5.3 — empty means the strongest one"}
+  - id: lens
+    title: Logit lens
+    summary: Watch the prediction form
+    description: |
+      The residual stream at each layer, decoded through the output embedding as
+      though the model stopped there. Because the embeddings are tied, this is exactly
+      the same matrix the final layer uses, which makes the reading cleaner here than
+      on models where they are not.
+    script: steps/step3_lens.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: decision_layer, label: decided at}]
+    params:
+      - {key: prompts, label: Prompts to trace (one per line), type: textarea, default: ""}
+      - {key: n_auto, label: Generated prompts to add, type: int, min: 0, max: 300, step: 10, default: 60}
+      - {key: top_k, label: Tokens per layer, type: int, min: 1, max: 10, default: 5}
+  - id: steer
+    title: Steering
+    summary: Add a direction and change the answer
+    description: |
+      Take the mean hidden state over one set of prompts and subtract the mean over
+      another. Add that difference into the residual stream during generation and the
+      output moves — control with no training at all.
+
+      The contrasts here are generated, so the effect is measurable rather than a
+      matter of opinion: steer towards showing working and count how many answers
+      show working; steer towards brevity and measure the length.
+    script: steps/step4_steer.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: effect, label: effect}, {key: usable, label: usable}]
+    params:
+      - {key: contrast, label: What to steer towards, type: select, default: working, options: [{value: working, label: showing its working}, {value: brevity, label: short answers}, {value: family, label: one task family's style}]}
+      - {key: layer, label: Layer to inject at, type: int, min: -1, max: 24, default: -1, help: -1 picks the middle, which is usually right}
+      - {key: strengths, label: Strengths to try, type: multiselect, default: ["0", "1", "2", "4", "8"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}]}
+      - {key: n_test, label: Questions to generate for, type: int, min: 10, max: 300, step: 10, default: 60}
+      - {key: sweep_layers, label: Try every layer, type: bool, default: true}
+
+project:
+  entry: project/interp.py
+  run_command: python project/interp.py --model <model.pt> --tokenizer <tok.json>
+  timeout_min: 90
+  interface: |
+    `project/interp.py` defines `train_probe(hidden, labels)` and
+    `predict_probe(probe, hidden)` — scored on held-out accuracy against a reference
+    logistic regression — and `induction_heads(model, tok)`, returning your five
+    strongest (layer, head) pairs, scored against a reference ranking.
+
+    Both are short. The marks are for measuring the right thing: an off-by-one in the
+    induction offset looks entirely plausible and is entirely wrong.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 45
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: probe_accuracy
+  higher_is_better: true

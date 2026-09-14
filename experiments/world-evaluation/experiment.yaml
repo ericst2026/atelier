@@ -1,0 +1,124 @@
+slug: world-evaluation
+title: Evaluation
+order: 13
+difficulty: core
+tags: [our data, benchmarks, contamination, gpu]
+summary: Build the harness that produces a benchmark number, then contaminate your own training data on purpose and watch the number rise.
+description: |
+  Every score on every leaderboard was produced by a program somebody wrote. This
+  experiment writes that program — likelihood scoring for multiple choice, generation
+  scoring for open answers, few-shot assembly — and then does something the
+  downloaded version cannot.
+
+  Because you control the pretraining corpus, you can contaminate it deliberately:
+  train one model with the benchmark mixed in and one without, and measure exactly
+  how many points that is worth. With public models nobody can run that experiment,
+  because nobody knows what was in the training data. Here you do.
+
+materials: []
+
+steps:
+  - id: tasks
+    title: Tasks
+    summary: Build the benchmark
+    description: |
+      Multiple-choice items with distractors drawn from the same task family, so they
+      are the same kind of thing and the same size — which is what makes an item hard
+      rather than a vocabulary test. Plus open-answer items for generation scoring.
+      The step also checks the cheap cheat: how often the longest option is the right
+      one.
+    script: steps/step1_tasks.py
+    gpus: 0
+    timeout_min: 20
+    needs_previous: false
+    figures: [{key: items, label: items}]
+    params:
+      - {key: n_choice, label: Multiple-choice items, type: int, min: 50, max: 5000, step: 50, default: 600}
+      - {key: n_open, label: Open-answer items, type: int, min: 0, max: 2000, step: 50, default: 300}
+      - {key: n_options, label: Options per item, type: int, min: 2, max: 6, default: 4}
+      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語}]}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242}
+  - id: harness
+    title: Harness
+    summary: Score a model, and decide how
+    description: |
+      For multiple choice the model generates nothing: each option is scored by its
+      log-probability given the question. Then the decision that moves published
+      numbers by whole points — whether to divide by the token count. A raw sum
+      favours short options, the per-token version favours long ones, and neither is
+      obviously correct.
+    script: steps/step2_harness.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: accuracy, label: accuracy}]
+    params:
+      - {key: model_run, label: Model (Pretraining step 3 or Fine-tuning step 3), type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: scoring, label: Scoring rules to compare, type: multiselect, default: [sum, mean, unconditional], options: [{value: sum, label: total log-probability}, {value: mean, label: per token}, {value: unconditional, label: normalised by the option alone}]}
+      - {key: shots, label: Few-shot examples, type: int, min: 0, max: 8, default: 0}
+      - {key: max_new_tokens, label: Tokens for the open questions, type: int, min: 32, max: 384, step: 16, default: 160}
+      - {key: batch_size, label: Batch size, type: int, min: 4, max: 64, default: 16}
+  - id: sensitivity
+    title: Sensitivity
+    summary: How much of the number is the harness?
+    description: |
+      The same model and the same items under small, defensible changes: the shot
+      count, the order of the options, the answer format. A score that swings several
+      points under these is not a measurement of the model.
+    script: steps/step3_sensitivity.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: spread, label: spread}]
+    params:
+      - {key: shot_values, label: Shot counts, type: multiselect, default: ["0", "2", "5"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "5", label: "5"}]}
+      - {key: shuffle_options, label: Also try shuffled options, type: bool, default: true}
+      - {key: compare_run, label: A second model to compare with, type: run, experiment: world-pretrain, step: 3, default: null, help: Two models is where it gets interesting — harness choices can reorder them}
+      - {key: limit, label: Items per configuration, type: int, min: 50, max: 2000, step: 50, default: 300}
+  - id: report
+    title: Report
+    summary: Contaminate on purpose, then write the card
+    description: |
+      Two identical models, trained for the same number of steps on the same data —
+      except one has a share of the benchmark items mixed into its pretraining corpus.
+      Then both are scored on that benchmark.
+
+      The gap is contamination, measured rather than argued about. It is the reason a
+      leaderboard number from a model whose training data you cannot inspect means
+      less than it appears to. The step ends with a model card that records what was
+      measured, under which harness, and with what contamination.
+    script: steps/step4_report.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: inflation, label: inflation}]
+    params:
+      - {key: tokenizer_run, label: Tokenizer (step 3), type: run, experiment: world-tokenizer, step: 3, default: null}
+      - {key: contamination_rate, label: Share of the benchmark mixed into training, type: float, min: 0, max: 1, step: 0.05, default: 0.5}
+      - {key: repeats, label: Times each leaked item appears, type: int, min: 1, max: 20, default: 4, help: Once is easy to miss; the effect grows steeply with repetition}
+      - {key: docs, label: Pretraining documents, type: int, min: 2000, max: 200000, step: 1000, default: 40000}
+      - {key: max_iters, label: Steps per model, type: int, min: 100, max: 5000, step: 100, default: 600}
+      - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
+      - {key: notes, label: Notes for the card, type: textarea, default: ""}
+
+project:
+  entry: project/harness.py
+  run_command: python project/harness.py --model <model.pt> --tokenizer <tok.json>
+  timeout_min: 120
+  interface: |
+    `project/harness.py` defines `evaluate(model, tok, items, task) -> list[dict]`,
+    one `{"correct": bool}` per item. Choice items carry `question`, `options` and
+    `answer`; open items carry `question` and `answer`.
+
+    The grader runs your harness on items it holds back and compares it with a
+    reference implementation, item by item. Agreement is most of the marks — this
+    tests whether you built the thing correctly, not whether it scores high.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: agreement
+  higher_is_better: true

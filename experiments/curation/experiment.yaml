@@ -1,0 +1,124 @@
+slug: curation
+title: Data curation on public text
+order: 19
+difficulty: core
+tags: [downloaded data, filtering, gpu]
+summary: Two slices of the same web, one already cleaned and one raw. Build the filter that separates them, then prove it with a trained model.
+description: |
+  Data work is usually argued about and rarely measured. Here it is measured: every
+  choice ends in the validation loss of a fixed small model trained on your mix, so
+  a filter that sounds sensible and makes the model worse is visibly wrong.
+
+  The two sources are FineWeb-Edu, already filtered by a quality classifier, and a
+  raw C4 slice that has not been. You will find that the obvious heuristics catch a
+  lot, that deduplication catches more than expected, and that the last few points
+  of loss come from the mix rather than the filter.
+
+materials:
+  - {key: fineweb, name: FineWeb-Edu sample, path: datasets/curation/fineweb-edu, kind: dataset, format: jsonl, description: Web text already filtered for educational quality, with the classifier's score attached.}
+  - {key: c4, name: C4 raw sample, path: datasets/curation/c4-raw, kind: dataset, format: jsonl, description: The same web, uncurated. This is what you are cleaning.}
+  - {key: gpt2, name: GPT-2 tokenizer, path: models/gpt2, kind: model, description: A fixed tokenizer so every mix is measured on the same footing.}
+  - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: Held out as the clean validation set every mix is scored against.}
+
+steps:
+  - id: survey
+    title: Survey
+    summary: Look at what you actually have
+    description: |
+      Length, symbol ratios, repetition, duplicated lines, boilerplate. The step
+      profiles both sources on the same axes so you can see where they differ — and
+      where they do not, which is usually more surprising.
+    script: steps/step1_survey.py
+    gpus: 0
+    timeout_min: 30
+    needs_previous: false
+    figures: [{key: docs, label: docs}]
+    params:
+      - {key: n_docs, label: Documents per source, type: int, min: 2000, max: 150000, step: 1000, default: 40000}
+      - {key: sample_for_stats, label: Documents to profile in detail, type: int, min: 500, max: 20000, step: 500, default: 5000}
+  - id: filter
+    title: Filter
+    summary: Write the rules and see what they throw away
+    description: |
+      Each rule is a slider. The step applies them to the raw source and reports how
+      much survives, what each rule removed on its own, and how the survivors score
+      under the quality classifier — a second opinion your rules never saw. Throwing
+      away too much is as wrong as throwing away too little, and both show up here.
+    script: steps/step2_filter.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: kept, label: kept}]
+    params:
+      - {key: min_chars, label: Minimum characters, type: int, min: 0, max: 4000, step: 50, default: 300}
+      - {key: max_chars, label: Maximum characters, type: int, min: 1000, max: 200000, step: 1000, default: 100000}
+      - {key: min_mean_word, label: Minimum mean word length, type: float, min: 0, max: 8, step: 0.1, default: 3.0}
+      - {key: max_mean_word, label: Maximum mean word length, type: float, min: 4, max: 20, step: 0.5, default: 10.0}
+      - {key: max_symbol_ratio, label: Maximum symbol ratio, type: float, min: 0.02, max: 0.6, step: 0.01, default: 0.15}
+      - {key: max_digit_ratio, label: Maximum digit ratio, type: float, min: 0.02, max: 0.6, step: 0.01, default: 0.2}
+      - {key: max_dup_line_ratio, label: Maximum repeated lines, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.3}
+      - {key: min_stopword_hits, label: Minimum common words present, type: int, min: 0, max: 10, default: 2, help: A cheap language check — a page of product codes has none}
+      - {key: max_ellipsis_lines, label: Maximum lines ending in an ellipsis, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.3, help: Truncated listings and teaser text}
+  - id: dedup
+    title: Deduplicate
+    summary: Remove repeats, then check for contamination
+    description: |
+      Near-duplicate removal with MinHash, then the check people forget: does the
+      training data contain the text you are about to evaluate on? The step searches
+      your filtered corpus for overlap with the validation set and reports it. A
+      model trained on contaminated data looks better than it is, which is the whole
+      problem with benchmark numbers.
+    script: steps/step3_dedup.py
+    gpus: 0
+    timeout_min: 90
+    figures: [{key: kept, label: kept}, {key: contaminated, label: leaked}]
+    params:
+      - {key: near, label: Near-duplicate pass, type: bool, default: true}
+      - {key: threshold, label: Jaccard threshold, type: float, min: 0.4, max: 0.95, step: 0.05, default: 0.7}
+      - {key: n, label: Shingle size (words), type: int, min: 3, max: 13, default: 8}
+      - {key: contamination_n, label: Shingle size for the contamination check, type: int, min: 5, max: 20, default: 13}
+  - id: mix
+    title: Mix
+    summary: Train on it and find out
+    description: |
+      Choose how much of each source goes into the final corpus, then train an
+      identical small model on the mix and on the baselines. Same architecture, same
+      steps, same seed, same tokenizer — the only difference is the data, so the
+      difference in loss belongs to your curation.
+    script: steps/step4_mix.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: val_loss, label: val loss}]
+    params:
+      - {key: curated_share, label: Share from your curated corpus, type: float, min: 0, max: 1, step: 0.05, default: 0.7}
+      - {key: reference_share, label: Share from FineWeb-Edu, type: float, min: 0, max: 1, step: 0.05, default: 0.3}
+      - {key: max_tokens, label: Token budget, type: int, min: 1000000, max: 200000000, step: 1000000, default: 20000000}
+      - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
+      - {key: max_iters, label: Steps, type: int, min: 200, max: 20000, step: 100, default: 1500}
+      - {key: compare_baselines, label: Also train on raw and on FineWeb alone, type: bool, default: true, help: Three runs instead of one, and the only way to know whether your filter helped}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+
+project:
+  entry: project/filters.py
+  run_command: python project/run.py --limit 40000
+  timeout_min: 240
+  interface: |
+    `project/filters.py` defines `keep(doc: dict) -> bool` and optionally
+    `score(doc: dict) -> float`. `doc` has `text` and whatever metadata the source
+    carried.
+
+    The grader runs your filter over held-out documents from both sources and scores
+    two things: agreement with the quality classifier's judgement (precision and
+    recall against a held-out label), and the validation loss of a fixed model
+    trained on 5M tokens of what you kept. A filter that keeps nothing scores zero
+    on both.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: val_loss
+  higher_is_better: false

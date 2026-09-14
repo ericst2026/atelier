@@ -1,0 +1,108 @@
+slug: world-scaling
+title: Scaling laws
+order: 7
+difficulty: advanced
+tags: [our data, scaling, gpu]
+summary: Train a grid of small models, fit loss against size and tokens, then predict a model you have not trained and check whether the prediction holds.
+description: |
+  Scaling laws are the one part of this field you can verify in an afternoon. Train
+  four or five models that differ only in size, fit the curve, extrapolate one step
+  beyond the grid, then train that model and see how close you were.
+
+  The interesting outcome is not the exponent. It is discovering that a model
+  trained on too few tokens sits above the curve no matter how large it is, and
+  that the cheapest way to a lower loss is usually not a bigger model.
+
+materials: []
+
+steps:
+  - id: plan
+    title: Plan
+    summary: Choose the grid and count what it will cost
+    description: |
+      Pick the sizes and the token budget per size. The step reports parameters,
+      compute and estimated wall-clock for every point before you spend any of it —
+      a grid that does not fit in the lesson is better discovered here.
+    script: steps/step1_plan.py
+    gpus: 0
+    timeout_min: 10
+    needs_previous: false
+    figures: [{key: points, label: points}]
+    params:
+      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null, help: Every point in the grid trains on the same data}
+      - {key: sizes, label: Sizes to train, type: multiselect, default: [n1, n2, n3, n4], options: [{value: n1, label: "4 layers × 192 wide"}, {value: n2, label: "6 × 288"}, {value: n3, label: "8 × 384"}, {value: n4, label: "10 × 512"}, {value: n5, label: "12 × 640"}]}
+      - {key: tokens_per_param, label: Tokens per parameter, type: float, min: 2, max: 40, step: 1, default: 20, help: "20 is the usual compute-optimal rule; try 5 to see what starvation looks like"}
+      - {key: block_size, label: Context length, type: int, min: 128, max: 512, step: 128, default: 256}
+      - {key: batch_size, label: Sequences per step, type: int, min: 8, max: 128, default: 48}
+  - id: sweep
+    title: Sweep
+    summary: Train every point in the grid
+    description: |
+      One run trains the whole grid in sequence, smallest first, streaming each
+      model's loss as it goes. Everything but the size is held fixed — same data,
+      same schedule shape, same seed — because a scaling law fitted across changing
+      recipes measures the recipe, not the scale.
+    script: steps/step2_sweep.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: trained, label: models}]
+    params:
+      - {key: lr_scaling, label: Learning rate, type: select, default: sqrt, options: [{value: fixed, label: the same for every size}, {value: sqrt, label: scaled by 1/√width}]}
+      - {key: base_lr, label: Base learning rate, type: float, min: 0.0001, max: 0.005, step: 0.0001, default: 0.001}
+      - {key: warmup_frac, label: Warmup share, type: float, min: 0, max: 0.2, step: 0.01, default: 0.05}
+      - {key: eval_every, label: Evaluate every, type: int, min: 25, max: 1000, default: 100}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: fit
+    title: Fit
+    summary: Find the curve
+    description: |
+      Fit L(N) = E + A·N^(−α) by least squares in log space, where N is the
+      non-embedding parameter count. The residuals matter as much as the exponent:
+      a point well above the line usually means that model saw too few tokens, or
+      that its learning rate was wrong for its width.
+    script: steps/step3_fit.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: alpha, label: alpha}]
+    params:
+      - {key: exclude_smallest, label: Leave the smallest point out of the fit, type: bool, default: false, help: The smallest models often sit off the line; excluding one is a legitimate choice you should make deliberately}
+      - {key: predict_size, label: Predict this size, type: select, default: n5, options: [{value: n4, label: "10 × 512"}, {value: n5, label: "12 × 640"}, {value: n6, label: "16 × 768"}]}
+  - id: verify
+    title: Verify
+    summary: Train the predicted model and see
+    description: |
+      The honest end of the experiment: train the size the fit extrapolated to and
+      compare the measured loss with the predicted one. Being within a few percent
+      is normal; being far off is worth understanding, and usually points at the
+      token budget rather than the fit.
+    script: steps/step4_verify.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: error, label: error}]
+    params:
+      - {key: max_iters, label: Steps for the verification run, type: int, min: 100, max: 20000, step: 100, default: 0, help: 0 uses the same tokens-per-parameter rule as the grid}
+
+project:
+  entry: project/sweep.py
+  run_command: python project/sweep.py --data <pack-run-dir>
+  timeout_min: 360
+  interface: |
+    `project/sweep.py` must train a grid of models and write `outputs/points.json`:
+    a list of `{"params", "non_embedding", "tokens", "val_loss"}`. `project/fit.py`
+    must expose `fit(points) -> dict` with at least `E`, `A`, `alpha`, and
+    `predict(params, tokens) -> float`.
+
+    The grader checks your fit against points it holds back — models trained at
+    sizes your grid did not include. A curve that only explains the data it was
+    fitted to scores nothing.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: prediction_error
+  higher_is_better: false

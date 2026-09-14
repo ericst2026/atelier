@@ -1,0 +1,129 @@
+slug: world-pretrain
+title: Pretraining
+order: 2
+difficulty: core
+tags: [our data, transformer, gpu]
+summary: Train a 10M–200M transformer from scratch on your own corpus with your own tokenizer, and read the loss curve like a practitioner.
+description: |
+  No pretrained weights. You pack the corpus into a token stream with the
+  tokenizer you trained, choose an architecture, and run the loop until the loss
+  stops falling. The model you get here is the base model for fine-tuning,
+  reinforcement learning and reasoning — everything downstream inherits the
+  decisions you make on this page.
+
+  The presets are sized so a lesson fits in a lesson: **tiny** finishes in minutes,
+  **small** in about half an hour, **medium** in a couple of hours on one A6000.
+  Ask for more GPUs and the same wall-clock buys a bigger model.
+
+materials: []
+
+steps:
+  - id: pack
+    title: Pack
+    summary: Turn the corpus into a token stream
+    description: |
+      Documents are encoded with your tokenizer, joined with an end-of-text token,
+      and written as one flat array. Training samples random windows from it, which
+      is why packing matters: a context window that straddles two documents teaches
+      the model that unrelated text follows unrelated text — cheap, and mostly
+      harmless at this scale.
+    script: steps/step1_pack.py
+    gpus: 0
+    timeout_min: 60
+    needs_previous: false
+    figures: [{key: train_tokens, label: tokens}]
+    params:
+      - {key: tokenizer_run, label: Tokenizer (step 3 of the Tokenizer experiment), type: run, experiment: world-tokenizer, step: 3, default: null, help: Required — this is how your vocabulary reaches the model}
+      - {key: docs, label: Documents to generate, type: int, min: 2000, max: 2000000, step: 1000, default: 200000}
+      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55}
+      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30}
+      - {key: max_tokens, label: Token budget, type: int, min: 100000, max: 2000000000, step: 100000, default: 60000000}
+      - {key: val_frac, label: Validation share, type: float, min: 0.002, max: 0.1, step: 0.002, default: 0.01}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 11, help: Use a different seed from the tokenizer run so the model does not train on the exact documents the vocabulary was fitted to}
+  - id: size
+    title: Size
+    summary: Choose the architecture and count the cost
+    description: |
+      Depth, width and context length decide the parameter count; the parameter
+      count decides how many tokens you should train on (about 20 per parameter is
+      the usual rule) and how long that takes. Nothing runs on the GPU here — the
+      estimates are closed-form, so you can try five shapes in a minute before
+      spending an hour on one.
+    script: steps/step2_size.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: params, label: params}]
+    params:
+      - {key: preset, label: Size, type: select, default: small, options: [{value: tiny, label: "tiny · ~10M · minutes"}, {value: small, label: "small · ~30M · half an hour"}, {value: medium, label: "medium · ~90M · a couple of hours"}, {value: large, label: "large · ~200M · overnight"}, {value: custom, label: custom}]}
+      - {key: n_layer, label: Layers (custom), type: int, min: 2, max: 24, default: 8}
+      - {key: n_head, label: Heads (custom), type: int, min: 2, max: 16, default: 8}
+      - {key: n_embd, label: Width (custom), type: int, min: 128, max: 1280, step: 64, default: 512}
+      - {key: block_size, label: Context length, type: int, min: 128, max: 1024, step: 128, default: 512}
+      - {key: dropout, label: Dropout, type: float, min: 0, max: 0.3, step: 0.05, default: 0}
+      - {key: tokens_per_step, label: Tokens per optimizer step, type: int, min: 8192, max: 1048576, step: 8192, default: 131072}
+  - id: train
+    title: Train
+    summary: Run the loop and watch the loss
+    description: |
+      AdamW with warmup and cosine decay, bf16 autocast, gradient clipping. Train and
+      validation loss stream to the chart while it runs, and the best checkpoint is
+      saved as you go — if you stop early you keep the best model, not the last one.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: val_loss, label: val loss}, {key: tokens_per_sec, label: tok/s}]
+    params:
+      - {key: max_iters, label: Optimizer steps, type: int, min: 100, max: 200000, step: 100, default: 3000}
+      - {key: batch_size, label: Sequences per step, type: int, min: 4, max: 512, default: 32}
+      - {key: grad_accum, label: Gradient accumulation, type: int, min: 1, max: 32, default: 1}
+      - {key: lr, label: Peak learning rate, type: float, min: 0.00001, max: 0.01, step: 0.00001, default: 0.0008}
+      - {key: warmup, label: Warmup steps, type: int, min: 0, max: 5000, default: 150}
+      - {key: weight_decay, label: Weight decay, type: float, min: 0, max: 0.3, step: 0.01, default: 0.1}
+      - {key: eval_every, label: Evaluate every, type: int, min: 25, max: 2000, default: 100}
+      - {key: eval_iters, label: Batches per evaluation, type: int, min: 5, max: 100, default: 20}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: eval
+    title: Evaluate
+    summary: Perplexity, samples, and whether it can already do anything
+    description: |
+      Validation perplexity and loss by position tell you whether the model learned
+      to use its context. Then the interesting part: the base model is asked a few
+      hundred generated questions with no fine-tuning at all. Because the corpus
+      contained worked problems, a well-trained base model gets some of them right —
+      and the fine-tuning experiment starts from that number.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: perplexity, label: ppl}, {key: base_accuracy, label: accuracy}]
+    params:
+      - {key: eval_batches, label: Validation batches, type: int, min: 5, max: 200, default: 50}
+      - {key: prompts, label: Prompts to continue (one per line), type: textarea, default: ""}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 16, max: 512, default: 120}
+      - {key: temperature, label: Temperature, type: float, min: 0, max: 1.5, step: 0.1, default: 0.8}
+      - {key: n_tasks, label: Generated questions to try, type: int, min: 0, max: 1000, step: 50, default: 200}
+      - {key: compare_run, label: Compare with another training run, type: run, experiment: world-pretrain, step: 3, default: null}
+
+project:
+  entry: project/model.py
+  run_command: python project/train.py --data <pack-run-dir> --iters 2000
+  timeout_min: 360
+  interface: |
+    Implement `build_model(config: dict) -> torch.nn.Module` in `project/model.py`,
+    returning a module whose `forward(idx, targets=None)` gives `(logits, loss)`.
+    Train it however you like and save `outputs/model.pt` containing
+    `{"model_state", "config"}`.
+
+    The grader loads your checkpoint, checks the parameter budget (**30M maximum**,
+    so this is a contest of architecture and training, not of scale), and measures
+    validation loss on a token stream it packs itself with the reference tokenizer.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 45
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: val_loss
+  higher_is_better: false

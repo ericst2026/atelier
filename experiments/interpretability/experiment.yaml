@@ -1,0 +1,136 @@
+slug: interpretability
+title: Interpretability on Pythia
+order: 19.7
+difficulty: advanced
+tags: [downloaded data, probing, attention, gpu]
+summary: Open a model up — probe what each layer knows, find the heads that copy, watch a prediction form, and steer it with a vector.
+description: |
+  Four techniques that between them cover most of what people mean by looking
+  inside a language model. Each is small enough to implement in a page, and each
+  tells you something the output alone does not.
+
+  The Pythia checkpoints make one thing possible that usually is not: the same model
+  at step 1,000, 16,000 and 64,000 of a single training run. Induction heads and the
+  moment a prediction begins forming early can be watched appearing, rather than
+  described.
+
+materials:
+  - {key: pythia, name: Pythia 70M–410M, path: models/pythia-160m, kind: model, description: A clean, well-documented architecture with intermediate training checkpoints published.}
+  - {key: pythia_steps, name: Pythia 160M at steps 1k, 16k and 64k, path: models/pythia-160m-step16000, kind: model, description: The same model part-way through training. Fetch the extended track to get these.}
+  - {key: smol, name: SmolLM2-135M, path: models/SmolLM2-135M, kind: model, description: A modern small model, for comparison with Pythia's older design.}
+  - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: Ordinary text to probe and to run attention over.}
+
+steps:
+  - id: probe
+    title: Probe
+    summary: Which layer knows what
+    description: |
+      Train a linear classifier on the hidden state at each layer and see where a
+      property becomes readable. A property that a linear probe can read is one the
+      model represents in a directly usable form — though a probe that succeeds does
+      not prove the model uses that information, which is the standard and correct
+      objection to this technique.
+
+      Two targets: which kind of question a prompt is, and whether the model will get
+      it right. The second is the interesting one.
+    script: steps/step1_probe.py
+    gpus: 1
+    timeout_min: 120
+    needs_previous: false
+    figures: [{key: best_layer, label: best layer}]
+    params:
+      - {key: model, label: Model, type: select, default: pythia-160m, options: [{value: pythia-70m, label: pythia-70m}, {value: pythia-160m, label: pythia-160m}, {value: pythia-410m, label: pythia-410m}, {value: SmolLM2-135M, label: SmolLM2-135M}, {value: Qwen2.5-0.5B, label: Qwen2.5-0.5B}]}
+      - {key: target, label: What to probe for, type: multiselect, default: [family, correctness], options: [{value: family, label: which kind of question it is}, {value: correctness, label: whether the model will answer correctly}, {value: length, label: how long the answer will be}]}
+      - {key: n_examples, label: Examples, type: int, min: 200, max: 4000, step: 100, default: 1200}
+      - {key: pooling, label: Which position to read, type: select, default: last, options: [{value: last, label: the final token}, {value: mean, label: the mean over all tokens}]}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: attention
+    title: Attention
+    summary: Find the heads that copy
+    description: |
+      An induction head completes a repeated pattern: having seen "… A B … A" it
+      attends back to the B that followed A last time. They are measurable — feed the
+      model a random sequence repeated twice and score each head by how much it
+      attends to the position after the earlier copy.
+
+      Run it across the Pythia checkpoints and the heads appear part-way through
+      training, at the point where the loss curve has its characteristic bump.
+    script: steps/step2_attention.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: top_induction, label: best head}]
+    params:
+      - {key: seq_len, label: Sequence length to repeat, type: int, min: 16, max: 128, step: 8, default: 48}
+      - {key: n_sequences, label: Sequences to average over, type: int, min: 4, max: 64, default: 16}
+      - {key: checkpoints, label: Also run the training checkpoints, type: multiselect, default: [], options: [{value: pythia-160m-step1000, label: "step 1,000"}, {value: pythia-160m-step16000, label: "step 16,000"}, {value: pythia-160m-step64000, label: "step 64,000"}, {value: pythia-160m, label: final}]}
+      - {key: show_head, label: Show the attention pattern of one head, type: text, default: "", help: "As layer.head, for example 5.3 — leave empty for the strongest induction head"}
+  - id: lens
+    title: Logit lens
+    summary: Watch the prediction form
+    description: |
+      The residual stream at every layer can be decoded through the output embedding
+      as though the model stopped there. What comes out is usually nonsense for the
+      first third, something topical in the middle, and the final answer a few layers
+      before the end.
+
+      The step also reports where the final prediction first becomes the top token —
+      the depth at which the model has, in a useful sense, decided.
+    script: steps/step3_lens.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: decision_layer, label: decided at}]
+    params:
+      - {key: prompts, label: Prompts to trace (one per line), type: textarea, default: "The capital of France is\nThe opposite of hot is\n2 + 2 ="}
+      - {key: n_auto, label: Additional prompts from the corpus, type: int, min: 0, max: 200, step: 10, default: 60}
+      - {key: top_k, label: Tokens to show per layer, type: int, min: 1, max: 10, default: 5}
+      - {key: apply_norm, label: Apply the final normalisation before decoding, type: bool, default: true, help: Without it the early layers look like noise even when they are not}
+  - id: steer
+    title: Steering
+    summary: Add a direction and change the output
+    description: |
+      Take the mean hidden state over prompts with a property and subtract the mean
+      over prompts without it. Add that difference into the residual stream during
+      generation and the output moves in that direction — a crude but real form of
+      control that needs no training.
+
+      The step measures the effect and the damage: at what strength the behaviour
+      changes, and at what strength the text stops being English.
+    script: steps/step4_steer.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: effect, label: effect}, {key: usable, label: usable}]
+    params:
+      - {key: positive, label: Prompts with the property (one per line), type: textarea, default: "I loved every minute of it.\nThis was a wonderful experience.\nAn excellent result, better than I hoped.\nDelightful, warm and generous.\nA triumph from beginning to end."}
+      - {key: negative, label: Prompts without it (one per line), type: textarea, default: "I hated every minute of it.\nThis was a miserable experience.\nA dismal result, worse than I feared.\nDreary, cold and mean.\nA failure from beginning to end."}
+      - {key: layer, label: Layer to inject at, type: int, min: 0, max: 32, default: 6, help: Usually somewhere in the middle; the chart shows which layer works}
+      - {key: strengths, label: Strengths to try, type: multiselect, default: ["0", "1", "2", "4", "8"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}]}
+      - {key: test_prompts, label: Prompts to generate from, type: textarea, default: "The film was\nMy afternoon at the museum was\nThe new restaurant on the corner is"}
+      - {key: sweep_layers, label: Try every layer at one strength, type: bool, default: true}
+
+project:
+  entry: project/interp.py
+  run_command: python project/interp.py --model pythia-160m
+  timeout_min: 120
+  interface: |
+    `project/interp.py` defines two things:
+
+    `train_probe(hidden, labels) -> object` and `predict_probe(probe, hidden) -> labels`,
+    where `hidden` is a float array of shape (examples, width) — scored on held-out
+    accuracy against a reference logistic regression.
+
+    `induction_heads(model, tok) -> list[tuple[int, int]]`, your five strongest
+    (layer, head) pairs — scored against a reference ranking.
+
+    Both are small. The marks are for measuring the right thing, not for a clever
+    classifier.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: probe_accuracy
+  higher_is_better: true

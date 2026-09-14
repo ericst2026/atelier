@@ -1,0 +1,134 @@
+slug: world-tokenizer
+title: Tokenizer
+order: 1
+difficulty: intro
+tags: [our data, bpe, cpu]
+summary: Generate a corpus from our own world, clean it, and train the vocabulary every later experiment will use.
+description: |
+  Nothing here is downloaded. A seeded generator writes the corpus — stories,
+  fact records and solved problems, in English or Japanese — and you train a
+  byte-level BPE on it. The vocabulary you produce is not an exercise: the
+  pretraining, fine-tuning, RL and reasoning experiments all load it, so its size
+  and quality follow you through the whole course.
+
+  Japanese is worth trying even if you work in English. It has no spaces, so a
+  whitespace tokenizer has nothing to split on and BPE has to discover word
+  pieces from bytes alone. Compare the chars-per-token you get in each.
+
+  Step 1 also reads your own text, from a folder under `materials/` or pasted
+  straight in. That is the seam where this course becomes a course about *your*
+  data: train the vocabulary on your corpus here, and pretraining, fine-tuning and
+  everything after it inherit it.
+
+materials: []
+
+steps:
+  - id: corpus
+    title: Corpus
+    summary: Generate documents from the world
+    description: |
+      Choose the language, how many documents, and the mix. Stories teach fluency,
+      records teach facts that later questions ask about, and worked problems put
+      reasoning in the pretraining data so the base model can attempt a task before
+      it is ever fine-tuned. A share of near-duplicates is planted on purpose so the
+      next step has something to find.
+    script: steps/step1_corpus.py
+    gpus: 0
+    timeout_min: 30
+    needs_previous: false
+    figures: [{key: docs, label: docs}, {key: chars, label: chars}]
+    params:
+      - {key: source, label: Where the text comes from, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: folder, label: a folder of your own text}, {value: pasted, label: text you paste below}]}
+      - {key: corpus_path, label: Folder under materials/ (for the folder option), type: text, default: "", help: "A path like corpora/our-reports — .txt, .md and .jsonl files are read, one document per file or per JSONL line"}
+      - {key: pasted_text, label: Your text (for the paste option), type: textarea, default: "", help: One document per blank-line-separated block}
+      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語 (no spaces)}]}
+      - {key: docs, label: Documents, type: int, min: 200, max: 400000, step: 200, default: 20000}
+      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55}
+      - {key: record_share, label: Share of fact records, type: float, min: 0, max: 1, step: 0.05, default: 0.15}
+      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30}
+      - {key: dup_rate, label: Planted near duplicates, type: float, min: 0, max: 0.4, step: 0.02, default: 0.08}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7}
+  - id: dedup
+    title: Dedup
+    summary: Remove repeats before they are memorised
+    description: |
+      A generator repeats itself: the same template with the same names comes round
+      again. Exact matches are found by hashing; near matches by MinHash signatures
+      bucketed with LSH and verified with true Jaccard overlap. Watch what happens
+      to the compression curve in step 3 when you dedupe hard versus not at all.
+    script: steps/step2_dedup.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: kept, label: kept}, {key: removed, label: removed}]
+    params:
+      - {key: near, label: Near-duplicate pass, type: bool, default: true}
+      - {key: threshold, label: Jaccard threshold, type: float, min: 0.4, max: 0.95, step: 0.05, default: 0.8}
+      - {key: n, label: Shingle size (words), type: int, min: 2, max: 10, default: 4}
+      - {key: lowercase, label: Lowercase before comparing, type: bool, default: true}
+  - id: train
+    title: Train
+    summary: Learn the byte-pair vocabulary
+    description: |
+      Byte-level BPE merges the most frequent adjacent pair until the vocabulary is
+      full. Size is a real trade-off here: a larger vocabulary shortens sequences but
+      spends parameters on the embedding table, which for a 10M model is most of the
+      model. 4096 is a sensible starting point — try 1024 and 16384 and carry both
+      into pretraining.
+    script: steps/step3_train.py
+    gpus: 0
+    timeout_min: 120
+    figures: [{key: vocab_size, label: vocab}, {key: chars_per_token, label: chars/token}]
+    params:
+      - {key: vocab_size, label: Vocabulary size, type: int, min: 256, max: 32000, step: 256, default: 4096}
+      - {key: min_freq, label: Minimum pair frequency, type: int, min: 1, max: 200, default: 2}
+      - {key: holdout, label: Held-out share, type: float, min: 0.02, max: 0.3, step: 0.02, default: 0.1}
+      - {key: max_train_chars, label: Training characters (cap), type: int, min: 200000, max: 40000000, step: 100000, default: 4000000}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7}
+  - id: coverage
+    title: Coverage
+    summary: Measure it on held-out text and on the tasks
+    description: |
+      Compression on held-out documents is the headline, but the number that
+      matters later is how many tokens a *question* costs: every token in a prompt
+      is context the small model has to carry. The step also checks that digits
+      survive — a tokenizer that merges "42" into one piece and "43" into two makes
+      arithmetic harder than it needs to be.
+    script: steps/step4_coverage.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: chars_per_token, label: chars/token}, {key: digit_split, label: digits}]
+    params:
+      - {key: sample_text, label: Try it on any text, type: textarea, default: ""}
+      - {key: top_k, label: Top-k tokens for the coverage curve, type: int, min: 100, max: 20000, default: 2000}
+
+project:
+  entry: project/tokenizer.py
+  run_command: python project/train.py --vocab-size 4096
+  timeout_min: 60
+  interface: |
+    Implement `Tokenizer` in `project/tokenizer.py`:
+
+    ```python
+    class Tokenizer:
+        def train(self, texts: list[str], vocab_size: int) -> None: ...
+        def encode(self, text: str) -> list[int]: ...
+        def decode(self, ids: list[int]) -> str: ...
+        @property
+        def vocab_size(self) -> int: ...
+    ```
+
+    The grader trains your class on generated text it has never shown you, checks
+    that every document round-trips exactly, measures characters per token against
+    the reference BPE at the same vocabulary size, times the encoder, and rewards
+    keeping digits as single tokens.
+
+grader:
+  script: grader/grade.py
+  gpus: 0
+  timeout_min: 30
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: chars_per_token
+  higher_is_better: true

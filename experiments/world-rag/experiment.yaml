@@ -1,0 +1,123 @@
+slug: world-rag
+title: Retrieval
+order: 11
+difficulty: advanced
+tags: [our data, embeddings, contrastive, gpu]
+summary: Train your own embedding model with contrastive learning, and beat keyword search on a corpus built so keyword search fails.
+description: |
+  The other retrieval experiment downloads an embedder. This one trains one, from
+  the language model you already have, on pairs generated from your own world.
+
+  The corpus is built to make the point unavoidable. Documents come in clusters that
+  share a place and an object, so the words in a query match four documents equally;
+  and the query is a paraphrase, so the words that would tell them apart are not
+  shared at all. BM25 lands around a third of the time. An embedder that has learned
+  what "sized up" and "measured" have in common does considerably better.
+
+materials: []
+
+steps:
+  - id: corpus
+    title: Corpus
+    summary: Build the library and measure keyword search
+    description: |
+      Each document profiles one entity; each query asks about one fact in one of
+      them, so the right answer is known by construction. The step runs BM25 over it
+      first, because a retriever that cannot beat keyword matching is not worth the
+      GPU — and on ordinary corpora, many do not.
+    script: steps/step1_corpus.py
+    gpus: 0
+    timeout_min: 30
+    needs_previous: false
+    figures: [{key: bm25_recall5, label: BM25@5}]
+    params:
+      - {key: base_run, label: Model to build the encoder from (Pretraining step 3), type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: n_docs, label: Documents, type: int, min: 500, max: 100000, step: 500, default: 8000}
+      - {key: cluster_size, label: Documents per cluster, type: int, min: 1, max: 12, default: 4, help: How many documents share a place and an object. Raise it to make lexical search worse.}
+      - {key: n_queries, label: Evaluation queries, type: int, min: 100, max: 5000, step: 100, default: 800}
+      - {key: n_pairs, label: Training pairs, type: int, min: 500, max: 100000, step: 500, default: 20000}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242}
+  - id: encode
+    title: Encode
+    summary: Your language model, used as an embedder
+    description: |
+      Mean-pool the residual stream and normalise, and you have an embedder for free.
+      It is not a good one — a model trained to predict the next token puts its effort
+      into the last position, not into summarising — but it is a real baseline, and
+      which layer you pool from matters more than most people expect.
+    script: steps/step2_encode.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: zero_shot_recall5, label: zero-shot@5}]
+    params:
+      - {key: layers, label: Layers to try, type: multiselect, default: ["-1"], options: [{value: "0", label: embedding only}, {value: "2", label: after 2 blocks}, {value: "4", label: after 4}, {value: "6", label: after 6}, {value: "8", label: after 8}, {value: "-1", label: the last}]}
+      - {key: sweep_all_layers, label: Try every layer, type: bool, default: true}
+      - {key: max_length, label: Tokens per document, type: int, min: 32, max: 512, step: 16, default: 128}
+      - {key: k_values, label: Values of k, type: multiselect, default: ["1", "5", "20"], options: [{value: "1", label: "1"}, {value: "5", label: "5"}, {value: "10", label: "10"}, {value: "20", label: "20"}, {value: "50", label: "50"}]}
+  - id: train
+    title: Train
+    summary: Contrastive learning with in-batch negatives
+    description: |
+      Every other document in the batch is a negative for every query, so a batch of
+      64 supplies 63 negatives per example at no cost. That is why batch size matters
+      more here than in ordinary training, and why the temperature — how sharply the
+      loss distinguishes near-misses — is the second thing to tune.
+
+      Hard negatives come from BM25: the documents keyword search wrongly returns.
+      Training against exactly the confusions you measured in step 1 is the cheapest
+      improvement available.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: in_batch_accuracy, label: in-batch}]
+    params:
+      - {key: layer, label: Layer to pool from, type: int, min: -1, max: 24, default: -1}
+      - {key: dim, label: Embedding dimension, type: int, min: 0, max: 1024, step: 32, default: 0, help: 0 keeps the model's width; a smaller projection makes the index smaller and is usually free}
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 10, step: 0.5, default: 3}
+      - {key: batch_size, label: Batch size, type: int, min: 8, max: 256, default: 64, help: This is the number of negatives per example, so it is a quality parameter and not only a speed one}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0001}
+      - {key: temperature, label: Temperature, type: float, min: 0.01, max: 0.5, step: 0.01, default: 0.05}
+      - {key: hard_negatives, label: Add hard negatives from BM25, type: bool, default: true}
+      - {key: freeze_body, label: Train only the projection, type: bool, default: false, help: Much faster, much worse — worth running once to see how much the body was doing}
+  - id: eval
+    title: Evaluate
+    summary: Recall, hybrid search, and answering with what you found
+    description: |
+      Recall@k for keyword search, the zero-shot embedder and the trained one, then
+      the two together — a hybrid almost always beats either, because they fail on
+      different queries. Finally the end of the pipeline: hand the retrieved document
+      to your fine-tuned model and see whether the answer comes out.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: recall5, label: recall@5}, {key: answer_accuracy, label: answers}]
+    params:
+      - {key: reader_run, label: Reader (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null, help: Leave empty to measure retrieval only}
+      - {key: k_values, label: Values of k, type: multiselect, default: ["1", "3", "5", "10", "20"], options: [{value: "1", label: "1"}, {value: "3", label: "3"}, {value: "5", label: "5"}, {value: "10", label: "10"}, {value: "20", label: "20"}]}
+      - {key: hybrid_weight, label: Weight on the embedder in the hybrid, type: float, min: 0, max: 1, step: 0.05, default: 0.7}
+      - {key: n_answer, label: Questions to answer end to end, type: int, min: 0, max: 1000, step: 50, default: 200}
+      - {key: passages, label: Documents given to the reader, type: int, min: 1, max: 5, default: 2}
+
+project:
+  entry: project/retriever.py
+  run_command: python project/train.py --model <pretrain-run>/model.pt --tokenizer <tok.json>
+  timeout_min: 240
+  interface: |
+    `project/retriever.py` defines `build(documents: list[str]) -> object` and
+    `search(index, queries: list[str], k: int) -> list[list[int]]`, returning document
+    indices. Anything is allowed: keyword search, your trained embedder, both.
+
+    The grader builds a library it has never shown you, scores recall@5 and recall@1,
+    and measures how long indexing and searching take. An index that stores the whole
+    corpus and scans it with the reader is not a retriever and will time out.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: recall5
+  higher_is_better: true

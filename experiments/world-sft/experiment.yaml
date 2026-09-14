@@ -1,0 +1,119 @@
+slug: world-sft
+title: Fine-tuning
+order: 3
+difficulty: core
+tags: [our data, instruction tuning, gpu]
+summary: Teach your base model to answer questions instead of continuing text, and measure exactly how much it learned.
+description: |
+  A pretrained model continues text; an assistant answers a question and stops.
+  Supervised fine-tuning closes that gap with demonstrations — here generated from
+  the same world, complete with the reasoning steps, so nothing was written by
+  hand and nothing was distilled from a larger model.
+
+  Because every answer is checkable, the evaluation is exact: accuracy per task
+  family, before and after, on problems the model has never seen. No judge model,
+  no win rates, no arguing about what counts as a good answer.
+
+materials: []
+
+steps:
+  - id: data
+    title: Data
+    summary: Generate demonstrations
+    description: |
+      Each example is a question and a target. The target can be the bare answer or
+      the reasoning steps followed by the answer — that single choice usually moves
+      accuracy more than any hyper-parameter on this page, and you can measure it in
+      one run each way.
+
+      Only the target is scored. The question is in the context but masked out of
+      the loss, so the model learns to answer rather than to write more questions.
+    script: steps/step1_data.py
+    gpus: 0
+    timeout_min: 30
+    needs_previous: false
+    figures: [{key: examples, label: examples}]
+    params:
+      - {key: base_run, label: Base model (step 3 of Pretraining), type: run, experiment: world-pretrain, step: 3, default: null, help: Required — fine-tuning needs something to fine-tune}
+      - {key: examples, label: Demonstrations, type: int, min: 200, max: 200000, step: 200, default: 20000}
+      - {key: with_steps, label: Include the reasoning steps in the target, type: bool, default: true}
+      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: difficulty, label: Difficulty, type: select, default: mixed, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
+      - {key: val_examples, label: Validation examples, type: int, min: 50, max: 5000, step: 50, default: 500}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 21}
+  - id: baseline
+    title: Baseline
+    summary: What the base model does before you touch it
+    description: |
+      The same held-out questions the final step uses, asked of the base model with
+      three prompt formats. Prompting alone moves the number a little; that little
+      is the part fine-tuning does not deserve credit for. Keep this run open when
+      you read step 4.
+    script: steps/step2_baseline.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: best_baseline, label: baseline}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 2000, step: 50, default: 300}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+      - {key: formats, label: Prompt formats to try, type: multiselect, default: [bare, system, fewshot], options: [{value: bare, label: the question alone}, {value: system, label: with an instruction}, {value: fewshot, label: two solved examples first}]}
+  - id: train
+    title: Train
+    summary: Fine-tune with the prompt masked out
+    description: |
+      A short run: a few hundred steps at a learning rate well below pretraining.
+      Watch the validation loss and stop when it turns — a small model fine-tuned
+      too long forgets how to write sentences and starts answering everything with
+      the most common number in the data.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: eval_loss, label: val loss}]
+    params:
+      - {key: epochs, label: Epochs, type: float, min: 0.2, max: 10, step: 0.2, default: 2}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0002}
+      - {key: batch_size, label: Examples per step, type: int, min: 4, max: 128, default: 24}
+      - {key: warmup, label: Warmup steps, type: int, min: 0, max: 500, default: 20}
+      - {key: weight_decay, label: Weight decay, type: float, min: 0, max: 0.3, step: 0.01, default: 0.1}
+      - {key: use_system, label: Keep the instruction in the prompt, type: bool, default: true, help: Whatever you choose here, the evaluation does the same}
+  - id: eval
+    title: Evaluate
+    summary: Accuracy per family, before and after
+    description: |
+      Greedy answers to the held-out questions, graded by exact match. The table
+      shows what changed and what did not: a family that stays at zero usually needs
+      more demonstrations of that family, not more steps.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: accuracy, label: accuracy}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 2000, step: 50, default: 300}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
+      - {key: temperature, label: Temperature, type: float, min: 0, max: 1.5, step: 0.1, default: 0}
+
+project:
+  entry: project/train.py
+  run_command: python project/train.py --base <pretrain-run>/model.pt --tokenizer <tokenizer-run>/tokenizer.json
+  timeout_min: 240
+  interface: |
+    `project/train.py` must fine-tune a base model and save `outputs/model.pt`
+    (plus the tokenizer path inside the checkpoint, or `outputs/tokenizer.json`).
+    Everything else is yours: which families to train on, how many demonstrations,
+    whether to include reasoning steps, the prompt format, the schedule, whether to
+    freeze the lower layers.
+
+    The grader asks your model 300 generated questions it has never seen and counts
+    exact matches, then compares against the base model you started from so that
+    improvement, not the base model's luck, is what scores.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

@@ -1,0 +1,117 @@
+slug: world-lora
+title: Parameter-efficient tuning
+order: 10
+difficulty: core
+tags: [our data, lora, gpu]
+summary: Train a thousandth of the weights and lose nothing. Then find out where that stops being true.
+description: |
+  A frozen weight matrix plus a low-rank correction: train r·(in+out) numbers
+  instead of in·out. It is the technique that makes fine-tuning affordable, and it
+  is small enough to read in one file — `experiments/_lib/atelier_mini/lora.py`.
+
+  The experiment measures the trade rather than asserting it. Sweep the rank from 2
+  to 128 and watch accuracy against trainable parameters, memory and time. Somewhere
+  on that curve LoRA stops matching full fine-tuning; finding where, on your model
+  and your data, is the point.
+
+materials: []
+
+steps:
+  - id: setup
+    title: Setup
+    summary: Where the adapters go and what they cost
+    description: |
+      Choose the rank, alpha, and which projections to adapt. The step counts
+      trainable parameters per module and estimates optimizer memory without
+      loading anything — a full fine-tune carries roughly 16 bytes per parameter for
+      weights, gradients and two AdamW moments, and LoRA carries that for the
+      adapters alone.
+    script: steps/step1_setup.py
+    gpus: 0
+    timeout_min: 10
+    needs_previous: false
+    figures: [{key: trainable, label: trainable}]
+    params:
+      - {key: base_run, label: Base model (Pretraining step 3), type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: r, label: Rank, type: int, min: 1, max: 256, default: 16}
+      - {key: alpha, label: Alpha, type: int, min: 1, max: 512, default: 32, help: The update is scaled by alpha/r, so doubling the rank without doubling alpha halves each adapter's influence}
+      - {key: targets, label: Adapt these projections, type: multiselect, default: [qkv, proj, gate, up, down], options: [{value: qkv, label: attention qkv}, {value: proj, label: attention output}, {value: gate, label: mlp gate}, {value: up, label: mlp up}, {value: down, label: mlp down}]}
+      - {key: dropout, label: Adapter dropout, type: float, min: 0, max: 0.3, step: 0.05, default: 0}
+  - id: sweep
+    title: Sweep
+    summary: Rank against quality
+    description: |
+      Train the same demonstrations at several ranks and plot accuracy against
+      trainable parameters. The curve is usually flat over a wide range and then
+      falls off a cliff at the bottom — the useful information is where the cliff is,
+      not that rank 64 works.
+    script: steps/step2_sweep.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: best_rank, label: best r}]
+    params:
+      - {key: ranks, label: Ranks to try, type: multiselect, default: ["2", "8", "32", "128"], options: [{value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}, {value: "32", label: "32"}, {value: "64", label: "64"}, {value: "128", label: "128"}]}
+      - {key: examples, label: Demonstrations, type: int, min: 500, max: 50000, step: 500, default: 8000}
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 5, step: 0.5, default: 2}
+      - {key: lr, label: Learning rate, type: float, min: 0.00001, max: 0.01, step: 0.00001, default: 0.001, help: LoRA wants a much higher rate than full fine-tuning — the adapters start at zero}
+      - {key: batch_size, label: Examples per step, type: int, min: 4, max: 64, default: 24}
+      - {key: n_eval, label: Questions to evaluate on, type: int, min: 50, max: 500, step: 50, default: 200}
+  - id: compare
+    title: Compare
+    summary: Against a full fine-tune, honestly
+    description: |
+      Same data, same steps, same evaluation, everything trainable. Full fine-tuning
+      usually wins slightly on accuracy and loses heavily on memory and on how many
+      copies you have to store. Whether the gap matters depends on how many different
+      adapted models you intend to keep.
+    script: steps/step3_compare.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: gap, label: gap}]
+    params:
+      - {key: r, label: Rank for the comparison, type: int, min: 1, max: 256, default: 16}
+      - {key: examples, label: Demonstrations, type: int, min: 500, max: 50000, step: 500, default: 8000}
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 5, step: 0.5, default: 2}
+      - {key: lora_lr, label: LoRA learning rate, type: float, min: 0.00001, max: 0.01, step: 0.00001, default: 0.001}
+      - {key: full_lr, label: Full fine-tuning learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0002}
+      - {key: n_eval, label: Questions to evaluate on, type: int, min: 50, max: 500, step: 50, default: 250}
+  - id: merge
+    title: Merge
+    summary: Fold the adapter in and ship one model
+    description: |
+      W + (α/r)·BA gives a plain weight matrix again: no adapter to carry, no extra
+      work at inference. The step merges, checks the merged model answers identically
+      to the adapted one, and times both — the un-merged version is slower because
+      every adapted layer does three matrix multiplications instead of one.
+    script: steps/step4_merge.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: identical, label: match}]
+    params:
+      - {key: n_check, label: Questions to compare on, type: int, min: 20, max: 500, step: 10, default: 150}
+      - {key: timing_iters, label: Timing iterations, type: int, min: 10, max: 200, default: 40}
+
+project:
+  entry: project/adapt.py
+  run_command: python project/adapt.py --base <model.pt> --tokenizer <tok.json>
+  timeout_min: 240
+  interface: |
+    `project/adapt.py` must expose `adapt(model) -> dict` — apply whatever
+    parameter-efficient scheme you like and return a census with at least
+    `{"trainable"}` — and train, saving `outputs/model.pt`.
+
+    The grader measures accuracy on unseen questions and divides by the trainable
+    parameter count you reported, so quality per trained weight is the score. LoRA
+    is the obvious answer; adapting only the last two blocks, tuning only the biases,
+    or training a prompt prefix are all legitimate and sometimes better.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy_per_million
+  higher_is_better: true

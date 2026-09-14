@@ -1,0 +1,81 @@
+# Windows / laptop stack: the whole platform, no GPU.
+#
+#   docker compose -f docker-compose.windows.yml up -d --build
+#
+# Differences from the production file: no nvidia runtime or device reservations,
+# no node-exporter (it reads a Linux host's /proc, which Docker Desktop does not
+# expose), the API image serving as the worker too, SQLite instead of Postgres, and the whole
+# repository mounted so edits to experiments show up without a rebuild.
+# The experiments that need no torch run end to end here — Tokenizer, and the first
+# steps of Data curation and Evaluation. Anything that trains will start and then
+# fail for want of torch, which is expected: add the CPU wheel to the image if you
+# want the tiny preset to work on a laptop.
+name: atelier-dev
+
+x-env: &env
+  ATELIER_ROOT: /srv/atelier
+  ATELIER_EXPERIMENTS_DIR: /srv/atelier/experiments
+  ATELIER_MATERIALS_DIR: /srv/atelier/materials
+  ATELIER_DATA_DIR: /srv/atelier/data
+  ATELIER_DATABASE_URL: sqlite:////srv/atelier/data/atelier.db
+  ATELIER_REDIS_URL: redis://redis:6379/0
+  ATELIER_JWT_SECRET: dev-secret-not-for-the-classroom
+  ATELIER_ADMIN_USERNAME: teacher
+  ATELIER_ADMIN_PASSWORD: teacher
+  ATELIER_GPU_COUNT: 0
+  ATELIER_MAX_RUNNING_PER_STUDENT: 4
+  ATELIER_MAX_GPUS_PER_STUDENT_RUN: 0
+  ATELIER_DISPLAYS_PUBLIC: "true"
+  ATELIER_RUNNER_BACKEND: subprocess
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: &cpu-build
+      context: ./backend
+      args:
+        # the pure-Python experiment libraries, so the worker below can run the
+        # experiments that need no GPU. No torch, no CUDA.
+        WITH_EXPERIMENTS: "1"
+    restart: unless-stopped
+    environment: *env
+    volumes:
+      - ./experiments:/srv/atelier/experiments:ro
+      - ./materials:/srv/atelier/materials:ro
+      - devdata:/srv/atelier/data
+    command: ["uvicorn", "atelier.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  worker:
+    build: *cpu-build
+    restart: unless-stopped
+    environment: *env
+    volumes:
+      - ./experiments:/srv/atelier/experiments:ro
+      - ./materials:/srv/atelier/materials:ro
+      - devdata:/srv/atelier/data
+    command: ["python", "-m", "atelier.worker"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${ATELIER_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./deploy/nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [api]
+
+volumes:
+  devdata:

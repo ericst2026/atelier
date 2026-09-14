@@ -1,0 +1,22 @@
+# Copy this folder to experiments/<slug>/ and edit. Folders starting with "_" are ignored by the registry.
+slug: my-experiment
+title: My experiment
+order: 50
+difficulty: intro
+tags: []
+summary: One sentence students see on the home page.
+description: |
+  Markdown shown on the experiment page.
+materials: []
+steps:
+  - {id: one, title: Step one, summary: What happens here, script: steps/step1.py, gpus: 0, timeout_min: 30, params: [{key: n, label: Items, type: int, min: 1, max: 100, default: 10}]}
+  - {id: two, title: Step two, summary: Builds on step one, script: steps/step2.py, gpus: 0, timeout_min: 30, params: []}
+  - {id: three, title: Step three, summary: Needs a GPU, script: steps/step3.py, gpus: 1, timeout_min: 120, params: []}
+  - {id: four, title: Step four, summary: Evaluate, script: steps/step4.py, gpus: 1, timeout_min: 60, params: []}
+project:
+  entry: project/main.py
+  run_command: python project/main.py
+  interface: |
+    Describe the interface the grader expects.
+grader: {script: grader/grade.py, gpus: 0, timeout_min: 30, auto_on_submit: true, score_metric: score}
+leaderboard: {metric: score, higher_is_better: true}

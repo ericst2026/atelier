@@ -1,0 +1,114 @@
+slug: world-distributed
+title: Distributed training
+order: 8
+difficulty: advanced
+tags: [our data, multi-gpu, throughput]
+summary: Take one training job across eight GPUs, measure where the speedup stops, and win it back with the three techniques that matter.
+description: |
+  Eight GPUs rarely give eight times the throughput. This experiment measures the
+  gap rather than assuming it: profile a single GPU honestly, run the same job under
+  DDP at two, four and eight, plot the efficiency curve, then apply gradient
+  accumulation, activation checkpointing and precision choices and plot it again.
+
+  It is the one experiment that wants the whole node, so it works well as a
+  demonstration with the class watching the live runs on display 2.
+
+materials: []
+
+steps:
+  - id: profile
+    title: Profile
+    summary: One GPU, measured properly
+    description: |
+      Tokens per second, memory used, and how much of the step is data loading
+      rather than compute. Model FLOPs utilisation puts the number in context: the
+      A6000's bf16 peak is about 155 TFLOP/s, and a small model rarely passes 40%
+      of it because it spends its time moving memory, not multiplying.
+    script: steps/step1_profile.py
+    gpus: 1
+    timeout_min: 60
+    needs_previous: false
+    figures: [{key: tokens_per_sec, label: tok/s}, {key: mfu, label: MFU}]
+    params:
+      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null}
+      - {key: preset, label: Model size, type: select, default: small, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}, {value: medium, label: "medium · ~90M"}, {value: large, label: "large · ~200M"}]}
+      - {key: block_size, label: Context length, type: int, min: 128, max: 1024, step: 128, default: 512}
+      - {key: batch_sizes, label: Batch sizes to try, type: multiselect, default: ["8", "16", "32", "64"], options: [{value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}, {value: "32", label: "32"}, {value: "64", label: "64"}, {value: "128", label: "128"}]}
+      - {key: iters, label: Steps to time each setting, type: int, min: 10, max: 200, default: 30}
+  - id: scale
+    title: Scale
+    summary: The same job on more GPUs
+    description: |
+      Data parallelism replicates the model and splits the batch; every step ends
+      with an all-reduce of the gradients. That all-reduce is the whole story — it
+      costs the same however small the step is, so a fast small model scales worse
+      than a slow large one. The run relaunches itself under `torchrun` for each
+      width you ask for.
+    script: steps/step2_scale.py
+    gpus: 8
+    timeout_min: 120
+    figures: [{key: efficiency_8, label: 8-GPU eff}]
+    params:
+      - {key: widths, label: GPU counts to measure, type: multiselect, default: ["1", "2", "4", "8"], options: [{value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}]}
+      - {key: batch_per_gpu, label: Batch per GPU, type: int, min: 4, max: 128, default: 32}
+      - {key: iters, label: Steps to time, type: int, min: 10, max: 300, default: 40}
+      - {key: keep_global_batch, label: Keep the global batch fixed, type: bool, default: false, help: "On: more GPUs means a smaller batch each, which is the honest comparison for a fixed recipe. Off: the batch grows with the node, which is what you usually actually do."}
+  - id: optimise
+    title: Optimise
+    summary: Win back what the all-reduce cost
+    description: |
+      Three levers, measured one at a time. Gradient accumulation trades
+      communication for memory by all-reducing less often. Activation checkpointing
+      trades compute for memory, which lets the batch grow. Precision decides how
+      much has to move at all. Each is a row in the table; the combination is the
+      last row.
+    script: steps/step3_optimise.py
+    gpus: 8
+    timeout_min: 180
+    figures: [{key: best_throughput, label: best tok/s}]
+    params:
+      - {key: gpus, label: GPUs to use, type: int, min: 1, max: 8, default: 4}
+      - {key: grad_accum_values, label: Gradient accumulation to try, type: multiselect, default: ["1", "2", "4"], options: [{value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}]}
+      - {key: try_checkpointing, label: Try activation checkpointing, type: bool, default: true}
+      - {key: try_fp32, label: Include float32 for comparison, type: bool, default: true}
+      - {key: iters, label: Steps to time each setting, type: int, min: 10, max: 200, default: 25}
+  - id: verify
+    title: Verify
+    summary: Does the fast recipe train the same model?
+    description: |
+      Speed is worthless if it changes the answer. The step trains the same model
+      twice for a short run — once on one GPU, once with your fastest configuration
+      — and compares the loss curves. Small differences are expected from ordering
+      and reduced precision; a systematic gap means the recipe is not equivalent.
+    script: steps/step4_verify.py
+    gpus: 8
+    timeout_min: 180
+    figures: [{key: loss_gap, label: loss gap}]
+    params:
+      - {key: iters, label: Steps for each run, type: int, min: 100, max: 5000, step: 50, default: 400}
+      - {key: gpus, label: GPUs for the fast run, type: int, min: 2, max: 8, default: 4}
+      - {key: grad_accum, label: Gradient accumulation, type: int, min: 1, max: 16, default: 1}
+
+project:
+  entry: project/train_ddp.py
+  run_command: python project/train_ddp.py --data <pack-run-dir> --iters 500
+  timeout_min: 240
+  interface: |
+    `project/train_ddp.py` must train the reference model on however many GPUs it is
+    given (read `ATELIER_GPUS`), save `outputs/model.pt`, and write
+    `outputs/throughput.json` with `{"tokens_per_sec", "gpus", "config"}`.
+
+    The grader runs it on one GPU and on four, and scores throughput per GPU
+    together with the loss reached — so a fast recipe that trains a worse model
+    scores badly, which is the entire point.
+
+grader:
+  script: grader/grade.py
+  gpus: 4
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: tokens_per_sec
+  higher_is_better: true

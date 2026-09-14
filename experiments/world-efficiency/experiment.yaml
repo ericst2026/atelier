@@ -1,0 +1,116 @@
+slug: world-efficiency
+title: Efficiency
+order: 16
+difficulty: advanced
+tags: [our data, quantization, inference, gpu]
+summary: Measure inference honestly, then quantise, cache, speculate and distil — and find out what each one actually costs in accuracy.
+description: |
+  Training is a one-off; inference is the bill that arrives every day. This
+  experiment measures where the time goes and then applies the four standard
+  answers, each with its price tag attached.
+
+  Everything is implemented in the shared library rather than imported from a
+  serving framework: integer quantisation with per-channel scales, a key/value
+  cache, speculative decoding with a smaller draft model, and distillation from a
+  larger teacher. They are a few hundred lines in total and worth reading once.
+
+materials: []
+
+steps:
+  - id: measure
+    title: Measure
+    summary: Latency, memory, and where the time goes
+    description: |
+      Without a cache, every new token re-reads the whole prefix, so generating n
+      tokens costs on the order of n². The step shows that curve, the memory the
+      weights occupy, and the difference between latency for one request and
+      throughput for many — which are different problems with different answers.
+    script: steps/step1_measure.py
+    gpus: 1
+    timeout_min: 60
+    needs_previous: false
+    figures: [{key: tokens_per_sec, label: tok/s}]
+    params:
+      - {key: model_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: lengths, label: Generation lengths to time, type: multiselect, default: ["32", "64", "128", "256"], options: [{value: "16", label: "16"}, {value: "32", label: "32"}, {value: "64", label: "64"}, {value: "128", label: "128"}, {value: "256", label: "256"}]}
+      - {key: batch_sizes, label: Batch sizes to time, type: multiselect, default: ["1", "4", "16", "64"], options: [{value: "1", label: "1"}, {value: "4", label: "4"}, {value: "16", label: "16"}, {value: "64", label: "64"}, {value: "128", label: "128"}]}
+      - {key: n_prompts, label: Prompts per measurement, type: int, min: 4, max: 128, default: 32}
+  - id: quantize
+    title: Quantise
+    summary: Fewer bits, and what they cost
+    description: |
+      Weights become int8 or int4 with a scale per output channel. The step reports
+      the error introduced in each layer, the memory saved, and the accuracy after —
+      and separately for per-tensor and per-channel scales, because that choice is
+      usually the difference between int4 working and int4 producing noise.
+    script: steps/step2_quantize.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: int8_accuracy, label: int8}]
+    params:
+      - {key: bit_widths, label: Bit widths, type: multiselect, default: ["8", "4"], options: [{value: "8", label: "int8"}, {value: "6", label: "int6"}, {value: "4", label: "int4"}, {value: "3", label: "int3"}]}
+      - {key: per_channel, label: Compare per-channel against per-tensor scales, type: bool, default: true}
+      - {key: skip_head, label: Leave the output layer in full precision, type: bool, default: true, help: The usual practice; turn it off to see why}
+      - {key: n_eval, label: Questions to evaluate on, type: int, min: 50, max: 500, step: 50, default: 200}
+  - id: accelerate
+    title: Accelerate
+    summary: Cache, then speculate
+    description: |
+      A key/value cache turns the quadratic curve into a linear one. Speculative
+      decoding then uses a smaller model to propose several tokens which this model
+      checks in a single pass — free when the draft is right, wasted work when it is
+      wrong, so the acceptance rate decides whether it pays.
+    script: steps/step3_accelerate.py
+    gpus: 1
+    timeout_min: 120
+    figures: [{key: cache_speedup, label: cache}, {key: acceptance, label: accepted}]
+    params:
+      - {key: draft_run, label: Draft model (a smaller Pretraining run), type: run, experiment: world-pretrain, step: 3, default: null, help: Leave empty to skip speculative decoding}
+      - {key: lookahead, label: Tokens the draft proposes, type: int, min: 1, max: 8, default: 4}
+      - {key: n_prompts, label: Prompts to time, type: int, min: 4, max: 64, default: 20}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 256, step: 16, default: 128}
+  - id: distil
+    title: Distil
+    summary: A smaller model taught by a larger one
+    description: |
+      The student trains on the teacher's full output distribution rather than on the
+      single correct token, which carries more information per example — the
+      teacher's second and third choices say something about the problem. Compare
+      against the same student trained from scratch on the same data and the same
+      steps.
+    script: steps/step4_distil.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: student_accuracy, label: student}]
+    params:
+      - {key: preset, label: Student size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
+      - {key: examples, label: Examples, type: int, min: 1000, max: 60000, step: 1000, default: 12000}
+      - {key: epochs, label: Epochs, type: float, min: 0.5, max: 8, step: 0.5, default: 3}
+      - {key: temperature, label: Distillation temperature, type: float, min: 1, max: 5, step: 0.5, default: 2, help: Higher temperatures flatten the teacher's distribution and carry more of its uncertainty}
+      - {key: alpha, label: Weight on the teacher, type: float, min: 0, max: 1, step: 0.1, default: 0.7, help: The rest goes on the ordinary next-token loss}
+      - {key: lr, label: Learning rate, type: float, min: 0.00001, max: 0.005, step: 0.00001, default: 0.0006}
+      - {key: compare_scratch, label: Also train the same student without a teacher, type: bool, default: true}
+
+project:
+  entry: project/optimise.py
+  run_command: python project/optimise.py --model <model.pt> --tokenizer <tok.json>
+  timeout_min: 240
+  interface: |
+    `project/optimise.py` defines `optimise(model, tok) -> object` returning something
+    with `generate(prompts, max_new_tokens) -> list[str]`. Quantise, cache,
+    speculate, distil, or anything else.
+
+    The grader measures accuracy on unseen questions, tokens per second, and the
+    memory your returned object holds, then scores accuracy against speed — being
+    fast and wrong earns nothing, and so does being accurate and unchanged.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: tokens_per_sec
+  higher_is_better: true

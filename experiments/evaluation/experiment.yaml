@@ -1,0 +1,121 @@
+slug: evaluation
+title: Evaluation on public benchmarks
+order: 19.5
+difficulty: core
+tags: [downloaded data, benchmarks, gpu]
+summary: Build the harness rather than run one, then find out how much of a benchmark number is measurement and how much is contamination.
+description: |
+  Every model on every leaderboard was scored by a program somebody wrote. This
+  experiment writes that program: likelihood scoring for multiple choice, generation
+  scoring for open answers, few-shot prompt assembly, and the decisions in between
+  that move a published number by several points.
+
+  Then the uncomfortable part. The same models are scored under small changes to the
+  harness, and the training corpus is searched for the benchmark questions
+  themselves. Students usually leave this experiment trusting leaderboards less,
+  which is the intended outcome.
+
+materials:
+  - {key: hellaswag, name: HellaSwag, path: datasets/eval/hellaswag, kind: dataset, format: jsonl, description: Sentence completion; four endings, one plausible.}
+  - {key: arc, name: ARC Easy and Challenge, path: datasets/eval/arc-easy, kind: dataset, format: jsonl, description: Grade-school science questions, multiple choice.}
+  - {key: mmlu, name: MMLU, path: datasets/eval/mmlu, kind: dataset, format: jsonl, description: 57 subjects, four choices each. The benchmark everyone quotes.}
+  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: Generation scoring rather than likelihood — the answer has to be produced, not chosen.}
+  - {key: models, name: Small models to compare, path: models, kind: model, description: SmolLM2, Qwen2.5 and Pythia at several sizes.}
+  - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: A stand-in training corpus for the contamination search.}
+
+steps:
+  - id: tasks
+    title: Tasks
+    summary: Load the benchmarks and look at them
+    description: |
+      Four benchmarks in three shapes: completion, multiple choice, and free
+      generation. Before scoring anything, the step shows what the items actually
+      look like — including the ones where the "correct" answer is arguable, which
+      every benchmark has and none advertise.
+    script: steps/step1_tasks.py
+    gpus: 0
+    timeout_min: 20
+    needs_previous: false
+    figures: [{key: items, label: items}]
+    params:
+      - {key: benchmarks, label: Benchmarks, type: multiselect, default: [hellaswag, arc-easy, arc-challenge, mmlu, gsm8k], options: [{value: hellaswag, label: HellaSwag}, {value: arc-easy, label: ARC Easy}, {value: arc-challenge, label: ARC Challenge}, {value: mmlu, label: MMLU}, {value: gsm8k, label: GSM8K}]}
+      - {key: limit, label: Items per benchmark, type: int, min: 50, max: 5000, step: 50, default: 500}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: harness
+    title: Harness
+    summary: Score them, and decide how
+    description: |
+      For multiple choice the model never generates: each option is scored by its
+      log-probability given the question. Then the decision that moves published
+      numbers by points — whether to divide by the number of tokens. Long options
+      are penalised by a raw sum and favoured by the length-normalised version, and
+      neither is obviously right.
+    script: steps/step2_harness.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: accuracy, label: accuracy}]
+    params:
+      - {key: model, label: Model, type: select, default: SmolLM2-360M, options: [{value: SmolLM2-135M, label: SmolLM2-135M}, {value: SmolLM2-360M, label: SmolLM2-360M}, {value: Qwen2.5-0.5B, label: Qwen2.5-0.5B}, {value: pythia-160m, label: pythia-160m}, {value: pythia-410m, label: pythia-410m}, {value: gpt2, label: gpt2}]}
+      - {key: scoring, label: Scoring, type: multiselect, default: [sum, mean, unconditional], options: [{value: sum, label: total log-probability}, {value: mean, label: per token}, {value: unconditional, label: normalised by the option alone}]}
+      - {key: shots, label: Few-shot examples, type: int, min: 0, max: 8, default: 0}
+      - {key: max_new_tokens, label: Tokens for generation tasks, type: int, min: 32, max: 512, step: 32, default: 256}
+      - {key: batch_size, label: Batch size, type: int, min: 1, max: 32, default: 8}
+  - id: sensitivity
+    title: Sensitivity
+    summary: How much of the number is the harness?
+    description: |
+      The same model and the same items under small, defensible changes: the number
+      of shots, the answer format, the order of the options. A model whose score
+      swings several points under these is not being measured — it is being
+      sampled from a distribution of possible harnesses.
+    script: steps/step3_sensitivity.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: spread, label: spread}]
+    params:
+      - {key: models, label: Models to compare, type: multiselect, default: [SmolLM2-135M, SmolLM2-360M], options: [{value: SmolLM2-135M, label: SmolLM2-135M}, {value: SmolLM2-360M, label: SmolLM2-360M}, {value: Qwen2.5-0.5B, label: Qwen2.5-0.5B}, {value: pythia-160m, label: pythia-160m}, {value: pythia-410m, label: pythia-410m}, {value: gpt2, label: gpt2}]}
+      - {key: shot_values, label: Shot counts to try, type: multiselect, default: ["0", "2", "5"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "5", label: "5"}]}
+      - {key: shuffle_options, label: Also try shuffling the options, type: bool, default: true}
+      - {key: limit, label: Items per configuration, type: int, min: 50, max: 1000, step: 50, default: 200}
+  - id: report
+    title: Report
+    summary: Contamination, then a model card
+    description: |
+      Search a training corpus for the benchmark items themselves — long shared
+      phrases between what a model trained on and what it is tested on. Then write
+      the card: what was measured, how, with which harness decisions, and what the
+      number does not cover.
+    script: steps/step4_report.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: contaminated, label: leaked}]
+    params:
+      - {key: shingle, label: Phrase length for the contamination search (words), type: int, min: 8, max: 25, default: 13}
+      - {key: corpus_docs, label: Training documents to search, type: int, min: 2000, max: 200000, step: 1000, default: 40000}
+      - {key: notes, label: Notes for the model card, type: textarea, default: ""}
+
+project:
+  entry: project/harness.py
+  run_command: python project/harness.py --model SmolLM2-135M --limit 200
+  timeout_min: 180
+  interface: |
+    `project/harness.py` defines
+    `evaluate(model, tok, items: list[dict], task: str) -> list[dict]`, returning one
+    `{"correct": bool}` per item. Items carry `question`, `choices`, `answer` for
+    multiple choice and `question`, `answer` for generation.
+
+    The grader runs your harness on items it holds back and compares your scores
+    against a reference implementation. Matching the reference is most of the marks;
+    the rest is for not being fooled by an item whose options are trivially
+    distinguishable by length.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: agreement
+  higher_is_better: true

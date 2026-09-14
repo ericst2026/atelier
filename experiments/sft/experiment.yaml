@@ -1,0 +1,119 @@
+slug: sft
+title: Fine-tuning with public instruction data
+order: 22
+difficulty: core
+tags: [downloaded data, instruction-tuning, lora, gpu]
+summary: Turn a base model into an assistant — shape a chat dataset, choose full vs LoRA training, train with TRL, and judge the result side by side.
+description: |
+  A pretrained model completes text; an assistant answers. Supervised fine-tuning
+  (SFT) closes that gap with a few thousand demonstrations. You will format
+  instruction data with the model's chat template, compare full fine-tuning with
+  LoRA on memory and quality, and evaluate with held-out loss and a model judge.
+
+materials:
+  - {key: qwen05b, name: Qwen2.5-0.5B (base), path: models/Qwen2.5-0.5B, kind: model, description: Base model to tune. 0.5B parameters fits on one A6000 even with full fine-tuning.}
+  - {key: qwen15b, name: Qwen2.5-1.5B (base), path: models/Qwen2.5-1.5B, kind: model, description: Larger base model; use LoRA.}
+  - {key: judge, name: Qwen2.5-1.5B-Instruct (judge), path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Instruction-tuned model used as the judge in step 4.}
+  - {key: alpaca, name: Alpaca-cleaned, path: datasets/sft/alpaca-cleaned, kind: dataset, format: jsonl, description: 52k instruction/response pairs (instruction, input, output).}
+  - {key: dolly, name: Dolly 15k, path: datasets/sft/dolly-15k, kind: dataset, format: jsonl, description: 15k human-written pairs with categories (instruction, context, response, category).}
+  - {key: smoltalk, name: SmolTalk (everyday conversations), path: datasets/sft/smoltalk, kind: dataset, format: jsonl, description: Multi-turn chats in messages format.}
+
+steps:
+  - id: data
+    title: Data
+    summary: Shape instruction data into chat messages
+    description: |
+      Every source is normalised to `{"messages": [{"role": ..., "content": ...}]}`
+      so the same trainer works for all of them. Long examples are dropped, a
+      validation split is held out, and an optional system prompt is prepended.
+      Files named `data/sft.jsonl` in your project are picked up by **My project files**.
+    script: steps/step1_data.py
+    gpus: 0
+    timeout_min: 30
+    figures: [{key: train_examples, label: examples}]
+    params:
+      - {key: dataset, label: Dataset, type: select, default: dolly, options: [{value: dolly, label: Dolly 15k}, {value: alpaca, label: Alpaca-cleaned}, {value: smoltalk, label: SmolTalk}, {value: workspace, label: My project files (data/sft.jsonl)}]}
+      - {key: max_examples, label: Examples, type: int, min: 100, max: 60000, step: 100, default: 4000}
+      - {key: max_chars, label: Max characters per example, type: int, min: 200, max: 20000, step: 100, default: 3000}
+      - {key: val_frac, label: Validation share, type: float, min: 0.01, max: 0.3, step: 0.01, default: 0.05}
+      - {key: system_prompt, label: System prompt (optional), type: textarea, default: ""}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: setup
+    title: Setup
+    summary: Pick the base model and the tuning method
+    description: |
+      Full fine-tuning updates every weight (16 bytes per parameter with AdamW);
+      LoRA freezes the model and trains small low-rank adapters on chosen
+      projections. The step counts trainable parameters and estimates GPU memory
+      without loading weights.
+    script: steps/step2_setup.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: trainable_params, label: trainable}]
+    params:
+      - {key: base_model, label: Base model, type: select, default: Qwen2.5-0.5B, options: [{value: Qwen2.5-0.5B, label: Qwen2.5-0.5B}, {value: Qwen2.5-1.5B, label: Qwen2.5-1.5B}]}
+      - {key: method, label: Method, type: select, default: lora, options: [{value: lora, label: LoRA}, {value: full, label: Full fine-tuning}]}
+      - {key: lora_r, label: LoRA rank, type: int, min: 2, max: 256, default: 16}
+      - {key: lora_alpha, label: LoRA alpha, type: int, min: 2, max: 512, default: 32}
+      - {key: lora_dropout, label: LoRA dropout, type: float, min: 0, max: 0.5, step: 0.05, default: 0.05}
+      - {key: target_modules, label: LoRA targets, type: multiselect, default: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj], options: [{value: q_proj, label: q_proj}, {value: k_proj, label: k_proj}, {value: v_proj, label: v_proj}, {value: o_proj, label: o_proj}, {value: gate_proj, label: gate_proj}, {value: up_proj, label: up_proj}, {value: down_proj, label: down_proj}]}
+      - {key: max_length, label: Max sequence length, type: int, min: 256, max: 4096, step: 128, default: 1024}
+      - {key: dtype, label: Precision, type: select, default: bf16, options: [{value: bf16, label: bfloat16}, {value: fp32, label: float32}]}
+      - {key: gradient_checkpointing, label: Gradient checkpointing, type: bool, default: true}
+  - id: train
+    title: Train
+    summary: Fine-tune with TRL and watch the loss
+    description: |
+      TRL's `SFTTrainer` masks nothing by default — the loss covers the whole
+      rendered conversation. Train and validation loss stream live; the adapter (or
+      the full model) is saved when training ends.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 240
+    figures: [{key: eval_loss, label: val loss}]
+    params:
+      - {key: epochs, label: Epochs, type: float, min: 0.1, max: 5, step: 0.1, default: 1}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0002, help: "Typical: 2e-4 for LoRA, 1e-5 to 2e-5 for full fine-tuning"}
+      - {key: batch_size, label: Per-device batch size, type: int, min: 1, max: 32, default: 4}
+      - {key: grad_accum, label: Gradient accumulation, type: int, min: 1, max: 64, default: 4}
+      - {key: warmup_ratio, label: Warmup ratio, type: float, min: 0, max: 0.3, step: 0.01, default: 0.03}
+      - {key: packing, label: Pack short examples, type: bool, default: false}
+  - id: eval
+    title: Evaluate
+    summary: Held-out loss, side-by-side answers, and a model judge
+    description: |
+      The base and the tuned model answer the same held-out prompts. Held-out loss
+      is exact but blunt; the judge (a local instruct model scoring both answers
+      with a rubric) is noisy but closer to what people notice. Read both.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: win_rate, label: win rate}]
+    params:
+      - {key: n_prompts, label: Held-out prompts to answer, type: int, min: 5, max: 200, default: 40}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 1024, default: 256}
+      - {key: temperature, label: Temperature, type: float, min: 0, max: 1.5, step: 0.1, default: 0}
+      - {key: judge, label: Use the judge model, type: bool, default: true}
+      - {key: judge_model, label: Judge, type: select, default: Qwen2.5-1.5B-Instruct, options: [{value: Qwen2.5-1.5B-Instruct, label: Qwen2.5-1.5B-Instruct}]}
+
+project:
+  entry: project/train.py
+  run_command: python project/train.py --data data --epochs 1
+  timeout_min: 240
+  interface: |
+    Make `project/train.py` produce **either** `outputs/adapter/` (a PEFT LoRA adapter for
+    `Qwen2.5-0.5B`) **or** `outputs/model/` (a full HF checkpoint). Anything goes in
+    between: data selection and cleaning, prompt formats, hyper-parameters, packing,
+    curriculum. The grader measures held-out loss on a hidden validation set and
+    lets a judge compare your answers with the base model's.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: win_rate
+  higher_is_better: true

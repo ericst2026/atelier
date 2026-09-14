@@ -1,0 +1,120 @@
+slug: pretrain
+title: Pretraining on TinyStories
+order: 21
+difficulty: core
+tags: [downloaded data, transformer, training, gpu]
+summary: Pack a token stream, size a GPT from scratch, train it on one or more A6000s, and read the loss curve like a practitioner.
+description: |
+  Pretraining is next-token prediction at scale. Here the scale is small enough to
+  finish in a lesson: a nanoGPT-style decoder trained on TinyStories or WikiText.
+  You will see how parameter count, context length and tokens seen trade off
+  against loss, and why "20 tokens per parameter" is a useful rule of thumb.
+
+materials:
+  - {key: tinystories, name: TinyStories, path: datasets/pretrain/tinystories, kind: dataset, format: jsonl, description: 2M short children's stories (Eldan & Li 2023). Small models learn fluent English on it in minutes.}
+  - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: 100M tokens of Wikipedia. Harder; use it to see the model's limits.}
+  - {key: gpt2tok, name: GPT-2 tokenizer, path: models/gpt2, kind: model, description: Only the tokenizer files are needed (tokenizer.json, vocab.json, merges.txt).}
+
+steps:
+  - id: data
+    title: Data
+    summary: Tokenize and pack the corpus into a token stream
+    description: |
+      Documents are tokenized (GPT-2 BPE by default, or a tokenizer you trained in
+      the Tokenizer experiment) and concatenated with an end-of-text token into two
+      flat arrays, `train.bin` and `val.bin`. Batches are random windows of
+      `block_size` tokens.
+    script: steps/step1_data.py
+    gpus: 0
+    timeout_min: 120
+    figures: [{key: train_tokens, label: tokens}]
+    params:
+      - {key: dataset, label: Dataset, type: select, default: tinystories, options: [{value: tinystories, label: TinyStories}, {value: wikitext, label: WikiText-103}, {value: pools, label: Sample pools (tiny)}]}
+      - {key: tokenizer, label: Tokenizer, type: select, default: gpt2, options: [{value: gpt2, label: GPT-2 BPE (50257)}, {value: run, label: From a Tokenizer experiment run}]}
+      - {key: tokenizer_run, label: Tokenizer run (step 3 of Tokenizer), type: run, experiment: tokenizer, step: 3, default: null, help: Used when Tokenizer is set to "From a run"}
+      - {key: max_tokens, label: Tokens to keep, type: int, min: 100000, max: 500000000, step: 100000, default: 20000000}
+      - {key: val_frac, label: Validation share, type: float, min: 0.005, max: 0.2, step: 0.005, default: 0.02}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: model
+    title: Model
+    summary: Size the architecture and estimate its cost
+    description: |
+      Choose depth, width and context. The step reports parameter count by
+      component, training FLOPs per token (≈6N), the Chinchilla-optimal token budget
+      (≈20N) and a memory estimate for one A6000. Nothing runs on the GPU yet.
+    script: steps/step2_model.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: params, label: params}]
+    params:
+      - {key: n_layer, label: Layers, type: int, min: 1, max: 24, default: 6}
+      - {key: n_head, label: Attention heads, type: int, min: 1, max: 16, default: 6}
+      - {key: n_embd, label: Embedding width, type: int, min: 64, max: 1024, step: 64, default: 384}
+      - {key: block_size, label: Context length, type: int, min: 64, max: 2048, step: 64, default: 256}
+      - {key: dropout, label: Dropout, type: float, min: 0, max: 0.5, step: 0.05, default: 0.0}
+      - {key: bias, label: Bias terms, type: bool, default: false}
+      - {key: batch_tokens, label: Tokens per optimizer step (for the memory estimate), type: int, min: 4096, max: 1048576, step: 4096, default: 65536}
+  - id: train
+    title: Train
+    summary: Run the training loop and watch the loss
+    description: |
+      A plain AdamW loop with warmup + cosine decay, bf16 autocast, and optional
+      `torch.compile`. With more than one GPU allocated the script relaunches itself
+      under `torchrun` (DDP). Loss, validation loss, learning rate and throughput
+      stream live to the chart.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: val_loss, label: val loss}, {key: tokens_per_sec, label: tok/s}]
+    params:
+      - {key: max_iters, label: Optimizer steps, type: int, min: 50, max: 100000, step: 50, default: 2000}
+      - {key: batch_size, label: Micro-batch (sequences per GPU), type: int, min: 1, max: 256, default: 32}
+      - {key: grad_accum, label: Gradient accumulation, type: int, min: 1, max: 64, default: 1}
+      - {key: lr, label: Peak learning rate, type: float, min: 0.00001, max: 0.01, step: 0.00001, default: 0.0006}
+      - {key: warmup_iters, label: Warmup steps, type: int, min: 0, max: 5000, default: 100}
+      - {key: weight_decay, label: Weight decay, type: float, min: 0, max: 0.5, step: 0.01, default: 0.1}
+      - {key: eval_interval, label: Evaluate every, type: int, min: 10, max: 5000, default: 100}
+      - {key: eval_iters, label: Batches per evaluation, type: int, min: 1, max: 200, default: 20}
+      - {key: dtype, label: Precision, type: select, default: bf16, options: [{value: bf16, label: bfloat16}, {value: fp16, label: float16}, {value: fp32, label: float32}]}
+      - {key: compile, label: torch.compile, type: bool, default: false}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: eval
+    title: Evaluate
+    summary: Perplexity, samples, and a comparison with another run
+    description: |
+      Validation perplexity, loss by position in the context window (does the model
+      use its history?), free-running samples, and an optional side-by-side with
+      another training run so you can plot loss against parameters or tokens.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: perplexity, label: ppl}]
+    params:
+      - {key: prompts, label: Prompts (one per line), type: textarea, default: "Once upon a time\nThe little robot looked at the sky and"}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 16, max: 512, default: 120}
+      - {key: temperature, label: Temperature, type: float, min: 0, max: 2, step: 0.1, default: 0.8}
+      - {key: top_k, label: Top-k, type: int, min: 0, max: 500, default: 50}
+      - {key: eval_batches, label: Validation batches, type: int, min: 5, max: 500, default: 50}
+      - {key: compare_run, label: Compare with another Train run, type: run, experiment: pretrain, step: 3, default: null}
+
+project:
+  entry: project/model.py
+  run_command: python project/train.py --iters 1000
+  timeout_min: 360
+  interface: |
+    Implement `build_model(config: dict) -> torch.nn.Module` in `project/model.py`.
+    The module's `forward(idx, targets=None)` must return `(logits, loss)`. Train it
+    with `project/train.py` (edit freely) so that `outputs/ckpt.pt` contains
+    `{"model_state": ..., "config": ...}`. The grader loads your checkpoint, checks
+    the parameter budget (≤ 30M), and measures validation loss on TinyStories.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 30
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: val_loss
+  higher_is_better: false

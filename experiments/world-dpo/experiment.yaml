@@ -1,0 +1,114 @@
+slug: world-dpo
+title: Preference optimisation
+order: 6
+difficulty: advanced
+tags: [our data, dpo, gpu]
+summary: Teach the model from pairs of better and worse answers, with no reward model and no sampling loop.
+description: |
+  DPO asks a smaller question than reinforcement learning: not "how good is this
+  answer" but "which of these two is better". That turns alignment into ordinary
+  supervised training on triples of prompt, chosen and rejected — one loss, one
+  frozen reference, no rollouts.
+
+  The pairs here are built from the model's own attempts, labelled by whether the
+  answer is right. Compare the result against experiment 4: same goal, same data
+  budget, two very different mechanisms and two very different failure modes.
+
+materials: []
+
+steps:
+  - id: pairs
+    title: Pairs
+    summary: Build preference pairs the model can learn from
+    description: |
+      Sample several answers per question and pair a correct one against a wrong
+      one. Questions the model always or never gets right produce no pair at all,
+      which is the same constraint GRPO faces. You can also pair on style rather
+      than correctness — a short correct answer against a rambling correct one —
+      and see what the model does with that instead.
+    script: steps/step1_pairs.py
+    gpus: 1
+    timeout_min: 120
+    needs_previous: false
+    figures: [{key: pairs, label: pairs}]
+    params:
+      - {key: sft_run, label: Model (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: n_questions, label: Questions to sample, type: int, min: 200, max: 20000, step: 200, default: 3000}
+      - {key: k, label: Answers per question, type: int, min: 2, max: 16, default: 6}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.3, max: 1.5, step: 0.1, default: 1.0}
+      - {key: pair_on, label: What makes one answer better, type: select, default: correct, options: [{value: correct, label: correct against wrong}, {value: correct_short, label: correct and short against correct and long}, {value: mixed, label: both}]}
+      - {key: max_pairs_per_question, label: Pairs per question, type: int, min: 1, max: 4, default: 1}
+      - {key: max_new_tokens, label: Answer length cap, type: int, min: 32, max: 384, step: 16, default: 160}
+  - id: reference
+    title: Reference
+    summary: Freeze what you are measuring against
+    description: |
+      DPO compares the policy's log-probabilities with a frozen copy of where it
+      started. The step records the reference's view of every pair — how strongly it
+      already prefers the chosen answer — because a pair the reference has already
+      settled contributes almost nothing to the gradient.
+    script: steps/step2_reference.py
+    gpus: 1
+    timeout_min: 60
+    figures: [{key: already_right, label: settled}]
+    params:
+      - {key: probe, label: Pairs to probe, type: int, min: 50, max: 2000, step: 50, default: 400}
+  - id: train
+    title: Train
+    summary: One loss, two sequences
+    description: |
+      β controls how far the policy may move from the reference. Low β trains hard
+      and drifts; high β barely moves. Watch pair accuracy (how often the policy
+      prefers the chosen answer) alongside the margin: accuracy near 100% with a
+      growing margin usually means the model has started pushing the rejected answer
+      to nothing, which costs it fluency.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: eval_accuracy, label: pair acc}]
+    params:
+      - {key: beta, label: Beta, type: float, min: 0.01, max: 1.0, step: 0.01, default: 0.1}
+      - {key: epochs, label: Epochs, type: float, min: 0.2, max: 5, step: 0.2, default: 1}
+      - {key: lr, label: Learning rate, type: float, min: 0.0000001, max: 0.0001, step: 0.0000001, default: 0.000005}
+      - {key: batch_size, label: Pairs per step, type: int, min: 2, max: 64, default: 8}
+      - {key: label_smoothing, label: Label smoothing, type: float, min: 0, max: 0.4, step: 0.05, default: 0, help: Treats a share of the labels as noise; useful when the pairs are not reliable}
+  - id: eval
+    title: Evaluate
+    summary: Accuracy, drift, and what the preference actually taught
+    description: |
+      Accuracy on held-out questions before and after, the same reward-hacking
+      checks as the RL experiment, and the specific DPO failure: the model becomes
+      better at ranking answers while getting worse at producing them. The
+      log-probability chart shows it — if both chosen and rejected fall, the policy
+      is collapsing rather than choosing.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 90
+    figures: [{key: accuracy, label: accuracy}]
+    params:
+      - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 1000, step: 50, default: 300}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 384, step: 16, default: 192}
+
+project:
+  entry: project/pairs.py
+  run_command: python project/train.py --model <sft-run>/model.pt --tokenizer <tok>/tokenizer.json
+  timeout_min: 240
+  interface: |
+    `project/pairs.py` defines `build_pairs(world, model, tok, generate) -> list[dict]`
+    returning `{"prompt", "chosen", "rejected"}` triples; `project/train.py` trains
+    with them and saves `outputs/model.pt`. How the pairs are made is the experiment:
+    correctness, brevity, format, agreement between samples, or a mixture.
+
+    The grader measures accuracy on unseen questions and checks the model did not
+    lose fluency in the process.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

@@ -1,0 +1,114 @@
+# The control plane, for when the GPUs are on another machine.
+#
+# Runs on the desktop PC (Windows with Docker Desktop, or any Linux box): the API,
+# the web UI, Postgres, Redis, and the dashboards. No CUDA, no GPU, no torch.
+#
+#   docker compose -f docker-compose.api.yml up -d
+#
+# The worker on the GPU node connects back to the Redis and Postgres published here,
+# so both ports have to be reachable across the LAN and both need passwords set in
+# .env. See docs/topologies.md.
+name: atelier-api
+
+x-atelier-env: &atelier-env
+  ATELIER_ROLE: api
+  ATELIER_STORAGE_MODE: ${ATELIER_STORAGE_MODE:-upload}
+  ATELIER_WORKER_TOKEN: ${ATELIER_WORKER_TOKEN:?set a shared secret in .env}
+  ATELIER_UPLOAD_MAX_MB: ${ATELIER_UPLOAD_MAX_MB:-64}
+  ATELIER_ROOT: /srv/atelier
+  ATELIER_EXPERIMENTS_DIR: /srv/atelier/experiments
+  ATELIER_DATA_DIR: /srv/atelier/data
+  ATELIER_DATABASE_URL: postgresql+psycopg://atelier:${ATELIER_DB_PASSWORD:-atelier}@postgres:5432/atelier
+  ATELIER_REDIS_URL: redis://:${ATELIER_REDIS_PASSWORD:-atelier}@redis:6379/0
+  ATELIER_JWT_SECRET: ${ATELIER_JWT_SECRET:?set a secret in .env}
+  ATELIER_ADMIN_USERNAME: ${ATELIER_ADMIN_USERNAME:-teacher}
+  ATELIER_ADMIN_PASSWORD: ${ATELIER_ADMIN_PASSWORD:-teacher}
+  # no ATELIER_GPU_COUNT here: the API learns the cluster's size from the workers
+  ATELIER_DISPLAY_COUNT: ${ATELIER_DISPLAY_COUNT:-5}
+  ATELIER_NODE_NAME: ${ATELIER_NODE_NAME:-control}
+
+services:
+  postgres:
+    image: ${ATELIER_REGISTRY:-}postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atelier
+      POSTGRES_PASSWORD: ${ATELIER_DB_PASSWORD:-atelier}
+      POSTGRES_DB: atelier
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${ATELIER_DB_PORT:-5432}:5432"     # the worker connects here across the LAN
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atelier"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: ${ATELIER_REGISTRY:-}redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${ATELIER_REDIS_PASSWORD:-atelier}", "--appendonly", "no"]
+    ports:
+      - "${ATELIER_REDIS_PORT:-6379}:6379"  # and here
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${ATELIER_REDIS_PASSWORD:-atelier}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${ATELIER_REGISTRY:-}atelier-api:${ATELIER_TAG:-latest}
+    build: ./backend
+    restart: unless-stopped
+    environment: *atelier-env
+    volumes:
+      # a copy of the same experiments tree the worker has — the API reads the
+      # manifests to build the pages, the worker runs the scripts
+      - ${ATELIER_EXPERIMENTS_DIR:-./experiments}:/srv/atelier/experiments:ro
+      - ateldata:/srv/atelier/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    image: ${ATELIER_REGISTRY:-}atelier-web:${ATELIER_TAG:-latest}
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${ATELIER_HTTP_PORT:-80}:80"
+    volumes:
+      # without this nginx serves the React build with its stock config, which has no
+      # /api or /ws proxy: the page loads and every request from it returns 404
+      - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+
+  prometheus:
+    image: ${ATELIER_REGISTRY:-}prom/prometheus:v2.54.1
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.split.yml:/etc/prometheus/prometheus.yml:ro
+      # edit the files in here to add or remove GPU nodes; prometheus re-reads them
+      - ./deploy/prometheus/targets:/etc/prometheus/targets:ro
+      - promdata:/prometheus
+    profiles: ["dashboards"]
+
+  grafana:
+    image: ${ATELIER_REGISTRY:-}grafana/grafana:11.2.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${ATELIER_GRAFANA_PASSWORD:-atelier}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    profiles: ["dashboards"]
+
+volumes:
+  pgdata:
+  ateldata:
+  promdata:
+  grafanadata:

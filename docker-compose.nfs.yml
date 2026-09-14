@@ -1,0 +1,47 @@
+# Shared data over NFS, as an override.
+#
+# Use this when the API and the workers should see the same directory instead of
+# posting results over HTTP. Layer it on top of whichever base file you are using:
+#
+#   control machine:
+#     docker compose -f docker-compose.api.yml -f docker-compose.nfs.yml up -d
+#   each GPU node:
+#     docker compose -f docker-compose.worker.yml -f docker-compose.nfs.yml up -d
+#
+# Set in .env, on every machine:
+#   ATELIER_STORAGE_MODE=shared
+#   ATELIER_NFS_HOST=192.168.1.30
+#   ATELIER_NFS_DATA=/export/atelier/data
+#   ATELIER_NFS_EXPERIMENTS=/export/atelier/experiments
+#
+# Docker mounts the export itself, so the host does not need it in /etc/fstab and
+# nothing has to be mounted before the daemon starts. See docs/topologies.md for the
+# server side and the uid question, which is the part that actually bites.
+services:
+  api:
+    environment:
+      ATELIER_STORAGE_MODE: shared
+    volumes:
+      - nfs-data:/srv/atelier/data
+      - nfs-experiments:/srv/atelier/experiments:ro
+
+  worker:
+    environment:
+      ATELIER_STORAGE_MODE: shared
+    volumes:
+      - nfs-data:/srv/atelier/data
+      - nfs-experiments:/srv/atelier/experiments:ro
+
+volumes:
+  nfs-data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${ATELIER_NFS_HOST:?set the NFS server address},rw,nfsvers=4,hard,timeo=600,retrans=2,noatime"
+      device: ":${ATELIER_NFS_DATA:-/export/atelier/data}"
+  nfs-experiments:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${ATELIER_NFS_HOST},ro,nfsvers=4,hard,timeo=600,retrans=2,noatime"
+      device: ":${ATELIER_NFS_EXPERIMENTS:-/export/atelier/experiments}"

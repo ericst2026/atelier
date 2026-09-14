@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.dev/
+node_modules/
+frontend/dist/
+materials/
+data/
+accounts.csv
+.DS_Store

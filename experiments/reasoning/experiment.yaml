@@ -1,0 +1,114 @@
+slug: reasoning
+title: Reasoning on GSM8K and MATH
+order: 24
+difficulty: advanced
+tags: [downloaded data, chain-of-thought, self-consistency, rft, gpu]
+summary: Measure how prompting changes maths accuracy, then teach the model its own best reasoning with rejection-sampled fine-tuning.
+description: |
+  Small models reason badly on their own and much better with the right scaffolding.
+  This experiment quantifies the ladder — direct answer, chain of thought,
+  few-shot, self-consistency — then closes the loop: sample many solutions, keep
+  the correct ones, fine-tune on them (STaR / rejection-sampling fine-tuning), and
+  measure pass@k before and after.
+
+materials:
+  - {key: model, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: Default solver.}
+  - {key: model15, name: Qwen2.5-1.5B-Instruct, path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Stronger solver.}
+  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: Grade-school word problems.}
+  - {key: math500, name: MATH-500, path: datasets/reasoning/math-500, kind: dataset, format: jsonl, description: 500 competition problems with difficulty levels (problem, solution, answer, level).}
+
+steps:
+  - id: tasks
+    title: Tasks
+    summary: Build train and evaluation problem sets with difficulty buckets
+    description: |
+      Problems are drawn with a seed and tagged with a difficulty bucket (reference
+      solution length for GSM8K, level for MATH). The evaluation set is fixed for
+      the rest of the experiment so every number is comparable.
+    script: steps/step1_tasks.py
+    gpus: 0
+    timeout_min: 10
+    figures: [{key: n_eval, label: eval}]
+    params:
+      - {key: dataset, label: Dataset, type: select, default: gsm8k, options: [{value: gsm8k, label: GSM8K}, {value: math500, label: MATH-500}]}
+      - {key: n_train, label: Training problems, type: int, min: 50, max: 7000, step: 50, default: 1000}
+      - {key: n_eval, label: Evaluation problems, type: int, min: 50, max: 1300, step: 50, default: 200}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+  - id: prompting
+    title: Prompting
+    summary: Direct vs chain of thought vs few-shot vs self-consistency
+    description: |
+      The same model answers the evaluation set under each strategy. Accuracy is
+      the headline; tokens generated per problem is the bill. Self-consistency
+      samples k solutions and takes the majority answer — the chart shows accuracy
+      as k grows.
+    script: steps/step2_prompting.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: best_acc, label: best acc}]
+    params:
+      - {key: model, label: Model, type: select, default: Qwen2.5-0.5B-Instruct, options: [{value: Qwen2.5-0.5B-Instruct, label: Qwen2.5-0.5B-Instruct}, {value: Qwen2.5-1.5B-Instruct, label: Qwen2.5-1.5B-Instruct}]}
+      - {key: strategies, label: Strategies, type: multiselect, default: [direct, cot, fewshot, self_consistency], options: [{value: direct, label: Direct answer}, {value: cot, label: Chain of thought}, {value: fewshot, label: Few-shot chain of thought}, {value: self_consistency, label: Self-consistency (majority of k)}]}
+      - {key: k, label: Samples for self-consistency, type: int, min: 2, max: 32, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.1, max: 1.5, step: 0.1, default: 0.7}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 1024, step: 32, default: 384}
+  - id: train
+    title: Train
+    summary: Rejection-sampled fine-tuning on the model's own correct solutions
+    description: |
+      For each training problem, sample k chains of thought at temperature T and
+      keep those that reach the right answer. Fine-tune (LoRA) on the kept ones.
+      No human-written solutions are used — the model bootstraps from what it can
+      already solve sometimes.
+    script: steps/step3_train.py
+    gpus: 1
+    timeout_min: 360
+    figures: [{key: kept, label: kept}]
+    params:
+      - {key: model, label: Model to fine-tune, type: select, default: Qwen2.5-0.5B-Instruct, options: [{value: Qwen2.5-0.5B-Instruct, label: Qwen2.5-0.5B-Instruct}, {value: Qwen2.5-1.5B-Instruct, label: Qwen2.5-1.5B-Instruct}]}
+      - {key: k, label: Samples per problem, type: int, min: 1, max: 32, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.1, max: 1.5, step: 0.1, default: 0.8}
+      - {key: max_keep, label: Keep at most per problem, type: int, min: 1, max: 8, default: 2}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 1024, step: 32, default: 384}
+      - {key: epochs, label: Epochs, type: float, min: 0.2, max: 5, step: 0.1, default: 2}
+      - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0001}
+      - {key: lora_r, label: LoRA rank, type: int, min: 4, max: 128, default: 16}
+  - id: eval
+    title: Evaluate
+    summary: pass@k before and after, by difficulty, and reasoning length
+    description: |
+      Both models sample n solutions per evaluation problem; pass@k is estimated
+      without bias for k ≤ n. Accuracy by difficulty shows where the gain came
+      from; the length chart shows whether correct chains are shorter or longer
+      than wrong ones.
+    script: steps/step4_eval.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: acc_after, label: pass@1}]
+    params:
+      - {key: n_samples, label: Samples per problem (n), type: int, min: 1, max: 16, default: 8}
+      - {key: temperature, label: Sampling temperature, type: float, min: 0.1, max: 1.5, step: 0.1, default: 0.7}
+      - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 1024, step: 32, default: 384}
+
+project:
+  entry: project/solve.py
+  run_command: python project/run.py --n 50
+  timeout_min: 180
+  interface: |
+    Implement `solve(question: str, generate) -> str` in `project/solve.py`.
+    `generate(prompt: str, n: int = 1, temperature: float = 0.0, max_new_tokens: int = 384) -> list[str]`
+    is provided by the grader and backed by `Qwen2.5-0.5B-Instruct`; every call is
+    metered. Return the final answer as a string. Score = accuracy on hidden GSM8K
+    problems (70) + efficiency (30, full marks at ≤ 400 generated tokens per problem).
+    Prompt design, self-consistency, verification, tool-style decomposition — all fair.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 90
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: accuracy
+  higher_is_better: true

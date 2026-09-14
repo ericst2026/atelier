@@ -1,0 +1,15 @@
+# One entry per GPU node. Port 9101 is the worker's metrics listener
+# (ATELIER_WORKER_METRICS_PORT). Edit this file and Prometheus picks it up within
+# thirty seconds — no restart, no reload signal.
+#
+# The `node` label must match ATELIER_NODE_NAME on that machine, so a panel can be
+# split by node and the labels line up with what the run pages say.
+- targets: ["192.168.1.30:9101"]
+  labels:
+    node: gpu-a
+    role: worker
+
+# - targets: ["192.168.1.31:9101"]
+#   labels:
+#     node: gpu-b
+#     role: worker

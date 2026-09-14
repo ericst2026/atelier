@@ -1,0 +1,127 @@
+slug: world-curation
+title: Data curation
+order: 9
+difficulty: core
+tags: [our data, filtering, gpu]
+summary: A corpus spoiled in known ways. Build the filter that finds the damage, and prove it by training on what survives.
+description: |
+  The downloaded version of this experiment compares two slices of the real web and
+  scores a filter by the loss of a model trained on its output. That works, but it
+  can only ever measure the end result — nobody knows which individual documents
+  should have been removed.
+
+  Here we do know. The corpus is generated clean and then spoiled in nine specific
+  ways: navigation furniture, repeated lines, symbol soup, truncated listings,
+  shouting, product grids, gibberish, fragments, and duplicates. Every document
+  carries a label. So a filter can be scored twice — on precision and recall against
+  the labels, and on the validation loss of a model trained on what it kept — and
+  the two disagree more often than you would expect.
+
+materials: []
+
+steps:
+  - id: survey
+    title: Survey
+    summary: Look at the damage
+    description: |
+      Generate the corpus and profile it. Each kind of damage has a signature on some
+      axis — gibberish has no common words, listings are mostly digits, repeated text
+      has few distinct lines — and the step plots each signal for clean and spoiled
+      documents together, so you can see which thresholds could separate them and
+      which never will.
+    script: steps/step1_survey.py
+    gpus: 0
+    timeout_min: 30
+    needs_previous: false
+    figures: [{key: docs, label: docs}, {key: clean_share, label: clean}]
+    params:
+      - {key: docs, label: Documents, type: int, min: 500, max: 200000, step: 500, default: 20000}
+      - {key: dirty_share, label: Share spoiled, type: float, min: 0.1, max: 0.9, step: 0.05, default: 0.55}
+      - {key: duplicate_share, label: Share duplicated, type: float, min: 0, max: 0.4, step: 0.02, default: 0.12}
+      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語}]}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 17}
+  - id: filter
+    title: Filter
+    summary: Set the thresholds and see what each one costs
+    description: |
+      Every rule is a slider, and the step scores your settings against the labels:
+      precision, recall, and which kinds of damage each rule actually catches. The
+      table of documents you removed by mistake is the one to read — a rule tuned
+      until nothing dirty survives usually takes a third of the good text with it.
+    script: steps/step2_filter.py
+    gpus: 0
+    timeout_min: 30
+    figures: [{key: f1, label: F1}, {key: recall, label: recall}]
+    params:
+      - {key: min_chars, label: Minimum characters, type: int, min: 0, max: 2000, step: 20, default: 120}
+      - {key: max_symbol_ratio, label: Maximum symbol ratio, type: float, min: 0.02, max: 0.8, step: 0.01, default: 0.2}
+      - {key: max_digit_ratio, label: Maximum digit ratio, type: float, min: 0.02, max: 0.8, step: 0.01, default: 0.25}
+      - {key: max_upper_ratio, label: Maximum capitals, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.4}
+      - {key: max_dup_line_ratio, label: Maximum repeated lines, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.4}
+      - {key: min_stopword_hits, label: Minimum common words, type: int, min: 0, max: 12, default: 2}
+      - {key: max_ellipsis_ratio, label: Maximum truncated lines, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.3}
+      - {key: min_unique_word_ratio, label: Minimum distinct words, type: float, min: 0, max: 1, step: 0.05, default: 0.35}
+  - id: dedup
+    title: Deduplicate
+    summary: The other half of the problem
+    description: |
+      Duplicates are not dirt: every copy is perfectly good text, and no threshold on
+      any single document will find them. MinHash with LSH finds them by comparing
+      documents with each other, and because the corpus knows which ones were planted,
+      the step reports exactly how many you caught and how many good documents you lost.
+    script: steps/step3_dedup.py
+    gpus: 0
+    timeout_min: 60
+    figures: [{key: dup_recall, label: caught}]
+    params:
+      - {key: near, label: Near-duplicate pass, type: bool, default: true}
+      - {key: threshold, label: Jaccard threshold, type: float, min: 0.4, max: 0.95, step: 0.05, default: 0.75}
+      - {key: n, label: Shingle size (words), type: int, min: 2, max: 12, default: 5}
+  - id: train
+    title: Train
+    summary: Does the filtered corpus train a better model?
+    description: |
+      The same tiny model on three corpora: everything, your filtered set, and the
+      clean documents the generator knows about — which is the ceiling no filter can
+      beat. Same architecture, same steps, same seed, same tokenizer. The only
+      difference is the data.
+
+      Watch for the disagreement. A filter with excellent precision but poor recall
+      keeps a small, clean corpus and can still lose to a bigger, dirtier one, because
+      the model was starved of tokens. Curation is not only about cleanliness.
+    script: steps/step4_train.py
+    gpus: 1
+    timeout_min: 180
+    figures: [{key: val_loss, label: val loss}, {key: vs_ceiling, label: vs perfect}]
+    params:
+      - {key: tokenizer_run, label: Tokenizer (step 3 of Tokenizer), type: run, experiment: world-tokenizer, step: 3, default: null}
+      - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
+      - {key: max_iters, label: Steps, type: int, min: 100, max: 10000, step: 100, default: 800}
+      - {key: batch_size, label: Sequences per step, type: int, min: 8, max: 128, default: 32}
+      - {key: lr, label: Learning rate, type: float, min: 0.00001, max: 0.005, step: 0.00001, default: 0.0008}
+      - {key: compare_baselines, label: Also train on everything and on the perfectly clean set, type: bool, default: true}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
+
+project:
+  entry: project/filters.py
+  run_command: python project/run.py --docs 20000
+  timeout_min: 180
+  interface: |
+    `project/filters.py` defines `keep(doc: dict) -> bool`. `doc` has `text`; the
+    labels are not passed to you.
+
+    The grader generates a corpus from a seed you have not seen and scores three
+    things: F1 against the labels, the validation loss of a fixed model trained on
+    what you kept, and whether you kept enough text to train on at all. Keeping
+    everything and keeping almost nothing both fail.
+
+grader:
+  script: grader/grade.py
+  gpus: 1
+  timeout_min: 60
+  auto_on_submit: true
+  score_metric: score
+
+leaderboard:
+  metric: f1
+  higher_is_better: true
