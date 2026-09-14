@@ -18,6 +18,8 @@ push to it instead of copying tarballs — see [harbor.md](harbor.md), and
 ```bash
 # 1. images (~5 GB compressed on disk; the PyTorch-based worker image is most of it)
 ./scripts/offline/export-images.sh /media/usb/atelier-images
+# or one worker tarball per CUDA variant (atelier-worker-cu126.tar.gz, …):
+CUDA_VARIANTS="cu126 cu128 cu130" ./scripts/offline/export-images.sh /media/usb/atelier-images
 
 # 2. materials (~11 GB with the list as shipped; trim scripts/offline/materials.yaml first)
 pip install huggingface_hub datasets pyyaml
@@ -44,7 +46,7 @@ Materials tab marks it "not installed" and the steps that need it say so clearly
 
 | What | Where it comes from | Roughly |
 |---|---|---|
-| Worker/runtime image (PyTorch 2.4.1 + CUDA 12.1 + transformers, trl, peft) | built by `export-images.sh` | 4 GB compressed |
+| Worker/runtime image (PyTorch + CUDA + transformers, trl, peft), one per CUDA variant | built by `export-images.sh` | 4 GB compressed each |
 | API image (python:3.12-slim + FastAPI) and web image (nginx + the built React app) | built by `export-images.sh` | 400 MB |
 | postgres:16-alpine, redis:7-alpine, prometheus, node-exporter, grafana | pulled by `export-images.sh` | 700 MB |
 | `gpt2` (the tokenizer for pretraining) | `fetch-materials.py` | 0.6 GB |
@@ -73,6 +75,8 @@ sudo mkdir -p /srv/atelier/{materials,data}
 sudo rsync -a /media/usb/materials/ /srv/atelier/materials/
 git clone <this> /srv/atelier/app && cd /srv/atelier/app   # or copy the folder
 ./scripts/offline/import-images.sh /media/usb/atelier-images
+# not using cu128? point latest at the variant you loaded:
+#   docker tag atelier-worker:cu126 atelier-worker:latest
 cp .env.example .env && $EDITOR .env
 docker compose up -d --no-build
 ```
