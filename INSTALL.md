@@ -196,6 +196,17 @@ How the queue treats it:
 The experiments fall back to CPU on their own. Multi-GPU steps run as one process and
 say in their results that the scaling numbers mean nothing there.
 
+**The whole stack on one machine without GPUs** — the single-machine file with its CPU
+layer, which does the same for the API and the worker:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+```
+
+Plain `docker compose up -d` there fails before anything runs, because that file asks
+for the NVIDIA runtime: `failed to create the automatic CDI modifier … libcuda.so.1.1:
+not found`.
+
 ### Several nodes
 
 They take jobs from one queue. Nodes need not match: different GPU counts, different
@@ -515,6 +526,7 @@ with the class watching, rather than twenty students each requesting the whole n
 |---|---|
 | Experiment missing from the home page | Teacher → Experiments; the manifest error is listed |
 | Runs stay queued forever | `docker compose logs worker` — is any worker up, and does its node have the materials? |
+| `failed to create the automatic CDI modifier` / `libcuda.so.1.1: not found` on `up` | The machine has no NVIDIA driver; add `-f docker-compose.cpu.yml` (or `-f docker-compose.worker-cpu.yml` on a worker node) |
 | Worker says `0 gpus` on a GPU machine | GPUs invisible to the container: `nvidia-container-toolkit`, then restart Docker |
 | A GPU step ran slowly, log says `cpu (asked for N GPU(s))` | No GPU node was up when it started; it ran on a CPU node |
 | "No GPU node has the materials…" | That node lacks them; fetch them, set `ATELIER_MATERIALS_NFS`, or use a generated-data experiment |

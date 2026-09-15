@@ -1,0 +1,35 @@
+# The single-machine stack on a machine without NVIDIA GPUs. Layer it on top:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+#
+# docker-compose.yml asks for the nvidia runtime and a GPU reservation on both the
+# API and the worker, and docker refuses to start either container on a machine
+# without the NVIDIA driver ("failed to create the automatic CDI modifier ... libcuda").
+# This drops both, and runs the worker from the atelier-worker-cpu image (plain
+# Ubuntu, CPU-only PyTorch, no CUDA). Every run then goes on CPU, ATELIER_CPU_SLOTS
+# at a time. Needs Docker Compose 2.24 or newer for !reset.
+# The same for a worker node of a split install: docker-compose.worker-cpu.yml.
+services:
+  api:
+    runtime: !reset null
+    deploy: !reset {}
+
+  worker:
+    image: ${ATELIER_REGISTRY:-}atelier-worker-cpu:${ATELIER_TAG:-latest}
+    build:
+      args:
+        CUDA_IMAGE: ubuntu:24.04
+        CUDA_WHEEL: cpu
+    environment:
+      ATELIER_GPU_COUNT: "0"
+      ATELIER_CPU_SLOTS: ${ATELIER_CPU_SLOTS:-1}
+      ATELIER_RUNNER_IMAGE: ${ATELIER_REGISTRY:-}atelier-worker-cpu:${ATELIER_TAG:-latest}
+    runtime: !reset null
+    deploy: !reset {}
+    # Runs execute inside this container, and a machine like this has little memory
+    # to share: one near-duplicate pass took 3 GB and starved Docker itself, so the
+    # engine, Postgres and the API all stopped answering. With a cap, the kernel kills
+    # the run that crosses it (it fails with a memory error) and everything else stays
+    # up. No swap beyond the cap, so a run over it fails fast instead of crawling.
+    mem_limit: ${ATELIER_WORKER_MEM_LIMIT:-3g}
+    memswap_limit: ${ATELIER_WORKER_MEM_LIMIT:-3g}

@@ -2,6 +2,9 @@
 #   docker compose up -d          start
 #   docker compose logs -f worker follow the scheduler
 #
+# Needs the NVIDIA driver and container toolkit. On a machine without GPUs:
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+#
 # The API and the worker share the experiments, materials and data folders, so a
 # run started through the API is executed by the worker against the same files.
 # ATELIER_REGISTRY lets every image come from your own registry, e.g.
