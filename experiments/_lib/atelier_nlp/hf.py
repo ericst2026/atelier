@@ -240,7 +240,8 @@ def sft_train(model_path: Path, train_rows: list[dict[str, Any]], out_dir: Path,
         gradient_accumulation_steps=grad_accum,
         max_length=max_length,
         packing=packing,
-        warmup_ratio=warmup_ratio,
+        # transformers 5 dropped warmup_ratio; the same thing as a number of steps
+        warmup_steps=int(total * warmup_ratio),
         lr_scheduler_type="cosine",
         logging_steps=5,
         eval_strategy="steps" if val_ds is not None else "no",
@@ -293,6 +294,8 @@ def grpo_train(model_path: Path, rows: list[dict[str, Any]], reward_funcs: list[
     from trl import GRPOConfig, GRPOTrainer
 
     tok = load_tokenizer(model_path)
+    # recent TRL has no max_prompt_length: the tokenizer truncates prompts instead
+    tok.model_max_length = min(getattr(tok, "model_max_length", max_prompt_length) or max_prompt_length, max_prompt_length + max_completion_length)
     model = AutoModelForCausalLM.from_pretrained(str(model_path), torch_dtype=torch_dtype(dtype), local_files_only=True)
     cb = ProgressCallback(max_steps, label)
     cfg = GRPOConfig(
@@ -302,7 +305,6 @@ def grpo_train(model_path: Path, rows: list[dict[str, Any]], reward_funcs: list[
         gradient_accumulation_steps=prompts_per_step,
         num_generations=num_generations,
         max_completion_length=max_completion_length,
-        max_prompt_length=max_prompt_length,
         temperature=temperature,
         beta=beta,
         max_steps=max_steps,

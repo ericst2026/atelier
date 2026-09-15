@@ -15,7 +15,22 @@ description: |
   Because the generator knows every answer, the filter is exact. No teacher model,
   no annotation, no trust required.
 
-materials: []
+  The model can be one of your Fine-tuning runs or one prepared under materials/ (an
+  Atelier checkpoint or a HuggingFace model), and the questions can be generated or
+  come from a prepared question-and-answer dataset whose answers can be checked the
+  same way.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: qwen05, name: "Qwen2.5-0.5B", path: models/Qwen2.5-0.5B, kind: model, optional: true, description: "A 0.5B base model, strong for its size."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
+  - {key: math500, name: "MATH-500", path: datasets/reasoning/math-500, kind: dataset, optional: true, description: "Competition maths with LaTeX answers; hard for small models and strict under exact match."}
+  - {key: arcc, name: "ARC-Challenge", path: datasets/eval/arc-challenge, kind: dataset, optional: true, description: "The ARC questions that simple retrieval and word co-occurrence get wrong."}
 
 steps:
   - id: prompting
@@ -32,7 +47,12 @@ steps:
     needs_previous: false
     figures: [{key: best_accuracy, label: best}]
     params:
-      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, help: A fine-tuned model has more to show here than a raw base model}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your Fine-tuning runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: model_run, label: Fine-tuning run (step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}, help: A fine-tuned model has more to show here than a raw base model}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is fine-tuned in full in step 3; a HuggingFace model gets a LoRA adapter"}
+      - {key: lang, label: Language of generated questions, type: select, default: en, show_if: {model_source: prepared}, options: [{value: en, label: English}, {value: ja, label: 日本語}], help: Used when the prepared model has no meta.json naming its language}
+      - {key: data_source, label: Questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and a short, checkable answer (answer / output / response); optional steps. Its validation or test file is asked here and in step 4, its training rows are sampled in step 2"}
       - {key: n_eval, label: Questions, type: int, min: 50, max: 1000, step: 50, default: 250}
       - {key: strategies, label: Strategies, type: multiselect, default: [direct, cot, fewshot, self_consistency], options: [{value: direct, label: answer straight away}, {value: cot, label: step by step}, {value: fewshot, label: two solved examples first}, {value: self_consistency, label: majority of k attempts}]}
       - {key: k, label: Attempts for self-consistency, type: int, min: 2, max: 16, default: 8}
@@ -58,7 +78,7 @@ steps:
       - {key: max_keep, label: Keep at most per question, type: int, min: 1, max: 8, default: 2}
       - {key: prefer, label: Which attempts to keep, type: select, default: shortest, options: [{value: shortest, label: the shortest}, {value: longest, label: the most detailed}, {value: first, label: the first found}]}
       - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
-      - {key: include_reference, label: Add the generator's own solutions for unsolved questions, type: bool, default: false, help: Turning this on is no longer self-improvement — it is distillation from the generator. Worth trying, worth labelling honestly.}
+      - {key: include_reference, label: Add the reference solutions for unsolved questions, type: bool, default: false, help: The generator's solution, or a prepared dataset's own answer. Turning this on is no longer self-improvement — it is distillation from the generator. Worth trying, worth labelling honestly.}
   - id: train
     title: Train
     summary: Fine-tune on what it got right

@@ -5,11 +5,9 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 parse_args()
 P = params({"n_eval": 300, "max_new_tokens": 192, "formats": ["bare", "system", "fewshot"]})
@@ -17,11 +15,14 @@ I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 meta = json.loads(Path(I["sft_meta"]).read_text())
 world = World(lang=meta["lang"], seed=1, families=meta.get("families"))
-model, _ = MiniLM.load(I["base_model"], device)
-tok = MiniTokenizer.load(I["tokenizer"])
-tasks = world.eval_set(int(P["n_eval"]), seed=555_003, families=meta.get("families"))
-
-shots = world.eval_set(2, seed=13)
+lm = load_lm({"format": I.get("model_format", "atelier"), "model": I["base_model"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter"), "system": I.get("system")}, device)
+if meta.get("data_source") == "prepared":
+    # the prepared dataset's held-out questions, and two of its training rows as examples
+    tasks = read_jsonl(I["sft_val"], limit=int(P["n_eval"]))
+    shots = read_jsonl(I["sft_train"], limit=2)
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=555_003, families=meta.get("families"))
+    shots = world.eval_set(2, seed=13)
 fewshot = "\n\n".join(f"{s['prompt']}\n" + "\n".join(s["steps"]) + f"\n{world.answer_prefix} {s['answer']}" for s in shots)
 formats = {
     "bare": (None, lambda q: q),
@@ -34,7 +35,7 @@ results, rows, by_family = [], [], {}
 for fi, name in enumerate(chosen):
     system, wrap = formats[name]
     prompts = [wrap(t["prompt"]) for t in tasks]
-    outs = generate(model, tok, prompts, int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 90 * (fi + d / t) / len(chosen), f"{name}: {d}/{t}"))
+    outs = lm.generate(prompts, int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 90 * (fi + d / t) / len(chosen), f"{name}: {d}/{t}"))
     correct = 0
     marked = 0
     for t, o in zip(tasks, outs):
@@ -57,6 +58,7 @@ R.chart("formats", "Accuracy by prompt format", [{"format": r["format"], "accura
 R.chart("families", "Accuracy by family", [dict({"family": f}, **{n: v[0] / v[1] for n, v in d.items()}) for f, d in sorted(by_family.items())], "family", [{"key": n, "label": n} for n in chosen], "bar", y_domain=[0, 1])
 R.table("answers", "What it said", [{"key": "ok", "label": ""}, {"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "model", "label": "The model said"}], rows)
 R.output("baseline_accuracy", best["accuracy"]).output("baseline_format", best["format"])
-for k in ("sft_train", "sft_val", "sft_meta", "base_model", "tokenizer", "lang"):
-    R.output(k, I[k])
+for k in ("sft_train", "sft_val", "sft_meta", "base_model", "tokenizer", "lang", "model_format", "adapter", "model_label"):
+    if k in I:
+        R.output(k, I[k])
 R.save()

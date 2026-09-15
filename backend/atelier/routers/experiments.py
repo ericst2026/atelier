@@ -22,7 +22,7 @@ def _spec(registry: Registry, slug: str):
 @router.get("")
 def list_experiments(user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
     progress = services.user_progress(db, user, registry)
-    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in registry.list()], "errors": registry.errors if user.role == "teacher" else {}}
+    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in registry.list()], "categories": registry.categories(), "errors": registry.errors if user.role == "teacher" else {}}
 
 
 @router.get("/{slug}")

@@ -48,7 +48,7 @@ if train_tokens:
     R.note(f"Your stream holds {ratio:.1f} tokens per parameter. Below about 10 the model is starved and the loss curve is still falling when the steps run out; far above 20 you are repeating data the model has already fitted.")
 R.artifact(run_dir / "model_config.json", "model_config.json")
 R.output("model_config", str(run_dir / "model_config.json")).output("params", est["total"])
-for k in ("train_bin", "val_bin", "meta", "vocab_size", "tokenizer", "lang", "train_tokens"):
+for k in ("train_bin", "val_bin", "meta", "vocab_size", "tokenizer", "lang", "train_tokens", "data_source", "data_label", "tokenizer_label"):
     if k in I:
         R.output(k, I[k])
 R.save()

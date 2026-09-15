@@ -6,29 +6,35 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, inputs, params, parse_args, progress, write_jsonl
 from atelier_world import World
+from atelier_world.prepared import choose_model, load_lm, model_outputs, read_qa, train_val
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib_tools import calc, count, make_lookup  # noqa: E402
+from lib_tools import calc, count, make_lookup, prepared_call  # noqa: E402
 
 parse_args()
-P = params({"enabled": ["calc", "lookup", "count"], "n_probe": 300, "max_new_tokens": 192})
+P = params({"model_source": "generated", "lang": "en", "data_source": "generated", "enabled": ["calc", "lookup", "count"], "n_probe": 300, "max_new_tokens": 192})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
-ref = I.get("sft_run_run")
-if not ref:
-    raise SystemExit("Choose a Fine-tuning run (step 3) — tool use starts from a model that can already answer.")
-o = ref["outputs"]
+info = choose_model(P, I, run_key="sft_run", run_model_key="sft_model", hint="Choose a Fine-tuning run (step 3), or a prepared model — tool use starts from a model that can already answer.")
+o = info["outputs"]
 device = "cuda" if torch.cuda.is_available() else "cpu"
-world = World(lang=o.get("lang", "en"), seed=33)
-model, ck = MiniLM.load(o["sft_model"], device)
-tok = MiniTokenizer.load(o["tokenizer"])
-system = o.get("system") or ck.get("system") or world.system_prompt
-tasks = world.eval_set(int(P["n_probe"]), seed=451_007)
+world = World(lang=info["lang"], seed=33)
+lm = load_lm(info, device)
+system = lm.system or world.system_prompt
+prepared = P["data_source"] == "prepared"
+if prepared:
+    # a prepared question set: step 2 builds traces from its training rows, step 4 asks its held-out ones
+    progress(3, f"reading materials/{P['data_material']}")
+    train_qa, val_qa = train_val(P["data_material"], read_qa, 1000, seed=33, limit=80000)
+    write_jsonl(run_dir / "qa_train.jsonl", train_qa)
+    write_jsonl(run_dir / "qa_val.jsonl", val_qa)
+    tasks = train_qa[: int(P["n_probe"])]
+    data_label = f"materials/{P['data_material']}"
+else:
+    tasks = world.eval_set(int(P["n_probe"]), seed=451_007)
+    data_label = "generated from the world"
 
 # where could a tool answer directly?
 coverage = {}
@@ -36,6 +42,12 @@ for t in tasks:
     fam = t["family"]
     c = coverage.setdefault(fam, {"family": fam, "n": 0, "calc": 0, "count": 0, "lookup": 0})
     c["n"] += 1
+    if prepared:
+        # no generator family to go by: a tool applies when its result is the answer
+        call = prepared_call(t, set(P["enabled"]), lambda r, t=t: world.grade(f"{world.answer_prefix} {r}", t["answer"]))
+        if call:
+            c[call[0]] += 1
+        continue
     if fam in ("arith", "shop", "compare", "seq"):
         c["calc"] += 1
     if fam == "count":
@@ -46,7 +58,7 @@ rows = [{**v, "any": (v["calc"] + v["count"] + v["lookup"]) / v["n"], "calc_rate
 overall = sum(v["calc"] + v["count"] + v["lookup"] for v in coverage.values()) / len(tasks)
 
 progress(20, "measuring the model without tools")
-gens = generate(model, tok, [t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(20 + 60 * d / t, f"{d}/{t}"))
+gens = lm.generate([t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(20 + 60 * d / t, f"{d}/{t}"))
 correct = [world.grade(g[0], t["answer"]) for g, t in zip(gens, tasks)]
 by_family = {}
 for c, t in zip(correct, tasks):
@@ -66,7 +78,7 @@ demo = [
 ]
 facts = {"demo": "the harbour"}
 demo.append({"tool": "lookup", "call": "lookup(demo)", "result": make_lookup(facts)("demo")})
-(run_dir / "tools.json").write_text(json.dumps({"enabled": list(P["enabled"]), "system": system}, indent=2))
+(run_dir / "tools.json").write_text(json.dumps({"enabled": list(P["enabled"]), "system": system, "data_source": P["data_source"], "data_label": data_label, "model_label": info["label"]}, indent=2))
 
 R = Result()
 R.metric("coverage", "Questions a tool could answer directly", overall, "pct", "kept")
@@ -78,5 +90,13 @@ R.chart("headroom", "Accuracy now against what a tool covers", rows, "family", [
 R.table("demo", "The tools, working", [{"key": "tool", "label": "Tool"}, {"key": "call", "label": "Call"}, {"key": "result", "label": "Returns"}], demo)
 R.table("families", "Per family", [{"key": "family", "label": "Family"}, {"key": "n", "label": "Questions", "fmt": "int"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}, {"key": "any", "label": "Tool applies", "fmt": "pct"}, {"key": "headroom", "label": "Headroom", "fmt": "pct"}], rows)
 R.artifact(run_dir / "tools.json", "tools.json")
-R.output("tools_config", str(run_dir / "tools.json")).output("policy", o["sft_model"]).output("tokenizer", o["tokenizer"]).output("lang", o.get("lang", "en")).output("system", system).output("baseline", baseline)
+R.output("tools_config", str(run_dir / "tools.json"))
+for key, v in model_outputs(info, "policy").items():
+    R.output(key, v)
+R.output("system", system).output("baseline", baseline).output("data_source", P["data_source"])
+if prepared:
+    R.output("qa_train", str(run_dir / "qa_train.jsonl")).output("qa_val", str(run_dir / "qa_val.jsonl"))
+    R.note(f"Questions from {data_label}: a tool counts as applying when calling it gives the dataset's answer — arithmetic found in the question (or its steps) for calc, the numbers in the question for count. Lookup needs the world's facts, so it never applies here. {len(train_qa):,} training rows, {len(val_qa):,} held out for step 4. Model: {info['label']} ({info['format']}).")
+else:
+    R.note(f"Questions generated from the world. Model: {info['label']} ({info['format']}).")
 R.save()

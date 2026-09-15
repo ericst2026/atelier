@@ -6,11 +6,9 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_tools import RESULT_CLOSE, RESULT_OPEN, calc, count, find_call, make_lookup, render, run_call  # noqa: E402
@@ -20,13 +18,27 @@ P = params({"n_eval": 300, "max_turns": 2, "max_new_tokens": 128})
 I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=33)
-tok = MiniTokenizer.load(I["tokenizer"])
 system = I.get("system") or world.system_prompt
-tasks = world.eval_set(int(P["n_eval"]), seed=987_654_321)
+if I.get("data_source") == "prepared":
+    tasks = read_jsonl(I["qa_val"], limit=int(P["n_eval"]))
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=987_654_321)
+fmt = I.get("model_format", "atelier")
 TOOLS = {"calc": calc, "count": count, "lookup": make_lookup({})}
 
 
-def run_loop(model, tasks, max_turns: int, label: str, offset: float):
+def generate_turn(lm, active, transcripts, on_progress):
+    if lm.format == "hf":
+        # a chat model: the transcript so far continues the assistant's own turn
+        from atelier_nlp import hf
+
+        chat = [hf.chat_prompt(lm.tok, tasks[i]["prompt"], system, assistant_prefix=transcripts[i]) for i in active]
+        return hf.generate_batch(lm.model, lm.tok, chat, int(P["max_new_tokens"]), 0.0, batch_size=32, progress=on_progress)
+    prompts = [tasks[i]["prompt"] + ("\n" + transcripts[i] if transcripts[i] else "") for i in active]
+    return lm.generate(prompts, int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=on_progress)
+
+
+def run_loop(lm, tasks, max_turns: int, label: str, offset: float):
     """Generate, run any tool call, feed the result back, repeat."""
     transcripts = [""] * len(tasks)
     stats = {"called": 0, "valid": 0, "invalid": 0, "used": 0}
@@ -34,8 +46,7 @@ def run_loop(model, tasks, max_turns: int, label: str, offset: float):
     for turn in range(max_turns + 1):
         if not active:
             break
-        prompts = [tasks[i]["prompt"] + ("\n" + transcripts[i] if transcripts[i] else "") for i in active]
-        gens = generate(model, tok, prompts, int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(offset + 20 * (turn + d / t) / (max_turns + 1), f"{label} turn {turn}: {d}/{t}"))
+        gens = generate_turn(lm, active, transcripts, lambda d, t: progress(offset + 20 * (turn + d / t) / (max_turns + 1), f"{label} turn {turn}: {d}/{t}"))
         still = []
         for idx, g in zip(active, gens):
             text = g[0]
@@ -53,9 +64,11 @@ def run_loop(model, tasks, max_turns: int, label: str, offset: float):
 
 
 out = {}
-for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["tool_model"]))):
-    model, _ = MiniLM.load(path, device)
-    transcripts, stats = run_loop(model, tasks, int(P["max_turns"]), name, 5 + 45 * j)
+models = (("before", {"format": fmt, "model": I["policy"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter")}),
+          ("after", {"format": fmt, "model": I["tool_model"], "tokenizer": I["tokenizer"], "adapter": I.get("tool_adapter")}))
+for j, (name, info) in enumerate(models):
+    lm = load_lm(info, device)
+    transcripts, stats = run_loop(lm, tasks, int(P["max_turns"]), name, 5 + 45 * j)
     correct = [world.grade(t, task["answer"]) for t, task in zip(transcripts, tasks)]
     used = 0
     for t in transcripts:
@@ -77,8 +90,9 @@ for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["tool_mod
         "used_rate": used / max(sum(1 for t in transcripts if RESULT_OPEN in t), 1),
         "stats": stats,
     }
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, a = out["before"], out["after"]
 families = sorted(set(b["by_family"]) | set(a["by_family"]))
@@ -98,4 +112,7 @@ R.chart("pipeline", "Where tool use breaks", [
 R.chart("families", "Accuracy by family", [{"family": f, "before": b["by_family"].get(f, 0), "after": a["by_family"].get(f, 0)} for f in families], "family", [{"key": "before", "label": "Before", "color": "raw"}, {"key": "after", "label": "After", "color": "kept"}], "bar", y_domain=[0, 1])
 R.table("transcripts", "Transcripts", [{"key": "ok", "label": ""}, {"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "transcript", "label": "What happened"}], [{"ok": "✓" if a["correct"][i] else "✗", "family": tasks[i]["family"], "question": tasks[i]["prompt"][:140], "transcript": a["transcripts"][i][:320]} for i in range(min(20, len(tasks)))])
 R.output("accuracy", a["accuracy"]).output("valid_calls", a["valid_rate"]).output("tool_model", I["tool_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("model_format", fmt).output("adapter", I.get("tool_adapter"))
+if I.get("data_source") == "prepared":
+    R.note("Held-out questions from the prepared dataset (its validation split, or the slice step 1 set aside); no trace was built from them.")
 R.save()

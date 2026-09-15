@@ -6,34 +6,41 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, write_jsonl
 from atelier_world import World
+from atelier_world.prepared import choose_model, load_lm, model_outputs, read_qa, train_val
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_reward import shaped_reward  # noqa: E402
 
 parse_args()
-P = params({"w_correct": 1.0, "w_marked": 0.2, "w_steps": 0.1, "w_length": 0.05, "w_repeat": 0.5, "n_probe": 80, "group_size": 8, "temperature": 1.0})
+P = params({"model_source": "generated", "lang": "en", "data_source": "generated", "w_correct": 1.0, "w_marked": 0.2, "w_steps": 0.1, "w_length": 0.05, "w_repeat": 0.5, "n_probe": 80, "group_size": 8, "temperature": 1.0})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
-ref = I.get("sft_run_run")
-if not ref:
-    raise SystemExit("Choose a Fine-tuning run (step 3) as the starting policy.")
-o = ref["outputs"]
+info = choose_model(P, I, run_key="sft_run", run_model_key="sft_model", hint="Choose a Fine-tuning run (step 3) as the starting policy, or a prepared model.")
+o = info["outputs"]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 weights = {"correct": float(P["w_correct"]), "marked": float(P["w_marked"]), "steps": float(P["w_steps"]), "length": float(P["w_length"]), "repeat": float(P["w_repeat"])}
-world = World(lang=o.get("lang", "en"), seed=5)
-model, ck = MiniLM.load(o["sft_model"], device)
-tok = MiniTokenizer.load(o["tokenizer"])
-system = o.get("system") or ck.get("system") or world.system_prompt
+world = World(lang=info["lang"], seed=5)
+lm = load_lm(info, device)
+system = lm.system or world.system_prompt
+prepared = P["data_source"] == "prepared"
 
-tasks = world.eval_set(int(P["n_probe"]), seed=31_337)
+if prepared:
+    # the questions come from the teacher's dataset: training rows for steps 1–3,
+    # its validation split (or a held-out slice) for step 4
+    progress(5, f"reading materials/{P['data_material']}")
+    train_qa, val_qa = train_val(P["data_material"], read_qa, 2000, seed=5, limit=20000)
+    write_jsonl(run_dir / "qa_train.jsonl", train_qa)
+    write_jsonl(run_dir / "qa_val.jsonl", val_qa)
+    tasks = train_qa[: int(P["n_probe"])]
+    data_label = f"materials/{P['data_material']}"
+else:
+    tasks = world.eval_set(int(P["n_probe"]), seed=31_337)
+    data_label = "generated from the world"
 k = int(P["group_size"])
 progress(10, f"sampling {k} answers for each of {len(tasks)} questions")
-groups = generate(model, tok, [t["prompt"] for t in tasks], 160, float(P["temperature"]), num_samples=k, batch_size=max(16, k * 2), system=system, progress=lambda d, t: progress(10 + 70 * d / t, f"{d}/{t}"))
+groups = lm.generate([t["prompt"] for t in tasks], 160, float(P["temperature"]), num_samples=k, batch_size=max(16, k * 2), system=system, progress=lambda d, t: progress(10 + 70 * d / t, f"{d}/{t}"))
 
 rows, spreads, totals, parts_sum = [], [], [], {"correct": 0.0, "marked": 0.0, "working": 0.0, "length_pen": 0.0, "repeat_pen": 0.0}
 flat_correct = 0
@@ -56,7 +63,7 @@ for t, group in zip(tasks, groups):
 
 n = len(totals)
 flat_share = flat_correct / len(tasks)
-spec = {"weights": weights, "system": system}
+spec = {"weights": weights, "system": system, "data_source": P["data_source"], "data_label": data_label, "model_label": info["label"]}
 (run_dir / "reward_spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2))
 
 R = Result()
@@ -75,5 +82,13 @@ R.chart("parts", "Where the reward came from", [
 ], "part", [{"key": "value", "label": "Mean contribution", "color": "raw"}], "bar", note="If correctness is not the tallest bar, the policy will optimise the others first.")
 R.table("pairs", "Best and worst answer in a group", [{"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "best", "label": "Highest scoring"}, {"key": "worst", "label": "Lowest scoring"}], rows)
 R.artifact(run_dir / "reward_spec.json", "reward_spec.json")
-R.output("reward_spec", str(run_dir / "reward_spec.json")).output("policy", o["sft_model"]).output("tokenizer", o["tokenizer"]).output("lang", o.get("lang", "en")).output("system", system).output("sft_accuracy", o.get("accuracy"))
+R.output("reward_spec", str(run_dir / "reward_spec.json"))
+for key, v in model_outputs(info, "policy").items():
+    R.output(key, v)
+R.output("system", system).output("sft_accuracy", o.get("accuracy")).output("data_source", P["data_source"])
+if prepared:
+    R.output("qa_train", str(run_dir / "qa_train.jsonl")).output("qa_val", str(run_dir / "qa_val.jsonl"))
+    R.note(f"Questions from {data_label}: {len(train_qa):,} for probing and training, {len(val_qa):,} held out for step 4. Starting policy: {info['label']} ({info['format']}).")
+else:
+    R.note(f"Questions generated from the world. Starting policy: {info['label']} ({info['format']}).")
 R.save()

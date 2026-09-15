@@ -1,33 +1,61 @@
 """Step 2 — what the frozen reference already thinks of each pair."""
-import os
 from pathlib import Path
 
 import torch
 
 from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
-from atelier_mini.dpo import _batch, sequence_logprob
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_world.prepared import load_lm
 
 parse_args()
 P = params({"probe": 400})
 I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pairs = read_jsonl(I["pairs"], limit=int(P["probe"]))
-reference, ck = MiniLM.load(I["policy"], device)
+fmt = I.get("model_format", "atelier")
+lm = load_lm({"format": fmt, "model": I["policy"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter"), "system": I.get("system")}, device)
+reference, tok = lm.model, lm.tok
 reference.eval()
-tok = MiniTokenizer.load(I["tokenizer"])
-system = I.get("system") or ck.get("system")
-block = reference.config.block_size
+system = I.get("system") or lm.system
+
+if fmt == "hf":
+    from atelier_nlp import hf
+
+    def logprobs(chunk, key):
+        """Summed log-probability of each answer after its chat prompt, and its token count."""
+        seqs, starts = [], []
+        for r in chunk:
+            p_ids = tok(hf.chat_prompt(tok, r["prompt"], system), add_special_tokens=False)["input_ids"]
+            a_ids = tok(r[key] + (tok.eos_token or ""), add_special_tokens=False)["input_ids"]
+            seqs.append((p_ids + a_ids)[:1024])
+            starts.append(min(len(p_ids), 1024))
+        width = max(len(s) for s in seqs)
+        idx = torch.full((len(seqs), width), tok.pad_token_id, dtype=torch.long)
+        attn = torch.zeros((len(seqs), width), dtype=torch.long)
+        mask = torch.zeros((len(seqs), width), dtype=torch.float)
+        for i, (s, st) in enumerate(zip(seqs, starts)):
+            idx[i, : len(s)] = torch.tensor(s)
+            attn[i, : len(s)] = 1
+            mask[i, st : len(s)] = 1
+        idx, attn, mask = idx.to(device), attn.to(device), mask.to(device)
+        logits = reference(input_ids=idx, attention_mask=attn).logits[:, :-1].float()
+        lp = torch.log_softmax(logits, -1).gather(-1, idx[:, 1:].unsqueeze(-1)).squeeze(-1)
+        m = mask[:, 1:]
+        return (lp * m).sum(1).cpu(), m.sum(1).cpu()
+else:
+    from atelier_mini.dpo import _batch, sequence_logprob
+
+    block = reference.config.block_size
+
+    def logprobs(chunk, key):
+        c_idx, c_mask = _batch(chunk, tok, block, device, system, key)
+        return sequence_logprob(reference, c_idx, c_mask)
 
 margins, chosen_lp, rejected_lp = [], [], []
 with torch.no_grad():
     for i in range(0, len(pairs), 8):
         chunk = pairs[i : i + 8]
-        c_idx, c_mask = _batch(chunk, tok, block, device, system, "chosen")
-        r_idx, r_mask = _batch(chunk, tok, block, device, system, "rejected")
-        lc, nc = sequence_logprob(reference, c_idx, c_mask)
-        lr, nr = sequence_logprob(reference, r_idx, r_mask)
+        lc, nc = logprobs(chunk, "chosen")
+        lr, nr = logprobs(chunk, "rejected")
         margins += (lc - lr).tolist()
         chosen_lp += (lc / nc.clamp(min=1)).tolist()
         rejected_lp += (lr / nr.clamp(min=1)).tolist()
@@ -43,7 +71,7 @@ R.metric("chosen_logp", "Chosen, per token", sum(chosen_lp) / len(chosen_lp), "n
 R.chart("margins", "Reference margin per pair", hist(margins, bins=25), "bin", [{"key": "count", "label": "Pairs", "color": "sky"}], "bar", note="Mass to the right of zero is where the reference already agrees with your labels. The useful pairs sit near the middle.")
 R.chart("logp", "Per-token log-probability", [{"kind": "chosen", "value": sum(chosen_lp) / len(chosen_lp)}, {"kind": "rejected", "value": sum(rejected_lp) / len(rejected_lp)}], "kind", [{"key": "value", "label": "Log-probability", "color": "kept"}], "bar")
 R.output("reference", I["policy"])
-for k in ("pairs", "pairs_val", "policy", "tokenizer", "lang", "system", "sft_accuracy"):
+for k in ("pairs", "pairs_val", "policy", "tokenizer", "lang", "system", "sft_accuracy", "model_format", "adapter", "model_label", "data_source", "eval_questions"):
     if k in I:
         R.output(k, I[k])
 R.save()

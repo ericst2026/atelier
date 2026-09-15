@@ -5,21 +5,22 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 parse_args()
 P = params({"n_eval": 250, "n_samples": 8, "temperature": 0.8, "max_new_tokens": 192})
 I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=3)
-tok = MiniTokenizer.load(I["tokenizer"])
 system = I.get("system") or world.system_prompt
-tasks = world.eval_set(int(P["n_eval"]), seed=314_159_265)
+if I.get("data_source") == "prepared":
+    tasks = read_jsonl(I["qa_val"], limit=int(P["n_eval"]))
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=314_159_265)
 n = int(P["n_samples"])
+fmt = I.get("model_format", "atelier")
 
 
 def pass_at_k(total, correct, k):
@@ -29,9 +30,11 @@ def pass_at_k(total, correct, k):
 
 
 out = {}
-for j, (name, path) in enumerate((("before", I["model"]), ("after", I["rft_model"]))):
-    model, _ = MiniLM.load(path, device)
-    groups = generate(model, tok, [t["prompt"] for t in tasks], int(P["max_new_tokens"]), float(P["temperature"]), num_samples=n, batch_size=max(16, n * 2), system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
+models = (("before", {"format": fmt, "model": I["model"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter")}),
+          ("after", {"format": fmt, "model": I["rft_model"], "tokenizer": I["tokenizer"], "adapter": I.get("rft_adapter")}))
+for j, (name, info) in enumerate(models):
+    lm = load_lm(info, device)
+    groups = lm.generate([t["prompt"] for t in tasks], int(P["max_new_tokens"]), float(P["temperature"]), num_samples=n, batch_size=max(16, n * 2), system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
     corr = [[world.grade(c, t["answer"]) for c in g] for g, t in zip(groups, tasks)]
     by_family = {}
     for cs, t in zip(corr, tasks):
@@ -46,8 +49,9 @@ for j, (name, path) in enumerate((("before", I["model"]), ("after", I["rft_model
         "lens_ok": lens_ok, "lens_bad": lens_bad,
         "first": [g[0] for g in groups], "corr": corr,
     }
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, a = out["before"], out["after"]
 families = sorted(set(b["by_family"]) | set(a["by_family"]))
@@ -63,5 +67,8 @@ hi = max(a["lens_ok"] + a["lens_bad"] + [1])
 ok_bins = {x["bin"]: x["count"] for x in hist(a["lens_ok"], bins=15, lo=0, hi=hi)}
 R.chart("lengths", "Chain length, correct against wrong", [{"bin": x["bin"], "correct": ok_bins.get(x["bin"], 0), "wrong": x["count"]} for x in hist(a["lens_bad"], bins=15, lo=0, hi=hi)], "bin", [{"key": "correct", "label": "Correct", "color": "kept"}, {"key": "wrong", "label": "Wrong", "color": "dup"}], "bar")
 R.table("examples", "First attempt at each question", [{"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "before", "label": "Before"}, {"key": "after", "label": "After"}], [{"family": t["family"], "question": t["prompt"][:170], "gold": t["answer"], "before": ("✓ " if b["corr"][i][0] else "✗ ") + b["first"][i][:200], "after": ("✓ " if a["corr"][i][0] else "✗ ") + a["first"][i][:200]} for i, t in enumerate(tasks[:15])])
+if I.get("data_source") == "prepared":
+    R.note("Held-out questions from the prepared dataset (its validation split, or the slice step 1 set aside) — the same ones step 1 asked, never sampled for training.")
 R.output("accuracy", a["pass"][0]).output("rft_model", I["rft_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("model_format", fmt).output("adapter", I.get("rft_adapter"))
 R.save()

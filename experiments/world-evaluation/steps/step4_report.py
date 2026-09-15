@@ -13,19 +13,23 @@ from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.tok import MiniTokenizer
 from atelier_mini.train import pretrain
 from atelier_world import World
+from atelier_world.prepared import choose_model, read_documents
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_harness import option_logprobs, pick  # noqa: E402
 from lib_items import render_item  # noqa: E402
 
 parse_args()
-P = params({"contamination_rate": 0.5, "repeats": 4, "docs": 40000, "max_iters": 600, "preset": "tiny", "notes": ""})
+P = params({"tokenizer_source": "generated", "tokenizer_material": None, "corpus_source": "generated", "corpus_material": None, "contamination_rate": 0.5, "repeats": 4, "docs": 40000, "max_iters": 600, "preset": "tiny", "notes": ""})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
-ref = I.get("tokenizer_run_run")
-if not ref:
-    raise SystemExit("Choose a Tokenizer run (step 3) — both models must use the same vocabulary.")
-tok = MiniTokenizer.load(ref["outputs"]["tokenizer"])
+# the vocabulary both models share: a Tokenizer run, or the tokenizer.json of a prepared
+# Atelier model (only its tokenizer is used — both models are trained from scratch)
+tk = choose_model(P, I, run_key="tokenizer_run", run_model_key="tokenizer", source_key="tokenizer_source", material_key="tokenizer_material",
+                  hint="Choose a Tokenizer run (step 3), or a prepared Atelier model whose tokenizer to use — both models must use the same vocabulary.")
+if tk["format"] != "atelier":
+    raise SystemExit(f"{tk['label']} is a HuggingFace model. This step trains two small Atelier models from scratch, so it needs an Atelier tokenizer: a Tokenizer run, or a prepared Atelier model folder (model.pt + tokenizer.json).")
+tok = MiniTokenizer.load(tk["tokenizer"])
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=int(I.get("seed", 4242)))
 choice = read_jsonl(I["choice"])
@@ -33,7 +37,21 @@ rng = random.Random(99)
 
 leaked = rng.sample(choice, int(len(choice) * float(P["contamination_rate"])))
 leaked_ids = {id(x) for x in leaked}
-clean_docs = [d["text"] for d in world.documents(int(P["docs"]), seed=555_111)]
+corpus_prepared = str(P["corpus_source"]) == "prepared"
+if corpus_prepared:
+    if not P["corpus_material"]:
+        raise SystemExit("Choose a prepared documents dataset for the pretraining corpus, or switch it back to generated.")
+    texts = [d["text"] for d in read_documents(P["corpus_material"], limit=int(P["docs"]))]
+    if len(texts) < 2:
+        raise SystemExit(f"materials/{P['corpus_material']} has {len(texts)} document; at least two are needed, one to hold out for the validation loss.")
+    random.Random(7).shuffle(texts)
+    # a held-out slice for the validation loss, never trained on by either model
+    n_val = max(1, min(2000, len(texts) // 20))
+    val_texts, clean_docs = texts[:n_val], texts[n_val:]
+    corpus_label = f"materials/{P['corpus_material']}"
+else:
+    clean_docs = [d["text"] for d in world.documents(int(P["docs"]), seed=555_111)]
+    corpus_label = "generated from the world"
 dirty_docs = list(clean_docs)
 for item in leaked:
     dirty_docs += [render_item(item)] * int(P["repeats"])
@@ -43,13 +61,15 @@ progress(8, f"{len(leaked)} of {len(choice)} items leaked, each repeated {P['rep
 cfg = MiniConfig.preset(P["preset"], tok.vocab_size)
 cfg.block_size = 256
 iters = int(P["max_iters"])
-val_texts = [d["text"] for d in world.documents(2000, seed=90_001)]
+if not corpus_prepared:
+    val_texts = [d["text"] for d in world.documents(2000, seed=90_001)]
 vs = pack(val_texts, tok, run_dir / "val.bin", max_tokens=800_000)
 val = TokenStream(run_dir / "val.bin", vs["dtype"])
 trained = {}
 
 for i, (name, texts) in enumerate((("clean", clean_docs), ("contaminated", dirty_docs))):
     st = pack(texts, tok, run_dir / f"train_{name}.bin", max_tokens=200_000_000)
+    (run_dir / name).mkdir(parents=True, exist_ok=True)
     torch.manual_seed(1)
     model = MiniLM(cfg).to(device)
     res = pretrain(model, TokenStream(run_dir / f"train_{name}.bin", st["dtype"]), val, run_dir / name,
@@ -87,7 +107,8 @@ for j, (name, info) in enumerate(trained.items()):
 clean, dirty = results["clean"], results["contaminated"]
 inflation = dirty["overall"] - clean["overall"]
 card = {
-    "benchmark": {"items": len(choice), "options": I.get("n_options"), "language": I.get("lang")},
+    "benchmark": {"items": len(choice), "options": I.get("n_options"), "language": I.get("lang"), "source": I.get("data_label", "generated from the world")},
+    "pretraining": {"corpus": corpus_label, "documents": len(clean_docs), "tokenizer": tk["label"]},
     "harness": {"scoring": "log-probability per token", "shots": 0, "sensitivity_spread": I.get("spread")},
     "results": {"clean_model": clean, "contaminated_model": dirty},
     "contamination": {"share_leaked": float(P["contamination_rate"]), "repeats": int(P["repeats"]), "inflation": inflation},
@@ -110,6 +131,7 @@ R.chart("loss", "Validation loss", [{"model": "clean", "loss": clean["val_loss"]
 R.table("card", "The model card", [{"key": "field", "label": "Field"}, {"key": "value", "label": "Value"}], [
     {"field": "benchmark", "value": json.dumps(card["benchmark"], ensure_ascii=False)},
     {"field": "harness", "value": json.dumps(card["harness"], ensure_ascii=False)},
+    {"field": "pretraining", "value": json.dumps(card["pretraining"], ensure_ascii=False)},
     {"field": "clean model", "value": f"{clean['overall']:.1%} overall"},
     {"field": "contaminated model", "value": f"{dirty['overall']:.1%} overall, {dirty['on_leaked']:.1%} on leaked items"},
     {"field": "notes", "value": str(card["notes"])[:300]},

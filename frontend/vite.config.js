@@ -8,10 +8,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: true },
-      "/ws": { target: "ws://localhost:8000", ws: true },
-      "/metrics": { target: "http://localhost:8000" },
-      "/grafana": { target: "http://localhost:3000", changeOrigin: true },
+      "/api": { target: "http://localhost", changeOrigin: true },
+      "/ws": { target: "ws://localhost", ws: true },
+      "/metrics": { target: "http://localhost" },
+      "/grafana": { target: "http://localhost", changeOrigin: true },
     },
   },
   build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 4000 },

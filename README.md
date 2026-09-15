@@ -213,6 +213,7 @@ dashboard in the Grafana UI, export it back over
 - [docs/architecture.md](docs/architecture.md) — how a run flows from click to result
 - [docs/experiments.md](docs/experiments.md) — writing your own four-step experiment
 - [docs/curriculum.md](docs/curriculum.md) — all eighteen experiments and what each needs
+- [docs/prepared-materials.md](docs/prepared-materials.md) — your own models and datasets in the world experiments
 - [docs/api.md](docs/api.md) — every endpoint
 - [docs/displays.md](docs/displays.md) — the wall screens
 - [docs/topologies.md](docs/topologies.md) — one machine, a control plane and several nodes, nodes without GPUs

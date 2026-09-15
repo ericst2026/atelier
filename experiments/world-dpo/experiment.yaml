@@ -14,7 +14,22 @@ description: |
   answer is right. Compare the result against experiment 4: same goal, same data
   budget, two very different mechanisms and two very different failure modes.
 
-materials: []
+  The model can be one of your Fine-tuning runs or one prepared under materials/ (an
+  Atelier checkpoint or a HuggingFace model). The pairs can be sampled from it on
+  generated questions or on a prepared question set, or taken as they are from a
+  prepared dataset of chosen and rejected answers.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, for: [questions_material], description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
+  - {key: arce, name: "ARC-Easy", path: datasets/eval/arc-easy, kind: dataset, optional: true, for: [questions_material], description: "Grade-school science multiple choice; the letter is graded."}
+  - {key: ultra, name: "UltraFeedback (binarised)", path: datasets/preference/ultrafeedback, kind: dataset, optional: true, for: [data_material], description: "Prompts with a preferred and a rejected chat answer."}
+  - {key: orca, name: "Orca DPO pairs", path: datasets/preference/orca-dpo, kind: dataset, optional: true, for: [data_material], description: "Instruction prompts with a chosen and a rejected answer."}
 
 steps:
   - id: pairs
@@ -32,13 +47,19 @@ steps:
     needs_previous: false
     figures: [{key: pairs, label: pairs}]
     params:
-      - {key: sft_run, label: Model (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null}
-      - {key: n_questions, label: Questions to sample, type: int, min: 200, max: 20000, step: 200, default: 3000}
-      - {key: k, label: Answers per question, type: int, min: 2, max: 16, default: 6}
-      - {key: temperature, label: Sampling temperature, type: float, min: 0.3, max: 1.5, step: 0.1, default: 1.0}
-      - {key: pair_on, label: What makes one answer better, type: select, default: correct, options: [{value: correct, label: correct against wrong}, {value: correct_short, label: correct and short against correct and long}, {value: mixed, label: both}]}
-      - {key: max_pairs_per_question, label: Pairs per question, type: int, min: 1, max: 4, default: 1}
-      - {key: max_new_tokens, label: Answer length cap, type: int, min: 32, max: 384, step: 16, default: 160}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your Fine-tuning runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: sft_run, label: Fine-tuning run (step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is trained with the course's own DPO; a HuggingFace model with TRL's DPO as a LoRA adapter"}
+      - {key: lang, label: Language of generated questions, type: select, default: en, show_if: {model_source: prepared}, options: [{value: en, label: English}, {value: ja, label: 日本語}], help: Used when the prepared model has no meta.json naming its language}
+      - {key: data_source, label: Pairs, type: select, default: generated, options: [{value: generated, label: generated — sampled from the model on the world's questions}, {value: prepared_questions, label: sampled from the model on prepared questions}, {value: prepared, label: prepared — preference pairs under materials/datasets}]}
+      - {key: questions_material, label: Prepared questions, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared_questions}, help: "Questions with short, checkable answers (prompt / question + answer / output). Its training rows are sampled for pairs; its validation or test rows are graded in step 4"}
+      - {key: data_material, label: Prepared pairs, type: material, kind: dataset, schemas: [pairs], default: null, show_if: {data_source: prepared}, help: "JSONL rows with prompt, chosen and rejected, used as they are. A validation or test file is held out, otherwise a slice. Step 4 grades held-out rows that also have an answer field; without answers it asks generated questions"}
+      - {key: n_questions, label: Questions to sample (pairs to use, at most, when prepared), type: int, min: 200, max: 20000, step: 200, default: 3000}
+      - {key: k, label: Answers per question, show_if: {data_source: [generated, prepared_questions]}, type: int, min: 2, max: 16, default: 6}
+      - {key: temperature, label: Sampling temperature, show_if: {data_source: [generated, prepared_questions]}, type: float, min: 0.3, max: 1.5, step: 0.1, default: 1.0}
+      - {key: pair_on, label: What makes one answer better, show_if: {data_source: [generated, prepared_questions]}, type: select, default: correct, options: [{value: correct, label: correct against wrong}, {value: correct_short, label: correct and short against correct and long}, {value: mixed, label: both}]}
+      - {key: max_pairs_per_question, label: Pairs per question, show_if: {data_source: [generated, prepared_questions]}, type: int, min: 1, max: 4, default: 1}
+      - {key: max_new_tokens, label: Answer length cap, show_if: {data_source: [generated, prepared_questions]}, type: int, min: 32, max: 384, step: 16, default: 160}
   - id: reference
     title: Reference
     summary: Freeze what you are measuring against

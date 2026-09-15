@@ -15,12 +15,21 @@ description: |
   whitespace tokenizer has nothing to split on and BPE has to discover word
   pieces from bytes alone. Compare the chars-per-token you get in each.
 
-  Step 1 also reads your own text, from a folder under `materials/` or pasted
-  straight in. That is the seam where this course becomes a course about *your*
-  data: train the vocabulary on your corpus here, and pretraining, fine-tuning and
-  everything after it inherit it.
+  Step 1 also reads your own text: a prepared dataset your teacher placed under
+  `materials/datasets` (chosen from a list — plain .txt/.md files or JSONL with a
+  text field), or text pasted straight in. That is the seam where this course
+  becomes a course about *your* data: train the vocabulary on your corpus here, and
+  pretraining, fine-tuning and everything after it inherit it.
 
-materials: []
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: wt103raw, name: "WikiText-103 (raw)", path: datasets/tokenizer/wikitext-103-raw, kind: dataset, optional: true, description: "Wikipedia text before tokenisation."}
+  - {key: tiny, name: "TinyStories", path: datasets/pretrain/tinystories, kind: dataset, optional: true, description: "Short, simple stories; a tiny model learns fluent English from them quickly."}
+  - {key: code, name: "Source code", path: datasets/tokenizer/code, kind: dataset, optional: true, description: "Program files: see how a prose-trained vocabulary handles indentation and symbols."}
+  - {key: multi, name: "Multilingual text", path: datasets/tokenizer/multilingual, kind: dataset, optional: true, description: "Text in many languages and scripts."}
+  - {key: pools, name: "Text pools (prose, code, polyglot)", path: datasets/tokenizer/pools, kind: dataset, optional: true, description: "Three plain-text files, one document each."}
 
 steps:
   - id: corpus
@@ -38,16 +47,16 @@ steps:
     needs_previous: false
     figures: [{key: docs, label: docs}, {key: chars, label: chars}]
     params:
-      - {key: source, label: Where the text comes from, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: folder, label: a folder of your own text}, {value: pasted, label: text you paste below}]}
-      - {key: corpus_path, label: Folder under materials/ (for the folder option), type: text, default: "", help: "A path like corpora/our-reports — .txt, .md and .jsonl files are read, one document per file or per JSONL line"}
-      - {key: pasted_text, label: Your text (for the paste option), type: textarea, default: "", help: One document per blank-line-separated block}
-      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語 (no spaces)}]}
-      - {key: docs, label: Documents, type: int, min: 200, max: 400000, step: 200, default: 20000}
-      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55}
-      - {key: record_share, label: Share of fact records, type: float, min: 0, max: 1, step: 0.05, default: 0.15}
-      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30}
-      - {key: dup_rate, label: Planted near duplicates, type: float, min: 0, max: 0.4, step: 0.02, default: 0.08}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7}
+      - {key: source, label: Where the text comes from, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}, {value: pasted, label: text you paste below}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [documents], default: null, show_if: {source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field"}
+      - {key: pasted_text, label: Your text, type: textarea, default: "", show_if: {source: pasted}, help: One document per blank-line-separated block}
+      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語 (no spaces)}], help: "For your own text, the language it is in: later experiments ask questions in this language"}
+      - {key: docs, label: Documents (at most, for your own text), type: int, min: 200, max: 400000, step: 200, default: 20000}
+      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55, show_if: {source: generated}}
+      - {key: record_share, label: Share of fact records, type: float, min: 0, max: 1, step: 0.05, default: 0.15, show_if: {source: generated}}
+      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30, show_if: {source: generated}}
+      - {key: dup_rate, label: Planted near duplicates, type: float, min: 0, max: 0.4, step: 0.02, default: 0.08, show_if: {source: generated}}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 7, show_if: {source: generated}}
   - id: dedup
     title: Dedup
     summary: Remove repeats before they are memorised

@@ -17,7 +17,22 @@ description: |
   the labels, and on the validation loss of a model trained on what it kept — and
   the two disagree more often than you would expect.
 
-materials: []
+  The corpus can also be a prepared one: a documents dataset your teacher placed
+  under `materials/datasets`, and the tokenizer can be a prepared model's
+  tokenizer.json (Atelier or HuggingFace). Real text carries no labels, so for a
+  prepared corpus the filters, dedup and training all run but precision, recall,
+  F1, duplicates caught and the perfectly-clean ceiling are not available — the
+  model trained on what survives is the only judge.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: gpt2, name: "GPT-2", path: models/gpt2, kind: model, optional: true, description: "The 124M GPT-2 and its byte-level BPE tokenizer."}
+  - {key: smol135, name: "SmolLM2-135M", path: models/SmolLM2-135M, kind: model, optional: true, description: "A 135M base model, small enough to fine-tune in full on one GPU."}
+  - {key: qwen05, name: "Qwen2.5-0.5B", path: models/Qwen2.5-0.5B, kind: model, optional: true, description: "A 0.5B base model, strong for its size."}
+  - {key: c4, name: "C4 (raw)", path: datasets/curation/c4-raw, kind: dataset, optional: true, description: "Crawled web text with little cleaning: boilerplate, repeats and spam to find."}
+  - {key: fwedu, name: "FineWeb-Edu", path: datasets/curation/fineweb-edu, kind: dataset, optional: true, description: "Web pages already filtered for educational value."}
 
 steps:
   - id: survey
@@ -35,11 +50,14 @@ steps:
     needs_previous: false
     figures: [{key: docs, label: docs}, {key: clean_share, label: clean}]
     params:
-      - {key: docs, label: Documents, type: int, min: 500, max: 200000, step: 500, default: 20000}
-      - {key: dirty_share, label: Share spoiled, type: float, min: 0.1, max: 0.9, step: 0.05, default: 0.55}
-      - {key: duplicate_share, label: Share duplicated, type: float, min: 0, max: 0.4, step: 0.02, default: 0.12}
+      - {key: data_source, label: Corpus, type: select, default: generated, options: [{value: generated, label: generated from the world and spoiled (labelled)}, {value: prepared, label: prepared — a dataset under materials/datasets (no labels)}]}
+      - {key: data_material, label: Prepared corpus, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field. Without labels, precision and recall cannot be measured"}
+      - {key: docs, label: Documents (to generate, or at most from a prepared corpus), type: int, min: 500, max: 200000, step: 500, default: 20000}
+      - {key: dirty_share, label: Share spoiled, type: float, min: 0.1, max: 0.9, step: 0.05, default: 0.55, show_if: {data_source: generated}}
+      - {key: duplicate_share, label: Share duplicated, type: float, min: 0, max: 0.4, step: 0.02, default: 0.12, show_if: {data_source: generated}}
+      - {key: heldout_share, label: Held out for validation, type: float, min: 0.02, max: 0.3, step: 0.02, default: 0.1, show_if: {data_source: prepared}, help: "Set aside before filtering; step 4 validates on these (a generated corpus validates on fresh generated text instead)"}
       - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語}]}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 17}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 17, help: "Generates the corpus; for a prepared one, shuffles it before the held-out split"}
   - id: filter
     title: Filter
     summary: Set the thresholds and see what each one costs
@@ -94,12 +112,14 @@ steps:
     timeout_min: 180
     figures: [{key: val_loss, label: val loss}, {key: vs_ceiling, label: vs perfect}]
     params:
-      - {key: tokenizer_run, label: Tokenizer (step 3 of Tokenizer), type: run, experiment: world-tokenizer, step: 3, default: null}
+      - {key: tokenizer_source, label: Tokenizer, type: select, default: generated, options: [{value: generated, label: generated — one of your Tokenizer runs}, {value: prepared, label: prepared — the tokenizer of a model under materials/models}]}
+      - {key: tokenizer_run, label: Tokenizer run (step 3), type: run, experiment: world-tokenizer, step: 3, default: null, show_if: {tokenizer_source: generated}}
+      - {key: tokenizer_material, label: Prepared model (its tokenizer), type: material, kind: model, formats: [atelier, hf], default: null, show_if: {tokenizer_source: prepared}, help: "Only its tokenizer.json is used; the models here are trained from scratch"}
       - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
       - {key: max_iters, label: Steps, type: int, min: 100, max: 10000, step: 100, default: 800}
       - {key: batch_size, label: Sequences per step, type: int, min: 8, max: 128, default: 32}
       - {key: lr, label: Learning rate, type: float, min: 0.00001, max: 0.005, step: 0.00001, default: 0.0008}
-      - {key: compare_baselines, label: Also train on everything and on the perfectly clean set, type: bool, default: true}
+      - {key: compare_baselines, label: Also train on everything and on the perfectly clean set, type: bool, default: true, help: "A prepared corpus has no labels, so only the unfiltered comparison is trained"}
       - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
 
 project:

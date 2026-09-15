@@ -53,6 +53,36 @@ for s in specs:
                 refs_ok = False
 check("cross-experiment run params point at real experiments", refs_ok)
 
+# --- prepared materials a step can choose -------------------------------------
+from atelier import materials  # noqa: E402
+
+world = [s for s in specs if s.slug.startswith("world-")]
+mat_params = [(s, p) for s in world for st in s.steps for p in st.params if p.get("type") == "material"]
+check("world material params offer declared choices", sum(1 for s, p in mat_params if materials.choices(s, p)) >= 25, str(len(mat_params)))
+check("a choice has the kind of its param", all(c["kind"] == p["kind"] for s, p in mat_params for c in materials.choices(s, p)))
+sft = reg.get("world-sft")
+sft_model = next(p for p in sft.step(1).params if p["key"] == "model_material")
+check("for: keeps a model out of other pickers", all(c["path"].startswith("models/") for c in materials.choices(sft, sft_model)))
+from atelier.config import settings  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    kept, settings.materials_dir = settings.materials_dir, Path(tmp)  # a machine with no materials at all
+    try:
+        check("optional materials are not required by a generated run", materials.missing_locally(sft, {}) == [] and materials.missing_for(sft) == [])
+        chosen = materials.choices(sft, sft_model)[0]["path"]
+        check("an optional material is required once a run picks it", materials.missing_locally(sft, {"model_material": chosen}) == [chosen])
+    finally:
+        settings.materials_dir = kept
+
+with tempfile.TemporaryDirectory() as tmp:
+    typo = Path(tmp) / "typo"
+    (typo / "steps").mkdir(parents=True)
+    steps = "".join(f"  - {{id: s{i}, title: S{i}, params: [{{key: m, type: material, kind: model}}]}}\n" for i in range(1, 5))
+    (typo / "experiment.yaml").write_text(f"slug: typo\ntitle: Typo\nmaterials:\n  - {{key: x, path: models/x, kind: model, for: [nope]}}\nsteps:\n{steps}")
+    r3 = registry.Registry(Path(tmp))
+    r3.reload(force=True)
+    check("a material for: naming no param is rejected", "typo" in r3.errors, str(r3.errors))
+
 # --- storage ----------------------------------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     r = Path(tmp)

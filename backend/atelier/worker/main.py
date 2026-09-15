@@ -118,7 +118,7 @@ class Worker:
             spec = self.registry.get(run.experiment)
         except Exception:
             return True, []          # unknown experiment: let the run fail with a real error
-        return (not (missing := materials.missing_locally(spec))), missing
+        return (not (missing := materials.missing_locally(spec, run.params))), missing
 
     def defer(self, rid: int, missing: list[str], seconds: float = 20.0) -> None:
         """Put it back for another node. If nobody has the materials, fail it now

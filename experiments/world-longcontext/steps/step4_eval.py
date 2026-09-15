@@ -1,4 +1,5 @@
 """Step 4 — needle at every depth and every length."""
+import json
 import os
 import random
 import sys
@@ -24,6 +25,7 @@ tok = MiniTokenizer.load(I["tokenizer"])
 lengths = sorted(int(x) for x in P["lengths"])
 depths = [round(i / (int(P["depths"]) - 1), 3) for i in range(int(P["depths"]))] if int(P["depths"]) > 1 else [0.5]
 rng = random.Random(101)
+passages = json.loads(Path(I["filler_eval"]).read_text(encoding="utf-8")) if I.get("data_source") == "prepared" and I.get("filler_eval") else None
 cells = [(L, d) for L in lengths for d in depths]
 
 out = {}
@@ -36,13 +38,14 @@ for mi, (name, path) in enumerate((("before", I["model"]), ("after", I["long_mod
     model._cos = model._sin = None
     grid = {}
     for ci, (L, d) in enumerate(cells):
-        needles = [plant(world, tok, L - 60, d, rng) for _ in range(int(P["per_cell"]))]
+        needles = [plant(world, tok, L - 60, d, rng, passages) for _ in range(int(P["per_cell"]))]
         gens = generate(model, tok, [needle_prompt(nd["document"], nd["question"], world.answer_prefix) for nd in needles], 24, 0.0, batch_size=4)
         grid[(L, d)] = sum(1 for g, nd in zip(gens, needles) if nd["answer"] in g[0]) / len(needles)
         progress(5 + 45 * mi + 40 * (ci + 1) / len(cells), f"{name}: {L} tokens, depth {d:.0%} → {grid[(L, d)]:.0%}")
     out[name] = grid
     del model
-    torch.cuda.empty_cache()
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, a = out["before"], out["after"]
 overall_a = sum(a.values()) / len(a)
@@ -63,5 +66,5 @@ R.metric("val_loss", "Validation loss", I.get("val_loss"), "num", "raw")
 R.chart("depths", "Needle found by depth", by_depth, "depth", [{"key": str(L), "label": f"{L} tokens"} for L in lengths], "line", y_domain=[0, 1], note="The usual shape is a U: what is at the start and at the end is found, what is in the middle is not.")
 R.chart("lengths", "Before and after, by length", by_length, "length", [{"key": "before", "label": "Before", "color": "raw"}, {"key": "after", "label": "After", "color": "kept"}], "bar", y_domain=[0, 1])
 R.table("grid", "Every cell", [{"key": "length", "label": "Tokens"}, {"key": "depth", "label": "Depth"}, {"key": "before", "label": "Before", "fmt": "pct"}, {"key": "after", "label": "After", "fmt": "pct"}], [{"length": L, "depth": f"{int(d * 100)}%", "before": b[(L, d)], "after": a[(L, d)]} for L in lengths for d in depths])
-R.output("needle_accuracy", overall_a).output("long_model", I["long_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("needle_accuracy", overall_a).output("long_model", I["long_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en")).output("model_format", "atelier").output("data_source", I.get("data_source", "generated"))
 R.save()

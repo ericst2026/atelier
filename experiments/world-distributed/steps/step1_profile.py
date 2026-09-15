@@ -58,6 +58,7 @@ R.chart("mfu", "Utilisation against batch size", rows, "batch", [{"key": "mfu", 
 R.table("rows", "Measurements", [{"key": "batch", "label": "Batch"}, {"key": "tokens_per_sec", "label": "Tokens/s", "fmt": "int"}, {"key": "sec_per_step", "label": "Seconds/step", "fmt": "num"}, {"key": "peak_gb", "label": "Peak GB", "fmt": "num"}, {"key": "mfu", "label": "MFU", "fmt": "pct"}, {"key": "data_share", "label": "Data wait", "fmt": "pct"}], rows)
 if cpu:
     R.note("Measured on a CPU-only node with one process: no GPU, no bf16, and nothing to scale across, so the numbers are not comparable with a GPU run.")
+R.note(f"Token stream from Pretraining run #{ref['id']}: documents {o.get('data_label', 'generated from the world')}, tokenizer {o.get('tokenizer_label', 'from a Tokenizer run')}. Throughput depends on the vocabulary size and context length, not on what the text says.")
 R.artifact(run_dir / "profile.json", "profile.json")
 R.output("profile", str(run_dir / "profile.json")).output("best_batch", best["batch"]).output("single_gpu_tps", best["tokens_per_sec"])
 R.output("train_bin", o["train_bin"]).output("val_bin", o["val_bin"]).output("meta", o["meta"]).output("vocab_size", o["vocab_size"]).output("preset", P["preset"]).output("block_size", cfg.block_size)

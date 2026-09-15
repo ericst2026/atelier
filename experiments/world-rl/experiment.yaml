@@ -16,7 +16,19 @@ description: |
   is the lesson: reward design is the work, and every reward is gameable until
   proven otherwise.
 
-materials: []
+  The starting policy can be one of your Fine-tuning runs or a model prepared under
+  materials/ (an Atelier checkpoint or a HuggingFace model), and the questions can be
+  generated or come from a prepared question-and-answer dataset — its answers are
+  graded the same way.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
 
 steps:
   - id: reward
@@ -35,7 +47,12 @@ steps:
     needs_previous: false
     figures: [{key: spread, label: spread}]
     params:
-      - {key: sft_run, label: Starting policy (step 3 of Fine-tuning), type: run, experiment: world-sft, step: 3, default: null, help: RL on a base model that cannot answer at all mostly wastes GPU time}
+      - {key: model_source, label: Starting policy, type: select, default: generated, options: [{value: generated, label: generated — one of your Fine-tuning runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: sft_run, label: Fine-tuning run (step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}, help: RL on a base model that cannot answer at all mostly wastes GPU time}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is trained with the course's own GRPO; a HuggingFace model with TRL's GRPO. Either should already be able to answer sometimes"}
+      - {key: lang, label: Language of generated questions, type: select, default: en, show_if: {model_source: prepared}, options: [{value: en, label: English}, {value: ja, label: 日本語}], help: Used when the prepared model has no meta.json naming its language}
+      - {key: data_source, label: Questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and a short answer (answer / output / response) the reward can check. A validation or test file is kept for step 4, otherwise a slice is held out"}
       - {key: w_correct, label: Weight — correct answer, type: float, min: 0, max: 4, step: 0.1, default: 1}
       - {key: w_marked, label: Weight — answer on a marked line, type: float, min: 0, max: 1, step: 0.05, default: 0.2}
       - {key: w_steps, label: Weight — shows its working, type: float, min: 0, max: 1, step: 0.05, default: 0.1}
@@ -58,8 +75,8 @@ steps:
     figures: [{key: learnable, label: learnable}]
     params:
       - {key: n_prompts, label: Training prompts, type: int, min: 100, max: 20000, step: 100, default: 2000}
-      - {key: families, label: Task families, type: multiselect, default: [arith, count, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
-      - {key: difficulty, label: Difficulty, type: select, default: mixed, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
+      - {key: families, label: Task families (generated questions), type: multiselect, default: [arith, count, shop, compare, seq], help: A prepared dataset is probed by its own groups instead, options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: difficulty, label: Difficulty (generated questions), type: select, default: mixed, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
       - {key: probe, label: Questions to probe per family, type: int, min: 5, max: 100, default: 24}
       - {key: group_size, label: Answers per question when probing, type: int, min: 2, max: 16, default: 8}
   - id: train
@@ -98,7 +115,7 @@ steps:
     params:
       - {key: n_eval, label: Held-out questions, type: int, min: 50, max: 2000, step: 50, default: 400}
       - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
-      - {key: held_out_families, label: Include families you did not train on, type: bool, default: true, help: The honest test of whether anything general was learned}
+      - {key: held_out_families, label: Include families you did not train on, type: bool, default: true, help: The honest test of whether anything general was learned. Generated questions only — a prepared dataset is evaluated on its held-out rows}
 
 project:
   entry: project/reward.py

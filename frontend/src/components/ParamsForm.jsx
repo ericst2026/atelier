@@ -25,14 +25,70 @@ function RunPicker({ p, value, onChange }) {
   );
 }
 
-/** Schema-driven form. params: [{key,label,type,min,max,step,default,options,help}] */
-export default function ParamsForm({ params, values, onChange, disabled }) {
+const fmtBytes = (b) => (!b ? "" : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${Math.max(1, Math.round(b / 1e3))} kB`);
+
+/** A prepared model or dataset: one of the materials the experiment declares for this
+ *  param (or, outside an experiment step, anything suitable under materials/). */
+function MaterialPicker({ p, value, onChange, disabled, experiment, step }) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const q = new URLSearchParams({ kind: p.kind || "model" });
+    if (p.formats) q.set("formats", p.formats.join(","));
+    if (p.schemas) q.set("schemas", p.schemas.join(","));
+    if (experiment && step) {
+      q.set("experiment", experiment);
+      q.set("step", String(step));
+      q.set("param", p.key);
+    }
+    api(`/system/materials/catalog?${q}`)
+      .then((r) => { setItems(r.items || []); setError(""); })
+      .catch((e) => { setItems([]); setError(String(e.message || e)); });
+  }, [p.key, p.kind, (p.formats || []).join(","), (p.schemas || []).join(","), experiment, step]);
+  const top = p.kind === "dataset" ? "materials/datasets/" : "materials/models/";
+  if (items && items.length === 0)
+    return <div className="help">{error || (experiment ? `This experiment offers no prepared ${p.kind || "model"} here yet. A teacher adds one to the materials list in its experiment.yaml.` : `Nothing suitable under ${top} yet. Copy it there on the worker machine; the list refreshes within a few minutes.`)}</div>;
+  return (
+    <select value={value ?? ""} disabled={disabled || !items} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">{items ? "— choose —" : "loading…"}</option>
+      {(items || []).map((m) => (
+        <option key={m.path} value={m.path} disabled={!!m.problem}>
+          {m.name}
+          {m.format ? ` · ${m.format === "hf" ? "HuggingFace" : "Atelier"}` : ""}
+          {m.schemas ? ` · ${(m.splits || []).join(", ") || m.schemas.join(", ")}` : ""}
+          {m.bytes ? ` · ${fmtBytes(m.bytes)}` : ""}
+          {m.problem ? ` · ${m.problem}` : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// show_if: {key: value | [values]} — the field is shown only while those params match
+const visible = (p, values, params) =>
+  !p.show_if ||
+  Object.entries(p.show_if).every(([k, want]) => {
+    const other = params.find((x) => x.key === k);
+    const cur = values[k] ?? other?.default;
+    return Array.isArray(want) ? want.includes(cur) : cur === want;
+  });
+
+/** Schema-driven form. params: [{key,label,type,min,max,step,default,options,help,show_if}] */
+export default function ParamsForm({ params, values, onChange, disabled, experiment, step }) {
   const set = (k, v) => onChange({ ...values, [k]: v });
   return (
     <div className="stack" style={{ gap: 10 }}>
-      {params.map((p) => {
+      {params.filter((p) => visible(p, values, params)).map((p) => {
         const v = values[p.key] ?? p.default;
         const t = p.type || "text";
+        if (t === "material")
+          return (
+            <label key={p.key} className="field">
+              <span>{p.label}</span>
+              <MaterialPicker p={p} value={v} disabled={disabled} experiment={experiment} step={step} onChange={(x) => set(p.key, x)} />
+              {p.help && <span className="help">{p.help}</span>}
+            </label>
+          );
         if (t === "bool")
           return (
             <label key={p.key} className="check">

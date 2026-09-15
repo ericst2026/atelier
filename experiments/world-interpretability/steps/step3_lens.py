@@ -6,9 +6,9 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -21,11 +21,17 @@ run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, _ = MiniLM.load(I["model"], device)
 model.eval()
-tok = MiniTokenizer.load(I["tokenizer"])
+tok = load_tokenizer(I["tokenizer"])
 world = World(lang=I.get("lang", "en"), seed=3)
 
 prompts = [p.strip() for p in str(P["prompts"]).splitlines() if p.strip()]
-auto = [t["prompt"] for t in world.eval_set(int(P["n_auto"]), seed=777_001)] if int(P["n_auto"]) else []
+if not int(P["n_auto"]):
+    auto = []
+elif I.get("data_source") == "prepared":
+    # the prepared questions from step 1, counted from the end so they differ from the first ones probed
+    auto = [t["prompt"] for t in read_jsonl(I["questions"])[-int(P["n_auto"]):]]
+else:
+    auto = [t["prompt"] for t in world.eval_set(int(P["n_auto"]), seed=777_001)]
 all_prompts = prompts + auto
 if not all_prompts:
     raise SystemExit("Give at least one prompt, or ask for some generated ones.")
@@ -61,7 +67,7 @@ for t in traces[:3]:
 R.note("The logit lens assumes every layer writes into the space the output embedding reads. Here that is exactly true — the embeddings are tied, so this is the same matrix the last layer uses, which makes the early layers more honest to read than on models where they are not.")
 R.artifact(run_dir / "lens.json", "lens.json")
 R.output("lens", str(run_dir / "lens.json")).output("decision_layer", decision)
-for k in ("model", "tokenizer", "lang", "system", "layers", "probe", "attention", "probe_accuracy"):
+for k in ("model", "tokenizer", "lang", "system", "layers", "probe", "attention", "probe_accuracy", "model_format", "adapter", "model_label", "data_source", "data_label", "questions"):
     if k in I:
         R.output(k, I[k])
 R.save()

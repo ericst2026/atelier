@@ -48,5 +48,9 @@ R.table("grid", "The grid", [{"key": "label", "label": "Shape"}, {"key": "params
 if sum(p["tokens"] for p in points) > available:
     R.note(f"The grid wants more tokens than your stream holds ({available:,}). Either pack more documents, or accept that the larger points will see the same data more than once — which raises their loss and bends the curve.")
 R.artifact(run_dir / "plan.json", "plan.json")
-R.output("plan", str(run_dir / "plan.json")).output("train_bin", o["train_bin"]).output("val_bin", o["val_bin"]).output("meta", o["meta"]).output("vocab_size", vocab).output("tokenizer", o["tokenizer"]).output("lang", o.get("lang", "en"))
+# the data is whatever the Pretraining run packed: generated from the world, or a
+# prepared corpus and tokenizer chosen there
+source_note = f"Token stream from Pretraining run #{ref['id']}: documents {o.get('data_label', 'generated from the world')}, tokenizer {o.get('tokenizer_label', 'from a Tokenizer run')}."
+R.note(source_note)
+R.output("plan", str(run_dir / "plan.json")).output("train_bin", o["train_bin"]).output("val_bin", o["val_bin"]).output("meta", o["meta"]).output("vocab_size", vocab).output("tokenizer", o["tokenizer"]).output("lang", o.get("lang", "en")).output("data_label", o.get("data_label", "generated from the world"))
 R.save()

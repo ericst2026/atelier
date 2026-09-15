@@ -15,7 +15,22 @@ description: |
   induction heads appear, you can retrain with different data and see whether they
   still do. Nothing is a black box here except the part that is genuinely hard.
 
-materials: []
+  The model, and the runs it is compared with, can also be Atelier checkpoints a
+  teacher prepared under materials/models; the questions can be a prepared
+  question-and-answer dataset and the text in step 2 a prepared text dataset —
+  each chosen independently of the others. HuggingFace models are not offered:
+  every technique here reads the Atelier model's own layers.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+# Its model pickers take Atelier checkpoints only (the experiment works inside the
+# model's own layers) and none is prepared yet: put one under materials/models/ and list it here.
+materials:
+  - {key: arce, name: "ARC-Easy", path: datasets/eval/arc-easy, kind: dataset, optional: true, for: [data_material], description: "Grade-school science multiple choice; the letter is graded."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, for: [data_material], description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
+  - {key: tiny, name: "TinyStories", path: datasets/pretrain/tinystories, kind: dataset, optional: true, for: [text_material], description: "Short, simple stories; a tiny model learns fluent English from them quickly."}
+  - {key: wt103, name: "WikiText-103", path: datasets/pretrain/wikitext-103, kind: dataset, optional: true, for: [text_material], description: "Wikipedia good and featured articles."}
 
 steps:
   - id: probe
@@ -36,7 +51,11 @@ steps:
     needs_previous: false
     figures: [{key: best_layer, label: best layer}]
     params:
-      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json). Probes, attention maps, the logit lens and steering read the Atelier model's own layers, so HuggingFace models are not listed"}
+      - {key: data_source, label: Questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional family (or category) and difficulty to probe for, and steps for the steering contrast. Steps 3 and 4 use the same questions"}
       - {key: targets, label: What to probe for, type: multiselect, default: [family, correctness], options: [{value: family, label: which kind of question}, {value: correctness, label: whether it will be right}, {value: difficulty, label: how hard the question is}]}
       - {key: n_examples, label: Examples, type: int, min: 200, max: 8000, step: 100, default: 1500}
       - {key: pooling, label: Which position to read, type: select, default: last, options: [{value: last, label: the final token}, {value: mean, label: the mean over all tokens}]}
@@ -60,8 +79,13 @@ steps:
     params:
       - {key: seq_len, label: Sequence length to repeat, type: int, min: 16, max: 128, step: 8, default: 48}
       - {key: n_sequences, label: Sequences to average over, type: int, min: 4, max: 64, default: 16}
-      - {key: compare_a, label: Compare with another run, type: run, experiment: world-pretrain, step: 3, default: null}
-      - {key: compare_b, label: And another, type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: compare_source, label: Models to compare with, type: select, default: generated, options: [{value: generated, label: generated — your Pretraining runs}, {value: prepared, label: prepared — models under materials/models}]}
+      - {key: compare_a, label: Compare with another run, type: run, experiment: world-pretrain, step: 3, default: null, show_if: {compare_source: generated}}
+      - {key: compare_b, label: And another, type: run, experiment: world-pretrain, step: 3, default: null, show_if: {compare_source: generated}}
+      - {key: compare_a_material, label: Compare with a prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {compare_source: prepared}, help: An Atelier checkpoint; leave empty to compare with nothing}
+      - {key: compare_b_material, label: And another, type: material, kind: model, formats: [atelier], default: null, show_if: {compare_source: prepared}}
+      - {key: text_source, label: Text for the pattern, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a text dataset under materials/datasets}]}
+      - {key: text_material, label: Prepared text, type: material, kind: dataset, schemas: [documents], default: null, show_if: {text_source: prepared}, help: The start of its first document is shown through the chosen head}
       - {key: show_head, label: Show one head's pattern, type: text, default: "", help: "As layer.head, for example 5.3 — empty means the strongest one"}
   - id: lens
     title: Logit lens

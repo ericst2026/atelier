@@ -8,31 +8,51 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, write_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
+from atelier_world.prepared import choose_model, model_outputs, read_qa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_interp import fit_probe, hidden_states, probe_accuracy  # noqa: E402
 
 parse_args()
-P = params({"targets": ["family", "correctness"], "n_examples": 1500, "pooling": "last", "seed": 1})
+P = params({"model_source": "generated", "data_source": "generated", "targets": ["family", "correctness"], "n_examples": 1500, "pooling": "last", "seed": 1})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 ref = I.get("model_run_run")
-if not ref:
-    raise SystemExit("Choose a model: a Fine-tuning step 3 run, or a Pretraining step 3 run.")
-o = ref["outputs"]
-model_path = o.get("sft_model") or o.get("model")
+run_model_key = "sft_model" if ref and ref["outputs"].get("sft_model") else "model"
+# probes, attention maps, the logit lens and steering all read the Atelier model's own
+# layers, so a HuggingFace model is refused
+info = choose_model(P, I, run_key="model_run", run_model_key=run_model_key, hint="Choose a model: a Fine-tuning step 3 run, a Pretraining step 3 run, or a prepared Atelier model.", formats=("atelier",))
+model_path = info["model"]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, ck = MiniLM.load(model_path, device)
 model.eval()
-tok = MiniTokenizer.load(o["tokenizer"])
-world = World(lang=o.get("lang", "en"), seed=int(P["seed"]))
-system = o.get("system") or ck.get("system")
-tasks = world.eval_set(int(P["n_examples"]), seed=246_801)
+info["tokenizer"] = info["tokenizer"] or ck.get("tokenizer")
+tok = load_tokenizer(info["tokenizer"])
+world = World(lang=info["lang"], seed=int(P["seed"]))
+system = info["system"] or ck.get("system")
+info["system"] = system
+prepared = P["data_source"] == "prepared"
+if prepared:
+    # the prepared questions; steps 3 and 4 take theirs from the same file
+    qa = read_qa(P["data_material"], limit=max(int(P["n_examples"]), 1000))
+
+    def target(q):
+        body = ("\n".join(q["steps"]) + "\n") if q["steps"] else ""
+        return f"{body}{world.answer_prefix} {q['answer']}"
+
+    write_jsonl(run_dir / "questions.jsonl", [{"id": i, "family": q["family"], "difficulty": q["difficulty"], "prompt": q["prompt"], "target": target(q), "answer": q["answer"], "steps": q["steps"]} for i, q in enumerate(qa)])
+    tasks = qa[: int(P["n_examples"])]
+    data_label = f"materials/{P['data_material']}"
+    if len(tasks) < 8:
+        raise SystemExit(f"{data_label} has {len(tasks)} usable questions; probing needs at least 8 to hold some out.")
+else:
+    tasks = world.eval_set(int(P["n_examples"]), seed=246_801)
+    data_label = "generated from the world"
 prompts = [t["prompt"] for t in tasks]
 
 progress(5, f"reading hidden states from {len(prompts)} prompts")
@@ -54,6 +74,10 @@ if "correctness" in P["targets"]:
         labels["whether it will be right"] = (correct, 2)
     else:
         print(f"[probe] skipping the correctness probe: {correct.sum()}/{len(correct)} correct, so there is nothing to separate", flush=True)
+for name in [k for k, (_, classes) in labels.items() if classes < 2]:
+    # a prepared dataset may have one family, or no difficulty at all
+    print(f"[probe] skipping '{name}': every question in {data_label} has the same label", flush=True)
+    del labels[name]
 if not labels:
     raise SystemExit("No usable probe target — pick another, or a model that gets some right and some wrong.")
 
@@ -90,5 +114,12 @@ R.chart("curves", "Probe accuracy by layer", [merged[k] for k in sorted(merged)]
 R.table("best", "Where each property is most readable", [{"key": "property", "label": "Property"}, {"key": "layer", "label": "Layer"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}, {"key": "majority", "label": "Commonest label", "fmt": "pct"}], [{"property": k, **v} for k, v in best.items()])
 R.note("A linear probe finding a property does not prove the model uses it: the information can be present and ignored. That is what the steering step tests, and it is the reason these four techniques belong in one experiment rather than four.")
 R.artifact(run_dir / "probe.json", "probe.json")
-R.output("probe", str(run_dir / "probe.json")).output("model", model_path).output("tokenizer", o["tokenizer"]).output("lang", o.get("lang", "en")).output("system", system).output("layers", n_layers - 1).output("probe_accuracy", best[first]["accuracy"])
+R.note(f"Model: {info['label']}. Questions: {data_label}.")
+R.output("probe", str(run_dir / "probe.json")).output("layers", n_layers - 1).output("probe_accuracy", best[first]["accuracy"])
+for k, v in model_outputs(info, "model").items():
+    R.output(k, v)
+R.output("data_source", P["data_source"]).output("data_label", data_label)
+if prepared:
+    R.artifact(run_dir / "questions.jsonl", "questions.jsonl")
+    R.output("questions", str(run_dir / "questions.jsonl"))
 R.save()

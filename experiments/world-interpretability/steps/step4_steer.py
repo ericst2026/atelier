@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,7 +23,7 @@ run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, ck = MiniLM.load(I["model"], device)
 model.eval()
-tok = MiniTokenizer.load(I["tokenizer"])
+tok = load_tokenizer(I["tokenizer"])
 world = World(lang=I.get("lang", "en"), seed=3)
 system = I.get("system") or ck.get("system")
 n_layers = len(model.blocks)
@@ -31,8 +31,22 @@ layer = int(P["layer"])
 if layer < 0:
     layer = n_layers // 2
 
-# the two sets of prompts are generated, so the effect can be counted rather than judged
-pool = list(world.instructions(400, with_steps=True, seed=5150))
+# the two sets of prompts have checkable answers (generated, or a prepared dataset), so the effect can be counted rather than judged
+prepared = I.get("data_source") == "prepared"
+if prepared:
+    # the prepared questions from step 1: the last n_test are asked, the rest build the contrast
+    qrows = read_jsonl(I["questions"])
+    n_test = min(int(P["n_test"]), max(1, len(qrows) // 2))
+    tasks = qrows[-n_test:]
+    pool = qrows[:-n_test][:400]
+    if P["contrast"] == "working":
+        pool = [x for x in pool if x["steps"]]
+    if P["contrast"] == "working" and not pool:
+        raise SystemExit(f"{I.get('data_label', 'The prepared dataset')} has no reasoning steps, so there is no 'showing its working' to contrast with. Choose short answers or a task family's style instead.")
+    if P["contrast"] == "family" and len({x["family"] for x in pool}) < 2:
+        raise SystemExit(f"{I.get('data_label', 'The prepared dataset')} has one task family, so there is no other family to contrast with. Choose another contrast.")
+else:
+    pool = list(world.instructions(400, with_steps=True, seed=5150))
 if P["contrast"] == "working":
     positive = ["\n".join(x["steps"]) + f"\n{world.answer_prefix} {x['answer']}" for x in pool[:80]]
     negative = [f"{world.answer_prefix} {x['answer']}" for x in pool[:80]]
@@ -64,7 +78,8 @@ else:
 progress(10, f"building the direction at layer {layer}")
 direction = difference_vector(model, tok, positive, negative, layer)
 norm = float(np.linalg.norm(direction))
-tasks = world.eval_set(int(P["n_test"]), seed=404_404)
+if not prepared:
+    tasks = world.eval_set(int(P["n_test"]), seed=404_404)
 prompts = [t["prompt"] for t in tasks]
 strengths = sorted(float(s) for s in P["strengths"])
 
@@ -113,4 +128,7 @@ R.table("samples", "What it wrote", [{"key": "strength", "label": "Strength"}, {
 R.note("This is the test the probing step cannot do on its own. A direction found by a probe might be information the model ignores; if adding it changes the output in the predicted way, it is information the model uses.")
 R.artifact(run_dir / "steer.json", "steer.json")
 R.output("steer", str(run_dir / "steer.json")).output("effect", best["effect"] - base["effect"]).output("model", I["model"]).output("tokenizer", I["tokenizer"])
+for k in ("lang", "system", "model_format", "adapter", "model_label"):
+    if k in I:
+        R.output(k, I[k])
 R.save()

@@ -14,7 +14,21 @@ description: |
   on that curve LoRA stops matching full fine-tuning; finding where, on your model
   and your data, is the point.
 
-materials: []
+  The base model can be one of your Pretraining runs or an Atelier checkpoint a
+  teacher prepared under materials/models, and the demonstrations can be generated
+  from the world or a prepared question-and-answer dataset — the two choices are
+  independent. A HuggingFace model is not offered: the adapters here are our own,
+  written against the Atelier model's layers.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+# Its model pickers take Atelier checkpoints only (the experiment works inside the
+# model's own layers) and none is prepared yet: put one under materials/models/ and list it here.
+materials:
+  - {key: alpaca, name: "Alpaca-cleaned", path: datasets/sft/alpaca-cleaned, kind: dataset, optional: true, description: "52k instruction / response pairs. Free-text answers: good demonstrations, poor for exact-match grading."}
+  - {key: dolly, name: "Dolly 15k", path: datasets/sft/dolly-15k, kind: dataset, optional: true, description: "15k human-written instruction / response pairs; the context passage is added to the prompt."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
 
 steps:
   - id: setup
@@ -32,7 +46,11 @@ steps:
     needs_previous: false
     figures: [{key: trainable, label: trainable}]
     params:
-      - {key: base_run, label: Base model (Pretraining step 3), type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: model_source, label: Base model, type: select, default: generated, options: [{value: generated, label: generated — one of your Pretraining runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: base_run, label: Pretraining run (step 3), type: run, experiment: world-pretrain, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json). The LoRA code works on the Atelier model's own layers, so HuggingFace models are not listed"}
+      - {key: data_source, label: Demonstrations and questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional steps. A validation or test file is used for evaluation, otherwise a slice is held out. Steps 2 and 3 train on at most their Demonstrations setting"}
       - {key: r, label: Rank, type: int, min: 1, max: 256, default: 16}
       - {key: alpha, label: Alpha, type: int, min: 1, max: 512, default: 32, help: The update is scaled by alpha/r, so doubling the rank without doubling alpha halves each adapter's influence}
       - {key: targets, label: Adapt these projections, type: multiselect, default: [qkv, proj, gate, up, down], options: [{value: qkv, label: attention qkv}, {value: proj, label: attention output}, {value: gate, label: mlp gate}, {value: up, label: mlp up}, {value: down, label: mlp down}]}

@@ -8,24 +8,28 @@ import torch
 
 from atelier_sdk import Result, inputs, params, parse_args, progress
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
+from atelier_world.prepared import choose_model, read_documents
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_interp import induction_scores  # noqa: E402
 
 parse_args()
-P = params({"seq_len": 48, "n_sequences": 16, "compare_a": None, "compare_b": None, "show_head": ""})
+P = params({"seq_len": 48, "n_sequences": 16, "compare_source": "generated", "compare_a": None, "compare_b": None, "compare_a_material": None, "compare_b_material": None, "text_source": "generated", "text_material": None, "show_head": ""})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
-tok = MiniTokenizer.load(I["tokenizer"])
+tok = load_tokenizer(I["tokenizer"])
 targets = [("this model", I["model"])]
-for key in ("compare_a_run", "compare_b_run"):
-    ref = I.get(key)
-    if ref:
-        o = ref["outputs"]
-        targets.append((f"run {ref['id']} · {o.get('tokens_seen', 0):,} tokens", o.get("sft_model") or o.get("model")))
+prepared_compare = P["compare_source"] == "prepared"
+for key in ("compare_a", "compare_b"):
+    ref = I.get(f"{key}_run")
+    if (prepared_compare and P.get(f"{key}_material")) or (not prepared_compare and ref):
+        # induction scores come from the Atelier model's attention maps, so HuggingFace is refused
+        c = choose_model(P, I, run_key=key, run_model_key="sft_model" if ref and ref["outputs"].get("sft_model") else "model", hint="", source_key="compare_source", material_key=f"{key}_material", formats=("atelier",))
+        label = f"run {ref['id']} · {c['outputs'].get('tokens_seen', 0):,} tokens" if c["source"] == "generated" else c["label"]
+        targets.append((label, c["model"]))
 
 summaries, all_scores = [], {}
 for ti, (label, path) in enumerate(targets):
@@ -50,8 +54,13 @@ heat = [dict({"layer": l}, **{f"h{h}": float(scores[l, h]) for h in range(n_head
 by_layer = [{"layer": l, "max": float(scores[l].max()), "mean": float(scores[l].mean())} for l in range(n_layers)]
 
 L, Hd = (int(x) for x in P["show_head"].split(".")) if P["show_head"].strip() else (top[0][0], top[0][1])
-world = World(lang=I.get("lang", "en"), seed=3)
-text = world.documents(1).__next__()["text"]
+if P["text_source"] == "prepared":
+    if not P.get("text_material"):
+        raise SystemExit("Choose a prepared text dataset, or switch the text back to generated.")
+    text = read_documents(P["text_material"], limit=1)[0]["text"]
+else:
+    world = World(lang=I.get("lang", "en"), seed=3)
+    text = world.documents(1).__next__()["text"]
 ids = torch.tensor([tok.encode(text, bos=True)[:28]], device=device)
 att = base_model.attention_maps(ids)[L, 0, Hd].float().cpu().numpy()
 pieces = [tok.decode([i]) or "·" for i in ids[0].tolist()]
@@ -72,7 +81,7 @@ R.table("top", "The strongest heads", [{"key": "layer", "label": "Layer"}, {"key
 R.table("pattern", f"What head {L}.{Hd} attends to", [{"key": "query", "label": "From"}] + [{"key": f"k{j}", "label": pieces[j][:6], "fmt": "num"} for j in range(window)], pattern_rows, note="Rows are query positions, columns are keys. A previous-token head is a line just below the diagonal; an induction head puts weight far to the left.")
 R.artifact(run_dir / "attention.json", "attention.json")
 R.output("attention", str(run_dir / "attention.json")).output("top_head", f"{top[0][0]}.{top[0][1]}").output("top_induction", top[0][2])
-for k in ("model", "tokenizer", "lang", "system", "probe", "layers", "probe_accuracy"):
+for k in ("model", "tokenizer", "lang", "system", "probe", "layers", "probe_accuracy", "model_format", "adapter", "model_label", "data_source", "data_label", "questions"):
     if k in I:
         R.output(k, I[k])
 R.save()

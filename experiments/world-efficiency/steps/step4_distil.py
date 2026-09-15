@@ -7,11 +7,11 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.data import sft_batch
 from atelier_mini.gen import generate
 from atelier_mini.model import MiniConfig, MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_mini.train import cosine_lr
 from atelier_world import World
 
@@ -21,14 +21,19 @@ I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=88)
-tok = MiniTokenizer.load(I["tokenizer"])
+tok = load_tokenizer(I["tokenizer"])
 teacher, tck = MiniLM.load(I["model"], device)
 teacher.eval()
 for p in teacher.parameters():
     p.requires_grad_(False)
 system = I.get("system") or tck.get("system") or world.system_prompt
-rows = list(world.instructions(int(P["examples"]), with_steps=True))
-tasks = world.eval_set(200, seed=333_999)
+if I.get("data_source") == "prepared":
+    # step 1 wrote the prepared dataset's training rows and held-out questions
+    rows = read_jsonl(I["data_train"], limit=int(P["examples"]))
+    tasks = read_jsonl(I["data_val"], limit=200)
+else:
+    rows = list(world.instructions(int(P["examples"]), with_steps=True))
+    tasks = world.eval_set(200, seed=333_999)
 
 
 def accuracy(model):
@@ -109,5 +114,6 @@ if hist_s:
     R.chart("loss", "Training loss", [curve[k] for k in sorted(curve)], "step", [{"key": "distilled", "label": "With a teacher", "color": "kept"}, {"key": "from scratch", "label": "Without", "color": "raw"}], "line", note="The two losses are not comparable in absolute terms — one includes a KL term — but their shapes are.")
 R.table("results", "Results", [{"key": "model", "label": "Model"}, {"key": "params", "label": "Parameters", "fmt": "int"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}, {"key": "seconds", "label": "Training seconds", "fmt": "num"}], results)
 R.artifact(run_dir / "student.pt", "student.pt")
-R.output("student", str(run_dir / "student.pt")).output("student_accuracy", acc_d).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("student", str(run_dir / "student.pt")).output("student_accuracy", acc_d).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en")).output("system", system).output("model_format", "atelier").output("adapter", None)
+R.output("model_label", f"student distilled from {I.get('model_label', I['model'])}")
 R.save()

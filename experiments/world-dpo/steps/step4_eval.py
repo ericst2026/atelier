@@ -4,25 +4,29 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 parse_args()
 P = params({"n_eval": 300, "max_new_tokens": 192})
 I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=6)
-tok = MiniTokenizer.load(I["tokenizer"])
 system = I.get("system") or world.system_prompt
-tasks = world.eval_set(int(P["n_eval"]), seed=505_117)
+if I.get("eval_questions"):
+    # prepared data: the held-out questions step 1 set aside, with their answers
+    tasks = read_jsonl(I["eval_questions"], limit=int(P["n_eval"]))
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=505_117)
+fmt = I.get("model_format", "atelier")
 
 out = {}
-for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["dpo_model"]))):
-    model, _ = MiniLM.load(path, device)
-    gens = generate(model, tok, [t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
+models = (("before", {"format": fmt, "model": I["policy"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter")}),
+          ("after", {"format": fmt, "model": I["dpo_model"], "tokenizer": I["tokenizer"], "adapter": I.get("dpo_adapter")}))
+for j, (name, info) in enumerate(models):
+    lm = load_lm(info, device)
+    gens = lm.generate([t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
     answers = [g[0] for g in gens]
     correct = [world.grade(a, t["answer"]) for a, t in zip(answers, tasks)]
     by_family = {}
@@ -37,8 +41,9 @@ for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["dpo_mode
         "empty": sum(1 for a in answers if len(a.strip()) < 3) / len(tasks),
         "marked": sum(1 for a in answers if world.answer_prefix in a) / len(tasks),
     }
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, a = out["before"], out["after"]
 families = sorted(set(b["by_family"]) | set(a["by_family"]))
@@ -58,5 +63,10 @@ changed = [i for i in range(len(tasks)) if a["correct"][i] != b["correct"][i]]
 R.table("changed", "What changed", [{"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "before", "label": "Before"}, {"key": "after", "label": "After"}], [{"family": tasks[i]["family"], "question": tasks[i]["prompt"][:170], "gold": tasks[i]["answer"], "before": ("✓ " if b["correct"][i] else "✗ ") + b["answers"][i][:180], "after": ("✓ " if a["correct"][i] else "✗ ") + a["answers"][i][:180]} for i in changed[:25]])
 if I.get("sft_accuracy") is not None:
     R.note(f"The fine-tuned model this started from scored {float(I['sft_accuracy']):.1%}. Compare the reinforcement learning experiment on the same starting point: same goal, different mechanism.")
+if I.get("eval_questions"):
+    R.note("Graded on held-out questions from the prepared data (its validation split, or a slice step 1 set aside) — never part of a training pair.")
+elif I.get("data_source") == "prepared":
+    R.note("The prepared pairs carry no answers to grade, so accuracy is measured on generated questions from the world: it shows whether preference training cost the model the course's tasks, not whether it learned your pairs.")
 R.output("accuracy", a["accuracy"]).output("dpo_model", I["dpo_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("model_format", fmt).output("adapter", I.get("dpo_adapter"))
 R.save()

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import storage
+from . import materials, storage
 from .bus import SyncBus, cluster_capacity
 from .config import settings
 from .models import Run, Submission, User
@@ -48,8 +48,21 @@ def check_capacity(db: Session, user: User, gpus: int) -> None:
         raise HTTPException(429, f"You already have {active} runs queued or running. Wait for one to finish or cancel it.")
 
 
-def coerce_params(spec_params: list[dict[str, Any]], given: dict[str, Any]) -> dict[str, Any]:
-    """Fill defaults and clamp numbers to the declared ranges."""
+def _material_value(key: str, p: dict[str, Any], v: Any) -> Optional[str]:
+    """A path under materials/models or materials/datasets. Whether it exists is
+    checked by the run itself: on a split install the API has no materials to look at."""
+    if v in (None, ""):
+        return None
+    rel = str(v).replace("\\", "/").strip().strip("/")
+    top = "models/" if p.get("kind") == "model" else "datasets/"
+    if not rel.startswith(top) or any(part in ("", ".", "..") for part in rel.split("/")):
+        raise HTTPException(400, f"Parameter {key!r} must be a folder under materials/{top}")
+    return rel
+
+
+def coerce_params(spec_params: list[dict[str, Any]], given: dict[str, Any], spec: Optional[ExperimentSpec] = None) -> dict[str, Any]:
+    """Fill defaults and clamp numbers to the declared ranges. A material param must
+    be one of the experiment's declared materials for it."""
     out: dict[str, Any] = {}
     for p in spec_params:
         key = p["key"]
@@ -64,6 +77,12 @@ def coerce_params(spec_params: list[dict[str, Any]], given: dict[str, Any]) -> d
                 v = bool(v) if not isinstance(v, str) else v.lower() in ("1", "true", "yes", "on")
             elif t == "run" and v not in (None, ""):
                 v = int(v)
+            elif t == "material":
+                v = _material_value(key, p, v)
+                if v is not None and spec is not None:
+                    allowed = [m["path"].replace("\\", "/").strip("/") for m in materials.choices(spec, p)]
+                    if v not in allowed:
+                        raise HTTPException(400, f"Parameter {key!r} must be one of the materials this experiment offers: {', '.join(allowed) or 'none are declared'}")
             elif t == "multiselect":
                 v = list(v or [])
         except (TypeError, ValueError):
@@ -105,7 +124,7 @@ def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]],
 
 def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, params: dict[str, Any], parent_run_id: Optional[int], gpus: Optional[int], label: str) -> Run:
     step = spec.step(step_no)
-    params = coerce_params(step.params, params)
+    params = coerce_params(step.params, params, spec)
     inputs: dict[str, Any] = {
         "materials_dir": str(settings.materials_dir),
         "workspace_dir": str(storage.workspace_dir(user.id, spec.slug)),

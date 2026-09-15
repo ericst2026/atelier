@@ -17,11 +17,13 @@ I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 docs = read_jsonl(I["corpus"])
 progress(10, f"{len(docs):,} documents")
+# a prepared corpus has no labels: every rule still runs, but nothing can be scored against them
+labelled = I.get("data_source", "generated") != "prepared"
 
 decisions = [apply_rules(d["text"], P) for d in docs]
 kept_flags = [k for k, _ in decisions]
 why = Counter(r for k, r in decisions if not k)
-sc = score_filter(docs, kept_flags)
+sc = score_filter(docs, kept_flags) if labelled else {"f1": None, "kept": sum(kept_flags)}
 kept = [d for d, k in zip(docs, kept_flags) if k]
 write_jsonl(run_dir / "filtered.jsonl", kept)
 (run_dir / "filter_params.json").write_text(json.dumps(dict(P), indent=2))
@@ -40,13 +42,32 @@ for rule in RULES:
     }[rule])
     without = sum(1 for d in probe if apply_rules(d["text"], relaxed)[0])
     caught = [d for d in probe if apply_rules(d["text"], relaxed)[0] and not apply_rules(d["text"], P)[0]]
-    solo.append({"rule": rule, "removed": why.get(rule, 0) / len(docs), "uniquely": (without - base_keep) / len(probe), "of_which_good": sum(1 for d in caught if d["clean"]) / max(len(caught), 1)})
+    row = {"rule": rule, "removed": why.get(rule, 0) / len(docs), "uniquely": (without - base_keep) / len(probe)}
+    if labelled:
+        row["of_which_good"] = sum(1 for d in caught if d["clean"]) / max(len(caught), 1)
+    solo.append(row)
+
+R = Result()
+if not labelled:
+    removed_docs = [d for d, k in zip(docs, kept_flags) if not k]
+    R.metric("kept", "Documents kept", sc["kept"], "int", "raw", help=f"{sc['kept'] / len(docs):.0%} of the corpus")
+    R.metric("removed", "Documents removed", len(removed_docs), "int", "dup")
+    R.metric("chars_kept", "Characters kept", sum(len(d["text"]) for d in kept) / max(1, sum(len(d["text"]) for d in docs)), "pct", "sky", help="the share of the text that survives — what the model in step 4 will have to learn from")
+    R.chart("rules", "What each rule contributes", solo, "rule", [{"key": "removed", "label": "Removed by this rule first", "color": "dup"}, {"key": "uniquely", "label": "Only this rule catches it", "color": "raw"}], "bar", note="Without labels, read the documents each rule removes before trusting it.")
+    R.table("removed", "Documents you removed", [{"key": "why", "label": "Rule"}, {"key": "kind", "label": "File"}, {"key": "text", "label": "Text"}], [{"why": apply_rules(d["text"], P)[1], "kind": d["kind"], "text": d["text"][:260]} for d in removed_docs[:30]], note="If these look fine to you, a threshold is too tight.")
+    R.table("kept_sample", "Documents you kept", [{"key": "kind", "label": "File"}, {"key": "text", "label": "Text"}], [{"kind": d["kind"], "text": d["text"][:260]} for d in kept[:15]])
+    R.note(f"{I.get('data_label', 'A prepared corpus')} has no labels, so precision, recall and F1 are unavailable: this step shows what each rule removes, not whether it was right. Step 4 measures the filter the other way, by the validation loss of a model trained on what it kept.")
+    R.artifact(run_dir / "filtered.jsonl", "filtered.jsonl")
+    R.output("filtered", str(run_dir / "filtered.jsonl")).output("corpus", I["corpus"]).output("f1", None).output("filter_params", str(run_dir / "filter_params.json"))
+    for k in ("lang", "seed", "data_source", "data_label", "heldout"):
+        if k in I:
+            R.output(k, I[k])
+    R.save()
+    raise SystemExit(0)
 
 by_kind = sc["by_kind"]
 lost = [d for d, k in zip(docs, kept_flags) if not k and d["clean"]]
 survived = [d for d, k in zip(docs, kept_flags) if k and not d["clean"]]
-
-R = Result()
 R.metric("f1", "F1 against the labels", sc["f1"], "num", "kept")
 R.metric("precision", "Precision", sc["precision"], "pct", "sky", help="of what you kept, how much was actually clean")
 R.metric("recall", "Recall", sc["recall"], "pct", "hold", help=f"of the clean documents, how many survived — you lost {len(lost):,}")
@@ -57,7 +78,7 @@ R.table("lost", "Clean documents you removed", [{"key": "why", "label": "Rule"},
 R.table("survived", "Spoiled documents that survived", [{"key": "kind", "label": "Kind"}, {"key": "text", "label": "Text"}], [{"kind": d["kind"], "text": d["text"][:260]} for d in survived[:15]])
 R.artifact(run_dir / "filtered.jsonl", "filtered.jsonl")
 R.output("filtered", str(run_dir / "filtered.jsonl")).output("corpus", I["corpus"]).output("f1", sc["f1"]).output("filter_params", str(run_dir / "filter_params.json"))
-for k in ("lang", "seed"):
+for k in ("lang", "seed", "data_source", "data_label"):
     if k in I:
         R.output(k, I[k])
 R.save()

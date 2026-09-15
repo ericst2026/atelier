@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { Area, Bar, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Maximize2, Minimize2 } from "lucide-react";
-import { fmtNum } from "../lib/format";
+import { fmtAxis, fmtNum } from "../lib/format";
 
 const COLORS = { raw: "#f4a259", kept: "#5fd3b8", dup: "#ff6b81", hold: "#b79cff", sky: "#7cc4ff", sun: "#ffd166" };
 const CYCLE = ["#5fd3b8", "#f4a259", "#7cc4ff", "#b79cff", "#ff6b81", "#ffd166"];
+const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const color = (c, i) => (c && COLORS[c]) || c || CYCLE[i % CYCLE.length];
 
 function Tip({ active, payload, label }) {
@@ -31,10 +32,17 @@ export default function ChartCard({ spec, height = 240, allowStretch = true }) {
   const numericX = data.length > 0 && data.every((d) => typeof d[spec.x] === "number");
   const hasRight = (spec.series || []).some((s) => s.axis === "right");
   const canLogX = numericX && data.every((d) => d[spec.x] > 0);
+  // ticks skip themselves when they would collide; long category labels are cut and read in full in the tooltip
   const xProps = numericX
-    ? { type: "number", dataKey: spec.x, scale: xLog && canLogX ? "log" : "linear", domain: ["dataMin", "dataMax"], tickFormatter: (v) => fmtNum(v, 2), allowDataOverflow: true }
-    : { type: "category", dataKey: spec.x, interval: data.length > 24 ? Math.floor(data.length / 12) : 0 };
-  const yProps = { scale: yLog ? "log" : "linear", domain: yLog ? ["auto", "auto"] : spec.y_domain || [0, "auto"], allowDataOverflow: true, tickFormatter: (v) => fmtNum(v, 2), width: 54 };
+    ? { type: "number", dataKey: spec.x, scale: xLog && canLogX ? "log" : "linear", domain: ["dataMin", "dataMax"], tickFormatter: fmtAxis, allowDataOverflow: true, interval: "preserveStartEnd", minTickGap: 12 }
+    : { type: "category", dataKey: spec.x, tickFormatter: (v) => clip(String(v), 14), interval: "preserveStartEnd", minTickGap: 10 };
+  const axisWidth = (side) => {
+    const keys = (spec.series || []).filter((s) => (s.axis === "right") === (side === "right")).map((s) => s.key);
+    let longest = 1;
+    for (const d of data) for (const k of keys) if (typeof d[k] === "number") longest = Math.max(longest, fmtAxis(d[k]).length);
+    return Math.min(84, Math.max(36, longest * 7 + 14));
+  };
+  const yProps = { scale: yLog ? "log" : "linear", domain: yLog ? ["auto", "auto"] : spec.y_domain || [0, "auto"], allowDataOverflow: true, tickFormatter: fmtAxis };
   const Comp = type === "line" ? Line : type === "area" ? Area : Bar;
   return (
     <div className={`chartcard ${stretch ? "stretch" : ""}`}>
@@ -65,11 +73,11 @@ export default function ChartCard({ spec, height = 240, allowStretch = true }) {
       </div>
       <div style={{ width: "100%", height: stretch ? height + 120 : height }}>
         <ResponsiveContainer>
-          <ComposedChart data={data} margin={{ top: 8, right: hasRight ? 8 : 16, left: 0, bottom: 4 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: hasRight ? 8 : 20, left: spec.y_label ? 8 : 0, bottom: 4 }}>
             <CartesianGrid stroke="#2a3d5f" strokeDasharray="3 3" />
-            <XAxis {...xProps} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} label={spec.x_label ? { value: spec.x_label, position: "insideBottom", offset: -2, fill: "#93a3bf", fontSize: 11 } : undefined} />
-            <YAxis yAxisId="left" {...yProps} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} label={spec.y_label ? { value: spec.y_label, angle: -90, position: "insideLeft", fill: "#93a3bf", fontSize: 11 } : undefined} />
-            {hasRight && <YAxis yAxisId="right" orientation="right" {...yProps} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} />}
+            <XAxis {...xProps} height={spec.x_label ? 42 : 30} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} label={spec.x_label ? { value: spec.x_label, position: "insideBottom", offset: 0, fill: "#93a3bf", fontSize: 11 } : undefined} />
+            <YAxis yAxisId="left" {...yProps} width={axisWidth("left") + (spec.y_label ? 14 : 0)} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} label={spec.y_label ? { value: spec.y_label, angle: -90, position: "insideLeft", fill: "#93a3bf", fontSize: 11, style: { textAnchor: "middle" } } : undefined} />
+            {hasRight && <YAxis yAxisId="right" orientation="right" {...yProps} width={axisWidth("right")} stroke="#5f7192" tick={{ fill: "#93a3bf", fontSize: 11 }} />}
             <Tooltip content={<Tip />} />
             {(spec.series || []).length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
             {spec.ref_x !== null && spec.ref_x !== undefined && <ReferenceLine yAxisId="left" x={spec.ref_x} stroke="#ffd166" strokeDasharray="4 4" label={{ value: spec.ref_label || "", fill: "#ffd166", fontSize: 11, position: "top" }} />}

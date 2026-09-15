@@ -14,7 +14,21 @@ description: |
   shared at all. BM25 lands around a third of the time. An embedder that has learned
   what "sized up" and "measured" have in common does considerably better.
 
-materials: []
+  Instead of the generated library you can use a prepared documents dataset and a
+  question dataset whose rows name their gold document; the encoder can start from a
+  prepared model (Atelier or HuggingFace), and the reader can be a prepared model too.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: minilm, name: "all-MiniLM-L6-v2", path: models/all-MiniLM-L6-v2, kind: model, optional: true, for: [model_material], description: "A small, fast sentence encoder."}
+  - {key: bge, name: "bge-small-en-v1.5", path: models/bge-small-en-v1.5, kind: model, optional: true, for: [model_material], description: "A stronger small sentence encoder to compare against."}
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, for: [reader_material], description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, for: [reader_material], description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, for: [reader_material], description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: squad, name: "SQuAD v2", path: datasets/rag/squad-v2, kind: dataset, optional: true, for: [queries_material], description: "Questions with the Wikipedia paragraph that answers them (context); unanswerable rows are skipped."}
+  - {key: wikis, name: "Simple English Wikipedia", path: datasets/rag/wikipedia-simple, kind: dataset, optional: true, for: [docs_material], description: "Articles with titles, one per row."}
 
 steps:
   - id: corpus
@@ -31,12 +45,17 @@ steps:
     needs_previous: false
     figures: [{key: bm25_recall5, label: BM25@5}]
     params:
-      - {key: base_run, label: Model to build the encoder from (Pretraining step 3), type: run, experiment: world-pretrain, step: 3, default: null}
-      - {key: n_docs, label: Documents, type: int, min: 500, max: 100000, step: 500, default: 8000}
-      - {key: cluster_size, label: Documents per cluster, type: int, min: 1, max: 12, default: 4, help: How many documents share a place and an object. Raise it to make lexical search worse.}
-      - {key: n_queries, label: Evaluation queries, type: int, min: 100, max: 5000, step: 100, default: 800}
-      - {key: n_pairs, label: Training pairs, type: int, min: 500, max: 100000, step: 500, default: 20000}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242}
+      - {key: model_source, label: Model to build the encoder from, type: select, default: generated, options: [{value: generated, label: generated — one of your Pretraining runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: base_run, label: Pretraining run (step 3), type: run, experiment: world-pretrain, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json), or a HuggingFace model — a sentence encoder such as all-MiniLM-L6-v2 works best; its hidden states are mean-pooled and trained the same way"}
+      - {key: data_source, label: Library, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — datasets under materials/datasets}]}
+      - {key: queries_material, label: Prepared questions, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question and an answer, plus the gold document: a doc_id / document_id / gold_id / doc / source / file / title field equal to a document's id, title or file name, or a context / passage field holding its text. The validation or test file gives the evaluation queries, the rest the training pairs"}
+      - {key: docs_material, label: Prepared documents, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (linked by file name) or JSONL rows with a text field (linked by their id / title / name, or by position when they have none). Leave empty when every question carries its passage in a context field"}
+      - {key: n_docs, label: Documents (at most, for prepared documents), type: int, min: 500, max: 100000, step: 500, default: 8000}
+      - {key: cluster_size, label: Documents per cluster, type: int, min: 1, max: 12, default: 4, show_if: {data_source: generated}, help: How many documents share a place and an object. Raise it to make lexical search worse.}
+      - {key: n_queries, label: Evaluation queries (at most, for prepared questions), type: int, min: 100, max: 5000, step: 100, default: 800}
+      - {key: n_pairs, label: Training pairs (at most, for prepared questions), type: int, min: 500, max: 100000, step: 500, default: 20000}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242, help: For prepared questions without a validation file it picks the held-out slice}
   - id: encode
     title: Encode
     summary: Your language model, used as an embedder
@@ -92,7 +111,10 @@ steps:
     timeout_min: 120
     figures: [{key: recall5, label: recall@5}, {key: answer_accuracy, label: answers}]
     params:
-      - {key: reader_run, label: Reader (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null, help: Leave empty to measure retrieval only}
+      - {key: reader_source, label: Reader, type: select, default: generated, options: [{value: generated, label: generated — one of your Fine-tuning runs (or none)}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: reader_run, label: Reader (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {reader_source: generated}, help: Leave empty to measure retrieval only}
+      - {key: reader_material, label: Prepared reader, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {reader_source: prepared}, help: "An Atelier checkpoint, or a HuggingFace instruction model (asked through its chat template)"}
+      - {key: max_new_tokens, label: Tokens per answer, type: int, min: 16, max: 256, step: 16, default: 48}
       - {key: k_values, label: Values of k, type: multiselect, default: ["1", "3", "5", "10", "20"], options: [{value: "1", label: "1"}, {value: "3", label: "3"}, {value: "5", label: "5"}, {value: "10", label: "10"}, {value: "20", label: "20"}]}
       - {key: hybrid_weight, label: Weight on the embedder in the hybrid, type: float, min: 0, max: 1, step: 0.05, default: 0.7}
       - {key: n_answer, label: Questions to answer end to end, type: int, min: 0, max: 1000, step: 50, default: 200}

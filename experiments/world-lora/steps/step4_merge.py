@@ -6,11 +6,11 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.lora import apply_lora, merge_lora
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.model import MiniConfig, MiniLM
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
 
 parse_args()
@@ -20,11 +20,19 @@ run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = json.loads(Path(I["lora_config"]).read_text())
 world = World(lang=I.get("lang", "en"), seed=15)
-tok = MiniTokenizer.load(I["tokenizer"])
-tasks = world.eval_set(int(P["n_check"]), seed=616_003)
+tok = load_tokenizer(I["tokenizer"])
+if I.get("data_source") == "prepared":
+    tasks = read_jsonl(I["data_val"], limit=int(P["n_check"]))
+else:
+    tasks = world.eval_set(int(P["n_check"]), seed=616_003)
 system = world.system_prompt
 
-adapted, ck = MiniLM.load(I["lora_model"], device)
+# the checkpoint holds the adapters, so rebuild the adapted layers before loading it
+ck = torch.load(I["lora_model"], map_location=device, weights_only=False)
+adapted = MiniLM(MiniConfig(**ck["config"])).to(device)
+apply_lora(adapted, int(ck["r"]), 2 * int(ck["r"]), 0.0, tuple(ck["targets"]))
+adapted.load_state_dict(ck["model_state"])
+adapted.eval()
 progress(10, "answering with the adapter attached")
 before = [g[0] for g in generate(adapted, tok, [t["prompt"] for t in tasks], 192, 0.0, batch_size=32, system=system)]
 prompt_ids = torch.tensor([tok.encode(tasks[0]["prompt"], bos=True)], device=device)
@@ -68,5 +76,6 @@ if diffs:
     R.table("diffs", "Where merging changed the answer", [{"key": "question", "label": "Question"}, {"key": "adapted", "label": "With adapter"}, {"key": "merged", "label": "Merged"}], diffs, note="Small numerical differences can flip a token near a tie. A large number of these means something is wrong with the merge, not with arithmetic.")
 R.note(f"The merged model is a plain checkpoint of {size_merged:.0f} MB. The adapter alone was a few megabytes — which is the argument for keeping them separate when you have many adapted variants of one base model, and for merging when you have one.")
 R.artifact(run_dir / "merged.pt", "merged.pt")
-R.output("merged_model", str(run_dir / "merged.pt")).output("identical", identical).output("accuracy", acc_after).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("merged_model", str(run_dir / "merged.pt")).output("identical", identical).output("accuracy", acc_after).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en")).output("system", system).output("model_format", "atelier").output("adapter", None)
+R.output("model_label", f"merged LoRA on {I.get('model_label', I['base_model'])}")
 R.save()

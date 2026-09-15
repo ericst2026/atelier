@@ -126,7 +126,7 @@ label.field > span:first-child { color: var(--text); }
 
 table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.data th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
-table.data td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; max-width: 460px; overflow-wrap: anywhere; }
+table.data td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; max-width: 460px; overflow-wrap: anywhere; white-space: pre-wrap; }
 table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .tablewrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 
@@ -160,6 +160,10 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 @media (max-width: 1100px) { .workspace { grid-template-columns: 1fr; height: auto; } }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.expsection { margin-bottom: 30px; }
+.expsection-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.expsection-head h2 { font-size: 20px; }
+.expsection > p { margin: 4px 0 12px; }
 .expcard { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 .expcard:hover { border-color: var(--raw); text-decoration: none; }
 .expcard .steps { display: flex; gap: 4px; }

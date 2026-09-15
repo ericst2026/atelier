@@ -83,7 +83,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
               {prevRuns.length === 0 && <span className="help">Finish step {step.index - 1} first.</span>}
             </label>
           )}
-          <ParamsForm params={step.params || []} values={params} onChange={setParams} disabled={busy} />
+          <ParamsForm params={step.params || []} values={params} onChange={setParams} disabled={busy} experiment={spec.slug} step={step.index} />
           {isTeacher && step.gpus > 0 && (
             <label className="field">
               <span>GPUs for this run</span>

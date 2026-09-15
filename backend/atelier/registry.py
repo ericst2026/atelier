@@ -11,7 +11,8 @@ from typing import Any, Optional
 import yaml
 
 STEP_COUNT = 4
-PARAM_TYPES = {"int", "float", "bool", "select", "multiselect", "text", "textarea", "run"}
+PARAM_TYPES = {"int", "float", "bool", "select", "multiselect", "text", "textarea", "run", "material"}
+MATERIAL_KINDS = {"model", "dataset"}
 
 
 @dataclass
@@ -42,6 +43,7 @@ class ExperimentSpec:
     order: int = 100
     tags: list[str] = field(default_factory=list)
     difficulty: str = "intro"
+    category: str = ""
     steps: list[StepSpec] = field(default_factory=list)
     materials: list[dict[str, Any]] = field(default_factory=list)
     project: dict[str, Any] = field(default_factory=dict)
@@ -65,6 +67,7 @@ class ExperimentSpec:
             "order": self.order,
             "tags": self.tags,
             "difficulty": self.difficulty,
+            "category": self.category,
             "gpus": max([s.gpus for s in self.steps] + [0]),
             "steps": [
                 {"index": s.index, "id": s.id, "title": s.title, "summary": s.summary, "gpus": s.gpus}
@@ -104,6 +107,31 @@ def _validate_params(slug: str, step_id: str, params: list[dict[str, Any]]) -> N
         seen.add(key)
         if p.get("type", "text") not in PARAM_TYPES:
             raise ValueError(f"{slug}/{step_id}/{key}: unknown param type {p.get('type')!r}")
+        # a material param lists prepared models or datasets under materials/
+        # (kind: model|dataset, optional formats: [atelier, hf] or schemas: [documents, qa, pairs])
+        if p.get("type") == "material" and p.get("kind") not in MATERIAL_KINDS:
+            raise ValueError(f"{slug}/{step_id}/{key}: a material param needs kind: model or kind: dataset")
+        # show_if: {other_key: value or [values]} hides the field unless the other param matches
+        if "show_if" in p and not isinstance(p["show_if"], dict):
+            raise ValueError(f"{slug}/{step_id}/{key}: show_if must be a mapping of param key to value")
+
+
+def _validate_materials(slug: str, mats: list[dict[str, Any]], material_params: list[dict[str, Any]]) -> None:
+    """materials: [{key, name, path, kind, optional, for: [param keys], description}].
+    A material param can only be set to one of these, so a typo here would silently
+    hide a choice; catch it when the experiment loads instead."""
+    param_keys = {p["key"] for p in material_params}
+    for m in mats:
+        where = f"{slug}/materials/{m.get('key') or m.get('path')}"
+        path = str(m.get("path") or "")
+        if not path:
+            raise ValueError(f"{where}: needs a path under materials/")
+        kind = m.get("kind")
+        if kind in MATERIAL_KINDS and path.replace("\\", "/").strip("/").split("/")[0] != f"{kind}s":
+            raise ValueError(f"{where}: a {kind} lives under materials/{kind}s/, not {path!r}")
+        unknown = set(m.get("for") or []) - param_keys
+        if unknown:
+            raise ValueError(f"{where}: 'for' names {sorted(unknown)}, which are not material params of this experiment")
 
 
 def load_experiment(path: Path) -> ExperimentSpec:
@@ -131,6 +159,8 @@ def load_experiment(path: Path) -> ExperimentSpec:
                 figures=s.get("figures") or [],
             )
         )
+    mats = list(raw.get("materials") or [])
+    _validate_materials(slug, mats, [p for s in steps for p in s.params if p.get("type") == "material"])
     return ExperimentSpec(
         slug=slug,
         dir=path,
@@ -140,8 +170,9 @@ def load_experiment(path: Path) -> ExperimentSpec:
         order=int(raw.get("order", 100)),
         tags=list(raw.get("tags") or []),
         difficulty=raw.get("difficulty", "intro"),
+        category=str(raw.get("category") or ""),
         steps=steps,
-        materials=list(raw.get("materials") or []),
+        materials=mats,
         project=dict(raw.get("project") or {}),
         grader=dict(raw.get("grader") or {}),
         leaderboard=dict(raw.get("leaderboard") or {}),
@@ -154,6 +185,7 @@ class Registry:
         self.reload_every = reload_every
         self._specs: dict[str, ExperimentSpec] = {}
         self._errors: dict[str, str] = {}
+        self._categories: list[dict[str, Any]] = []
         self._loaded_at = 0.0
 
     def reload(self, force: bool = False) -> None:
@@ -170,7 +202,33 @@ class Registry:
                     specs[spec.slug] = spec
                 except Exception as exc:  # keep the platform up even if one manifest is broken
                     errors[child.name] = str(exc)
-        self._specs, self._errors, self._loaded_at = specs, errors, time.time()
+        categories = self._load_categories(errors)
+        by_slug = {slug: c["id"] for c in categories for slug in c.get("experiments") or []}
+        for spec in specs.values():
+            # experiment.yaml's own category wins; then categories.yaml; then Other
+            spec.category = spec.category or by_slug.get(spec.slug, "other")
+        self._specs, self._errors, self._categories, self._loaded_at = specs, errors, categories, time.time()
+
+    def _load_categories(self, errors: dict[str, str]) -> list[dict[str, Any]]:
+        path = self.root / "categories.yaml"
+        if not path.exists():
+            return []
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            out = []
+            for c in raw.get("categories") or []:
+                if not isinstance(c, dict) or not c.get("id"):
+                    raise ValueError("every category needs an id")
+                out.append({"id": str(c["id"]), "title": c.get("title") or str(c["id"]), "summary": c.get("summary", ""), "experiments": list(c.get("experiments") or [])})
+            return out
+        except Exception as exc:
+            errors["categories.yaml"] = str(exc)
+            return []
+
+    def categories(self) -> list[dict[str, Any]]:
+        """Sections for the experiments page, in file order, without the slug lists."""
+        self.reload()
+        return [{k: v for k, v in c.items() if k != "experiments"} for c in self._categories]
 
     @property
     def errors(self) -> dict[str, str]:

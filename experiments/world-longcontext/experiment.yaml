@@ -14,7 +14,19 @@ description: |
   long document, and a question that can only be answered by finding it. Because the
   haystack is generated, the needle is never something the model saw in training.
 
-materials: []
+  The model can also be a prepared Atelier checkpoint under materials/models (the
+  RoPE change edits the Atelier model's own position code, so HuggingFace models are
+  not supported), and the haystacks can be paragraphs of a prepared documents
+  dataset — the planted fact is still generated.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+# Its model pickers take Atelier checkpoints only (the experiment works inside the
+# model's own layers) and none is prepared yet: put one under materials/models/ and list it here.
+materials:
+  - {key: narr, name: "NarrativeQA books", path: datasets/longcontext/narrativeqa, kind: dataset, optional: true, description: "Whole books and film scripts: long documents to hide a needle in."}
+  - {key: wikis, name: "Simple English Wikipedia", path: datasets/rag/wikipedia-simple, kind: dataset, optional: true, description: "Articles with titles, one per row."}
 
 steps:
   - id: measure
@@ -31,7 +43,11 @@ steps:
     needs_previous: false
     figures: [{key: cliff, label: cliff}]
     params:
-      - {key: base_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your runs}, {value: prepared, label: prepared — an Atelier model under materials/models}]}
+      - {key: base_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json). Stretching the positions edits the model's own RoPE code, which a HuggingFace model does not expose the same way"}
+      - {key: data_source, label: Haystack text, type: select, default: generated, options: [{value: generated, label: generated — the world's stories}, {value: prepared, label: prepared — a documents dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared documents, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files or JSONL rows with a text field, cut into paragraphs. A fifth of the documents fill the haystacks that are measured (steps 1, 2 and 4); the rest are the long training text of step 3. The planted fact is always generated"}
       - {key: lengths, label: Lengths to test, type: multiselect, default: ["256", "512", "1024", "2048"], options: [{value: "256", label: "256"}, {value: "512", label: "512"}, {value: "1024", label: "1024"}, {value: "2048", label: "2048"}, {value: "4096", label: "4096"}]}
       - {key: n_docs, label: Documents per length, type: int, min: 10, max: 300, step: 10, default: 60}
       - {key: n_needles, label: Needle questions per length, type: int, min: 10, max: 200, step: 10, default: 40}

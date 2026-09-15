@@ -27,15 +27,17 @@ world = World(lang=I.get("lang", "en"), seed=77)
 tok = MiniTokenizer.load(I["tokenizer"])
 target = int(I["target_length"])
 rng = random.Random(31)
+# prepared filler from step 1 (the documents set aside for training), if any
+passages = json.loads(Path(I["filler_train"]).read_text(encoding="utf-8")) if I.get("data_source") == "prepared" and I.get("filler_train") else None
 
 texts = []
 n = int(P["docs"])
 for i in range(n):
     if rng.random() < float(P["needle_share"]):
-        nd = plant(world, tok, target - 60, rng.random(), rng)
+        nd = plant(world, tok, target - 60, rng.random(), rng, passages)
         texts.append(f"{nd['document']}\n\n{nd['question']}\n{world.answer_prefix} {nd['answer']}")
     else:
-        texts.append(make_haystack(world, tok, target, rng)[0])
+        texts.append(make_haystack(world, tok, target, rng, passages)[0])
     if i % 300 == 0:
         progress(3 + 25 * i / n, f"generated {i:,} long documents")
 stats = pack(texts, tok, run_dir / "long.bin", max_tokens=target * n)
@@ -65,6 +67,7 @@ R.metric("train_time", "Training time", res["elapsed_sec"] * 1000, "ms", "hold")
 R.chart("loss", "Loss during the continuation", [{"step": h["step"], "train": h["train_loss"], "val": h["val_loss"]} for h in res["history"]], "step", [{"key": "train", "label": "Train", "color": "kept"}, {"key": "val", "label": "Validation", "color": "hold"}], "line", y_log=True)
 R.artifact(run_dir / "model.pt", "model.pt (long context)")
 R.output("long_model", str(run_dir / "model.pt")).output("val_loss", res["best_val_loss"])
-for k in ("model", "tokenizer", "lang", "system", "target_length", "rope_scale", "rope_base", "trained_length"):
-    R.output(k, I[k])
+for k in ("model", "tokenizer", "lang", "system", "target_length", "rope_scale", "rope_base", "trained_length", "model_format", "model_label", "data_source", "data_label", "filler_eval"):
+    if k in I:
+        R.output(k, I[k])
 R.save()

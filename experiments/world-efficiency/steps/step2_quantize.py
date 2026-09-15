@@ -5,11 +5,11 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.model import MiniLM
 from atelier_mini.quant import model_bytes, quantize_model
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
 
 parse_args()
@@ -18,8 +18,11 @@ I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=88)
-tok = MiniTokenizer.load(I["tokenizer"])
-tasks = world.eval_set(int(P["n_eval"]), seed=333_999)
+tok = load_tokenizer(I["tokenizer"])
+if I.get("data_source") == "prepared":
+    tasks = read_jsonl(I["data_val"], limit=int(P["n_eval"]))
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=333_999)
 system = I.get("system") or world.system_prompt
 skip = ("head",) if bool(P["skip_head"]) else ()
 
@@ -71,7 +74,7 @@ if worst_layers:
 R.table("rows", "Settings", [{"key": "setting", "label": "Setting"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}, {"key": "mb", "label": "Megabytes", "fmt": "num"}, {"key": "mean_error", "label": "Mean error", "fmt": "pct"}, {"key": "worst_error", "label": "Worst layer", "fmt": "pct"}], rows)
 R.artifact(run_dir / "quantize.json", "quantize.json")
 R.output("quantize", str(run_dir / "quantize.json")).output("base_accuracy", base_acc).output("int8_accuracy", int8["accuracy"])
-for k in ("model", "tokenizer", "lang", "system", "baseline", "tokens_per_sec"):
+for k in ("model", "tokenizer", "lang", "system", "baseline", "tokens_per_sec", "model_format", "adapter", "model_label", "data_source", "data_label", "data_train", "data_val"):
     if k in I:
         R.output(k, I[k])
 R.save()

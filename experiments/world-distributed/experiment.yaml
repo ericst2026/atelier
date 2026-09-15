@@ -13,6 +13,12 @@ description: |
   It is the one experiment that wants the whole node, so it works well as a
   demonstration with the class watching the live runs on display 2.
 
+  The token stream comes from a Pretraining step 1 run, so a prepared corpus or a
+  prepared model's tokenizer chosen there carries through; this experiment has no
+  data or model choice of its own, since it measures speed rather than quality.
+
+# No prepared material is chosen here: the data and tokenizer are the ones
+# chosen in world-pretrain step 1, whose materials list offers them.
 materials: []
 
 steps:
@@ -30,7 +36,7 @@ steps:
     needs_previous: false
     figures: [{key: tokens_per_sec, label: tok/s}, {key: mfu, label: MFU}]
     params:
-      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null}
+      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null, help: "Generated or prepared data, as chosen in that run"}
       - {key: preset, label: Model size, type: select, default: small, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}, {value: medium, label: "medium · ~90M"}, {value: large, label: "large · ~200M"}]}
       - {key: block_size, label: Context length, type: int, min: 128, max: 1024, step: 128, default: 512}
       - {key: batch_sizes, label: Batch sizes to try, type: multiselect, default: ["8", "16", "32", "64"], options: [{value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}, {value: "32", label: "32"}, {value: "64", label: "64"}, {value: "128", label: "128"}]}

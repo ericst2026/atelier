@@ -6,11 +6,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress, write_jsonl
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl, write_jsonl
 from atelier_world import World
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib_tools import calc, count, render  # noqa: E402
+from lib_tools import calc, count, prepared_call, render  # noqa: E402
 
 parse_args()
 P = params({"n_traces": 8000, "no_tool_share": 0.25, "seed": 33})
@@ -24,14 +24,29 @@ n = int(P["n_traces"])
 prefix = world.answer_prefix
 
 rows, skipped, by_tool = [], 0, Counter()
-tasks = world.eval_set(n * 2, seed=int(P["seed"]) * 7 + 1)
+prepared = I.get("data_source") == "prepared"
+if prepared:
+    tasks = read_jsonl(I["qa_train"])
+    rng.shuffle(tasks)
+else:
+    tasks = world.eval_set(n * 2, seed=int(P["seed"]) * 7 + 1)
 for t in tasks:
     if len(rows) >= n:
         break
     fam, answer = t["family"], t["answer"]
     want_no_tool = rng.random() < float(P["no_tool_share"])
     target = None
-    if want_no_tool or fam in ("sort", "lookup", "path"):
+    if prepared:
+        # a prepared question: call a tool only where its result is the dataset's answer;
+        # every other question becomes a demonstration of answering without one
+        call = None if want_no_tool else prepared_call(t, enabled, lambda r: world.grade(f"{prefix} {r}", answer))
+        if call:
+            target = render(*call) + f"\n{prefix} {answer}"
+            by_tool[call[0]] += 1
+        else:
+            target = "".join(f"{line}\n" for line in t["steps"]) + f"{prefix} {answer}"
+            by_tool["none"] += 1
+    elif want_no_tool or fam in ("sort", "lookup", "path"):
         target = "\n".join(t["steps"]) + f"\n{prefix} {answer}"
         by_tool["none"] += 1
     elif "calc" in enabled and fam in ("arith", "shop", "compare", "seq"):
@@ -70,7 +85,7 @@ for t in tasks:
     rows.append({"prompt": t["prompt"], "target": target, "family": fam, "answer": answer, "tool": "none" if "(" not in target.split("\n")[0] else target.split("(")[0].split("\n")[-1]})
 
 if len(rows) < 50:
-    raise SystemExit(f"Only {len(rows)} usable demonstrations. Enable more tools, or lower the share showing no tool call.")
+    raise SystemExit(f"Only {len(rows)} usable demonstrations. " + ("The prepared dataset needs more training rows (at least 100: 50 are held out for validation)." if prepared else "Enable more tools, or lower the share showing no tool call."))
 split = max(50, len(rows) // 10)
 write_jsonl(run_dir / "traces.jsonl", rows[split:])
 write_jsonl(run_dir / "traces_val.jsonl", rows[:split])
@@ -88,6 +103,9 @@ R.chart("lengths", "Target lengths", hist(target_lens, bins=18), "bin", [{"key":
 R.table("samples", "What the model will learn to write", [{"key": "family", "label": "Family"}, {"key": "prompt", "label": "Question"}, {"key": "target", "label": "Target"}], [{"family": r["family"], "prompt": r["prompt"][:150], "target": r["target"][:260]} for r in rows[:20]], note="The bracketed result is what the tool returned. In training it sits in the context but is masked out of the loss — the model is not learning to predict the calculator.")
 R.artifact(run_dir / "traces.jsonl", "traces.jsonl")
 R.output("traces", str(run_dir / "traces.jsonl")).output("traces_val", str(run_dir / "traces_val.jsonl"))
-for k in ("tools_config", "policy", "tokenizer", "lang", "system", "baseline"):
-    R.output(k, I[k])
+for k in ("tools_config", "policy", "tokenizer", "lang", "system", "baseline", "model_format", "adapter", "model_label", "data_source", "qa_val"):
+    if k in I:
+        R.output(k, I[k])
+if prepared:
+    R.note("Traces from the prepared dataset's training rows. A call is demonstrated only where the tool's result is the dataset's answer; the seed only shuffles the rows. Held-out rows are kept for step 4.")
 R.save()

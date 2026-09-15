@@ -61,6 +61,47 @@ def find_call(text: str, tools: dict[str, Callable]) -> tuple[str, str] | None:
     return None
 
 
+EXPR = re.compile(r"[\d(][\d\s.+\-*/()]*[\d)]")
+
+
+def expressions(text: str) -> list[str]:
+    """Arithmetic written in a line of text: digits joined by at least one operator."""
+    text = text.replace("×", "*").replace("÷", "/").replace("−", "-")
+    out = []
+    for m in EXPR.finditer(text):
+        e = m.group(0).strip()
+        if any(op in e for op in "+-*/") and "**" not in e and re.search(r"\d\s*[+\-*/]\s*[\d(]", e) and e.count("(") == e.count(")"):
+            out.append(e)
+    return out
+
+
+def prepared_call(task: dict[str, Any], enabled: set[str], grade: Callable[[str], bool]) -> tuple[str, str, str] | None:
+    """For a question from a prepared dataset (no generator family to go by): a tool call
+    whose result is itself the right answer, or None. Arithmetic is looked for in the
+    left-hand sides of the row's steps, then in the question; numbers to add up in the
+    question. `grade(result)` says whether a result is the answer."""
+    if "calc" in enabled:
+        lines = [str(s).split("=")[0] for s in task.get("steps") or [] if "=" in str(s)]
+        for expr in [e for line in lines for e in expressions(line)] + expressions(task["prompt"]):
+            try:
+                result = calc(expr)
+            except Exception:
+                continue
+            if grade(result):
+                return "calc", expr, result
+    if "count" in enabled:
+        numbers = re.findall(r"(?<![\w.])-?\d+(?:\.\d+)?(?![\w.]\d)", task["prompt"])
+        if len(numbers) >= 2:
+            args = ", ".join(numbers)
+            try:
+                result = count(args)
+            except Exception:
+                result = None
+            if result is not None and grade(result):
+                return "count", args, result
+    return None
+
+
 def run_call(tools: dict[str, Callable], name: str, args: str) -> tuple[str, bool]:
     try:
         return str(tools[name](args)), True

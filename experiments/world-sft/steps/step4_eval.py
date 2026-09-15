@@ -5,11 +5,9 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 parse_args()
 P = params({"n_eval": 300, "max_new_tokens": 192, "temperature": 0.0})
@@ -17,14 +15,20 @@ I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 meta = json.loads(Path(I["sft_meta"]).read_text())
 world = World(lang=meta["lang"], seed=1, families=meta.get("families"))
-tok = MiniTokenizer.load(I["tokenizer"])
-tasks = world.eval_set(int(P["n_eval"]), seed=555_003, families=meta.get("families"))
+if meta.get("data_source") == "prepared":
+    tasks = read_jsonl(I["sft_val"], limit=int(P["n_eval"]))
+else:
+    tasks = world.eval_set(int(P["n_eval"]), seed=555_003, families=meta.get("families"))
+fmt = I.get("model_format", "atelier")
 system = I.get("system") or meta["system"]
 
 out = {}
-for j, (name, path) in enumerate((("base", I["base_model"]), ("tuned", I["sft_model"]))):
-    model, _ = MiniLM.load(path, device)
-    gens = generate(model, tok, [t["prompt"] for t in tasks], int(P["max_new_tokens"]), float(P["temperature"]), batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
+# a HuggingFace base is fine-tuned as a LoRA adapter: "tuned" is the same weights with it merged in
+models = (("base", {"format": fmt, "model": I["base_model"], "tokenizer": I["tokenizer"], "adapter": I.get("base_adapter")}),
+          ("tuned", {"format": fmt, "model": I["base_model"] if fmt == "hf" else I["sft_model"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter")}))
+for j, (name, info) in enumerate(models):
+    lm = load_lm(info, device)
+    gens = lm.generate([t["prompt"] for t in tasks], int(P["max_new_tokens"]), float(P["temperature"]), batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
     answers = [g[0] for g in gens]
     correct = [world.grade(a, t["answer"]) for a, t in zip(answers, tasks)]
     by_family = {}
@@ -34,7 +38,7 @@ for j, (name, path) in enumerate((("base", I["base_model"]), ("tuned", I["sft_mo
         f[1] += 1
     by_diff = {}
     for c, t in zip(correct, tasks):
-        d = by_diff.setdefault(t["difficulty"], [0, 0])
+        d = by_diff.setdefault(t.get("difficulty", 1), [0, 0])
         d[0] += c
         d[1] += 1
     out[name] = {
@@ -45,8 +49,9 @@ for j, (name, path) in enumerate((("base", I["base_model"]), ("tuned", I["sft_mo
         "marked": sum(1 for a in answers if world.answer_prefix in a) / len(tasks),
         "lengths": [len(a) for a in answers],
     }
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, t_ = out["base"], out["tuned"]
 families = sorted(set(b["by_family"]) | set(t_["by_family"]))
@@ -68,4 +73,5 @@ R.table("fixed", "Questions fine-tuning fixed", [{"key": "family", "label": "Fam
 if broken:
     R.table("broken", "Questions it lost", [{"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "tuned", "label": "Fine-tuned said"}], [{"family": tasks[i]["family"], "question": tasks[i]["prompt"][:200], "gold": tasks[i]["answer"], "tuned": t_["answers"][i][:220]} for i in broken[:15]], note="Worth reading: this is usually a family that is under-represented in the demonstrations.")
 R.output("accuracy", t_["accuracy"]).output("sft_model", I["sft_model"]).output("tokenizer", I["tokenizer"]).output("lang", meta["lang"]).output("system", system)
+R.output("model_format", fmt).output("adapter", I.get("adapter"))
 R.save()

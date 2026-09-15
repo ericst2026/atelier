@@ -15,7 +15,29 @@ description: |
   how many points that is worth. With public models nobody can run that experiment,
   because nobody knows what was in the training data. Here you do.
 
-materials: []
+  The benchmark can also come from a prepared QA dataset under materials/datasets, the
+  model under test from materials/models (an Atelier checkpoint or a HuggingFace
+  model), and the contamination run can pretrain on a prepared documents dataset.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+# The tokenizer picker in step 4 takes Atelier checkpoints only; none is prepared yet.
+materials:
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, for: [model_material, compare_material], description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, for: [model_material, compare_material], description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, for: [model_material, compare_material], description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: smol135, name: "SmolLM2-135M", path: models/SmolLM2-135M, kind: model, optional: true, for: [model_material, compare_material], description: "A 135M base model, small enough to fine-tune in full on one GPU."}
+  - {key: p160, name: "Pythia-160m", path: models/pythia-160m, kind: model, optional: true, for: [model_material, compare_material], description: "Pythia-160m, fully trained."}
+  - {key: p160s64k, name: "Pythia-160m (step 64000)", path: models/pythia-160m-step64000, kind: model, optional: true, for: [model_material, compare_material], description: "The same model part-way through pretraining, to compare with the finished one."}
+  - {key: p410, name: "Pythia-410m", path: models/pythia-410m, kind: model, optional: true, for: [model_material, compare_material], description: "Pythia-410m, fully trained."}
+  - {key: mmlu, name: "MMLU", path: datasets/eval/mmlu, kind: dataset, optional: true, for: [data_material], description: "Multiple choice across 57 subjects; the options are shown as A-D and the letter is graded."}
+  - {key: arce, name: "ARC-Easy", path: datasets/eval/arc-easy, kind: dataset, optional: true, for: [data_material], description: "Grade-school science multiple choice; the letter is graded."}
+  - {key: arcc, name: "ARC-Challenge", path: datasets/eval/arc-challenge, kind: dataset, optional: true, for: [data_material], description: "The ARC questions that simple retrieval and word co-occurrence get wrong."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, for: [data_material], description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
+  - {key: hotpot, name: "HotpotQA", path: datasets/rag/hotpotqa, kind: dataset, optional: true, for: [data_material], description: "Multi-hop questions with short answers."}
+  - {key: wt103, name: "WikiText-103", path: datasets/pretrain/wikitext-103, kind: dataset, optional: true, for: [corpus_material], description: "Wikipedia good and featured articles."}
+  - {key: tiny, name: "TinyStories", path: datasets/pretrain/tinystories, kind: dataset, optional: true, for: [corpus_material], description: "Short, simple stories; a tiny model learns fluent English from them quickly."}
 
 steps:
   - id: tasks
@@ -33,12 +55,14 @@ steps:
     needs_previous: false
     figures: [{key: items, label: items}]
     params:
-      - {key: n_choice, label: Multiple-choice items, type: int, min: 50, max: 5000, step: 50, default: 600}
-      - {key: n_open, label: Open-answer items, type: int, min: 0, max: 2000, step: 50, default: 300}
+      - {key: data_source, label: Benchmark questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional category or subject. A test or validation file is used if there is one. Wrong options are drawn from other rows' answers (same category first), so the dataset needs at least as many different answers as options per item"}
+      - {key: n_choice, label: Multiple-choice items (at most, for a prepared dataset), type: int, min: 50, max: 5000, step: 50, default: 600}
+      - {key: n_open, label: Open-answer items, type: int, min: 0, max: 2000, step: 50, default: 300, help: A prepared dataset's rows are shared between the two kinds of item — no row is used twice}
       - {key: n_options, label: Options per item, type: int, min: 2, max: 6, default: 4}
-      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
-      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語}]}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242}
+      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], show_if: {data_source: generated}, options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語}], help: The language of the questions — it sets how open answers are graded}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242, help: For a prepared dataset it sets which rows are used and the order of the options}
   - id: harness
     title: Harness
     summary: Score a model, and decide how
@@ -53,7 +77,9 @@ steps:
     timeout_min: 90
     figures: [{key: accuracy, label: accuracy}]
     params:
-      - {key: model_run, label: Model (Pretraining step 3 or Fine-tuning step 3), type: run, experiment: world-pretrain, step: 3, default: null}
+      - {key: model_source, label: Model to evaluate, type: select, default: generated, options: [{value: generated, label: generated — one of your runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: model_run, label: Model (Pretraining step 3 or Fine-tuning step 3), type: run, experiment: world-pretrain, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) or a HuggingFace causal LM. Options are scored by log-probability on the raw text either way; open questions use a HuggingFace model's chat template"}
       - {key: scoring, label: Scoring rules to compare, type: multiselect, default: [sum, mean, unconditional], options: [{value: sum, label: total log-probability}, {value: mean, label: per token}, {value: unconditional, label: normalised by the option alone}]}
       - {key: shots, label: Few-shot examples, type: int, min: 0, max: 8, default: 0}
       - {key: max_new_tokens, label: Tokens for the open questions, type: int, min: 32, max: 384, step: 16, default: 160}
@@ -72,7 +98,9 @@ steps:
     params:
       - {key: shot_values, label: Shot counts, type: multiselect, default: ["0", "2", "5"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "5", label: "5"}]}
       - {key: shuffle_options, label: Also try shuffled options, type: bool, default: true}
-      - {key: compare_run, label: A second model to compare with, type: run, experiment: world-pretrain, step: 3, default: null, help: Two models is where it gets interesting — harness choices can reorder them}
+      - {key: compare_source, label: A second model to compare with, type: select, default: generated, options: [{value: generated, label: generated — one of your runs (or none)}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: compare_run, label: Run to compare with, type: run, experiment: world-pretrain, step: 3, default: null, show_if: {compare_source: generated}, help: Two models is where it gets interesting — harness choices can reorder them. Leave empty for one model}
+      - {key: compare_material, label: Prepared model to compare with, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {compare_source: prepared}}
       - {key: limit, label: Items per configuration, type: int, min: 50, max: 2000, step: 50, default: 300}
   - id: report
     title: Report
@@ -91,10 +119,14 @@ steps:
     timeout_min: 240
     figures: [{key: inflation, label: inflation}]
     params:
-      - {key: tokenizer_run, label: Tokenizer (step 3), type: run, experiment: world-tokenizer, step: 3, default: null}
+      - {key: tokenizer_source, label: Tokenizer, type: select, default: generated, options: [{value: generated, label: generated — one of your Tokenizer runs}, {value: prepared, label: prepared — the tokenizer of a model under materials/models}]}
+      - {key: tokenizer_run, label: Tokenizer (step 3), type: run, experiment: world-tokenizer, step: 3, default: null, show_if: {tokenizer_source: generated}}
+      - {key: tokenizer_material, label: Prepared Atelier model (its tokenizer.json), type: material, kind: model, formats: [atelier], default: null, show_if: {tokenizer_source: prepared}, help: Only the tokenizer is used; both models are trained from scratch}
+      - {key: corpus_source, label: Pretraining corpus, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a documents dataset under materials/datasets}]}
+      - {key: corpus_material, label: Prepared documents, type: material, kind: dataset, schemas: [documents], default: null, show_if: {corpus_source: prepared}, help: ".txt / .md files, or JSONL rows with a text field. A twentieth is held out for the validation loss"}
       - {key: contamination_rate, label: Share of the benchmark mixed into training, type: float, min: 0, max: 1, step: 0.05, default: 0.5}
       - {key: repeats, label: Times each leaked item appears, type: int, min: 1, max: 20, default: 4, help: Once is easy to miss; the effect grows steeply with repetition}
-      - {key: docs, label: Pretraining documents, type: int, min: 2000, max: 200000, step: 1000, default: 40000}
+      - {key: docs, label: Pretraining documents (at most, for a prepared corpus), type: int, min: 2000, max: 200000, step: 1000, default: 40000}
       - {key: max_iters, label: Steps per model, type: int, min: 100, max: 5000, step: 100, default: 600}
       - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
       - {key: notes, label: Notes for the card, type: textarea, default: ""}

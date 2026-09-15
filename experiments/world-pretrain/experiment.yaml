@@ -15,7 +15,24 @@ description: |
   **small** in about half an hour, **medium** in a couple of hours on one A6000.
   Ask for more GPUs and the same wall-clock buys a bigger model.
 
-materials: []
+  The corpus and the tokenizer can each be generated in the course or prepared by
+  your teacher: a documents dataset under `materials/datasets`, and the
+  tokenizer.json of a model under `materials/models` (an Atelier checkpoint or a
+  HuggingFace model). Only the vocabulary is borrowed — the weights always start
+  from scratch here.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: gpt2, name: "GPT-2", path: models/gpt2, kind: model, optional: true, description: "The 124M GPT-2 and its byte-level BPE tokenizer."}
+  - {key: smol135, name: "SmolLM2-135M", path: models/SmolLM2-135M, kind: model, optional: true, description: "A 135M base model, small enough to fine-tune in full on one GPU."}
+  - {key: qwen05, name: "Qwen2.5-0.5B", path: models/Qwen2.5-0.5B, kind: model, optional: true, description: "A 0.5B base model, strong for its size."}
+  - {key: p70, name: "Pythia-70m", path: models/pythia-70m, kind: model, optional: true, description: "The smallest Pythia; same data and tokenizer as its larger siblings."}
+  - {key: tiny, name: "TinyStories", path: datasets/pretrain/tinystories, kind: dataset, optional: true, description: "Short, simple stories; a tiny model learns fluent English from them quickly."}
+  - {key: wt103, name: "WikiText-103", path: datasets/pretrain/wikitext-103, kind: dataset, optional: true, description: "Wikipedia good and featured articles."}
+  - {key: cosmo, name: "Cosmopedia", path: datasets/pretrain/cosmopedia, kind: dataset, optional: true, description: "Synthetic textbooks and stories written by an LLM."}
+  - {key: fwedu, name: "FineWeb-Edu", path: datasets/curation/fineweb-edu, kind: dataset, optional: true, description: "Web pages already filtered for educational value."}
 
 steps:
   - id: pack
@@ -33,13 +50,18 @@ steps:
     needs_previous: false
     figures: [{key: train_tokens, label: tokens}]
     params:
-      - {key: tokenizer_run, label: Tokenizer (step 3 of the Tokenizer experiment), type: run, experiment: world-tokenizer, step: 3, default: null, help: Required — this is how your vocabulary reaches the model}
-      - {key: docs, label: Documents to generate, type: int, min: 2000, max: 2000000, step: 1000, default: 200000}
-      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55}
-      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30}
+      - {key: tokenizer_source, label: Tokenizer, type: select, default: generated, options: [{value: generated, label: generated — one of your Tokenizer runs}, {value: prepared, label: prepared — the tokenizer of a model under materials/models}]}
+      - {key: tokenizer_run, label: Tokenizer run (step 3), type: run, experiment: world-tokenizer, step: 3, default: null, show_if: {tokenizer_source: generated}, help: Required — this is how your vocabulary reaches the model}
+      - {key: tokenizer_material, label: Prepared model (its tokenizer), type: material, kind: model, formats: [atelier, hf], default: null, show_if: {tokenizer_source: prepared}, help: "Only the model's tokenizer.json is used — an Atelier BPE or a HuggingFace tokenizer. The weights are not: this experiment trains from scratch"}
+      - {key: lang, label: Language, type: select, default: auto, options: [{value: auto, label: "from the tokenizer (its run, or the model's meta.json)"}, {value: en, label: English}, {value: ja, label: 日本語}], help: The language of generated documents and of the questions step 4 asks}
+      - {key: data_source, label: Documents, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared corpus, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field"}
+      - {key: docs, label: Documents (to generate, or at most from a prepared corpus), type: int, min: 2000, max: 2000000, step: 1000, default: 200000}
+      - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55, show_if: {data_source: generated}}
+      - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30, show_if: {data_source: generated}}
       - {key: max_tokens, label: Token budget, type: int, min: 100000, max: 2000000000, step: 100000, default: 60000000}
       - {key: val_frac, label: Validation share, type: float, min: 0.002, max: 0.1, step: 0.002, default: 0.01}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 11, help: Use a different seed from the tokenizer run so the model does not train on the exact documents the vocabulary was fitted to}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 11, show_if: {data_source: generated}, help: Use a different seed from the tokenizer run so the model does not train on the exact documents the vocabulary was fitted to}
   - id: size
     title: Size
     summary: Choose the architecture and count the cost

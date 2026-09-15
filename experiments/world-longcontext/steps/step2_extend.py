@@ -26,6 +26,8 @@ tok = MiniTokenizer.load(I["tokenizer"])
 target = int(P["target_length"])
 trained = int(I["trained_length"])
 rng = random.Random(9)
+# prepared filler from step 1, if the haystacks come from a documents dataset
+passages = json.loads(Path(I["filler_eval"]).read_text(encoding="utf-8")) if I.get("data_source") == "prepared" and I.get("filler_eval") else None
 
 settings = [{"kind": "interpolation", "scale": float(s), "base": 10000.0, "label": f"scale ×{s}"} for s in sorted(float(x) for x in P["scales"])]
 settings += [{"kind": "base", "scale": 1.0, "base": float(b), "label": f"base {int(float(b)):,}"} for b in sorted(float(x) for x in P["bases"]) if float(b) != 10000.0]
@@ -39,19 +41,19 @@ for si, s in enumerate(settings):
     model._cos = model._sin = None
     losses, short_losses = [], []
     for _ in range(int(P["n_docs"])):
-        long_text, _ = make_haystack(world, tok, target, rng)
+        long_text, _ = make_haystack(world, tok, target, rng, passages)
         ids = torch.tensor([tok.encode(long_text, bos=True)[: target + 1]], device=device)
         if ids.shape[1] > 16:
             with torch.no_grad():
                 _, loss = model(ids[:, :-1], ids[:, 1:])
             losses.append(float(loss))
-        short_text, _ = make_haystack(world, tok, min(trained, 256), rng)
+        short_text, _ = make_haystack(world, tok, min(trained, 256), rng, passages)
         sids = torch.tensor([tok.encode(short_text, bos=True)[: min(trained, 256) + 1]], device=device)
         if sids.shape[1] > 16:
             with torch.no_grad():
                 _, sloss = model(sids[:, :-1], sids[:, 1:])
             short_losses.append(float(sloss))
-    needles = [plant(world, tok, target - 60, rng.choice([0.1, 0.5, 0.9]), rng) for _ in range(24)]
+    needles = [plant(world, tok, target - 60, rng.choice([0.1, 0.5, 0.9]), rng, passages) for _ in range(24)]
     gens = generate(model, tok, [needle_prompt(nd["document"], nd["question"], world.answer_prefix) for nd in needles], 24, 0.0, batch_size=4)
     hits = sum(1 for g, nd in zip(gens, needles) if nd["answer"] in g[0])
     rows.append({"setting": s["label"], "kind": s["kind"], "scale": s["scale"], "base": s["base"], "long_loss": sum(losses) / max(len(losses), 1), "short_loss": sum(short_losses) / max(len(short_losses), 1), "needle": hits / max(len(needles), 1)})
@@ -72,6 +74,7 @@ R.chart("needle", "Needle found", rows, "setting", [{"key": "needle", "label": "
 R.table("rows", "Settings", [{"key": "setting", "label": "Setting"}, {"key": "long_loss", "label": f"Loss at {target}", "fmt": "num"}, {"key": "short_loss", "label": "Loss when short", "fmt": "num"}, {"key": "needle", "label": "Needle", "fmt": "pct"}], rows)
 R.artifact(run_dir / "extend.json", "extend.json")
 R.output("extend", str(run_dir / "extend.json")).output("rope_scale", best["scale"]).output("rope_base", best["base"]).output("target_length", target)
-for k in ("model", "tokenizer", "lang", "system", "trained_length", "measure"):
-    R.output(k, I[k])
+for k in ("model", "tokenizer", "lang", "system", "trained_length", "measure", "model_format", "adapter", "model_label", "data_source", "data_label", "filler_eval", "filler_train"):
+    if k in I:
+        R.output(k, I[k])
 R.save()

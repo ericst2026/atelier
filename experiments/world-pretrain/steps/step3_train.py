@@ -51,7 +51,7 @@ R.chart("lr", "Learning rate", [{"step": h["step"], "lr": h["lr"]} for h in hist
 R.table("history", "Evaluations", [{"key": "step", "label": "Step"}, {"key": "train_loss", "label": "Train", "fmt": "num"}, {"key": "val_loss", "label": "Validation", "fmt": "num"}, {"key": "tokens", "label": "Tokens", "fmt": "int"}, {"key": "elapsed", "label": "Seconds", "fmt": "num"}], hist)
 R.artifact(Path(res["checkpoint"]), "model.pt (best validation)")
 R.output("model", res["checkpoint"]).output("val_loss", res["best_val_loss"]).output("params", model.num_params()).output("tokens_seen", res["tokens_seen"])
-for k in ("train_bin", "val_bin", "meta", "tokenizer", "vocab_size", "lang", "model_config"):
+for k in ("train_bin", "val_bin", "meta", "tokenizer", "vocab_size", "lang", "model_config", "data_source", "data_label", "tokenizer_label"):
     if k in I:
         R.output(k, I[k])
 R.save()

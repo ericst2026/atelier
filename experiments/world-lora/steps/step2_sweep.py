@@ -5,11 +5,11 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.lora import adapter_bytes, apply_lora
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_mini.train import sft
 from atelier_world import World
 
@@ -20,9 +20,14 @@ run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = json.loads(Path(I["lora_config"]).read_text())
 world = World(lang=I.get("lang", "en"), seed=15)
-tok = MiniTokenizer.load(I["tokenizer"])
-rows = list(world.instructions(int(P["examples"]), with_steps=True))
-tasks = world.eval_set(int(P["n_eval"]), seed=616_003)
+tok = load_tokenizer(I["tokenizer"])
+if I.get("data_source") == "prepared":
+    # written by step 1 from the prepared dataset: its training rows, and questions held out from them
+    rows = read_jsonl(I["data_train"], limit=int(P["examples"]))
+    tasks = read_jsonl(I["data_val"], limit=int(P["n_eval"]))
+else:
+    rows = list(world.instructions(int(P["examples"]), with_steps=True))
+    tasks = world.eval_set(int(P["n_eval"]), seed=616_003)
 system = world.system_prompt
 
 
@@ -72,6 +77,7 @@ R.chart("cost", "Memory and time by rank", results, "rank", [{"key": "peak_gb", 
 R.table("results", "The sweep", [{"key": "rank", "label": "Rank"}, {"key": "trainable", "label": "Trainable", "fmt": "int"}, {"key": "share", "label": "Share", "fmt": "pct"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}, {"key": "adapter_mb", "label": "Adapter MB", "fmt": "num"}, {"key": "seconds", "label": "Seconds", "fmt": "num"}], results)
 R.artifact(run_dir / "sweep.json", "sweep.json")
 R.output("sweep", str(run_dir / "sweep.json")).output("best_rank", best["rank"]).output("base_accuracy", base_acc)
-for k in ("lora_config", "base_model", "tokenizer", "lang"):
-    R.output(k, I[k])
+for k in ("lora_config", "base_model", "tokenizer", "lang", "system", "model_format", "adapter", "model_label", "data_source", "data_label", "data_train", "data_val"):
+    if k in I:
+        R.output(k, I[k])
 R.save()

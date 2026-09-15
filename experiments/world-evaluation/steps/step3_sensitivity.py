@@ -8,25 +8,25 @@ from pathlib import Path
 import torch
 
 from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_world.prepared import choose_model, load_lm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib_harness import option_logprobs, pick  # noqa: E402
+from lib_harness import pick, score_options  # noqa: E402
 from lib_items import few_shot_prefix  # noqa: E402
 
 parse_args()
-P = params({"shot_values": ["0", "2", "5"], "shuffle_options": True, "limit": 300})
+P = params({"compare_source": "generated", "compare_material": None, "shot_values": ["0", "2", "5"], "shuffle_options": True, "limit": 300})
 I = inputs()
 run_dir = Path(os.environ.get("ATELIER_RUN_DIR", "."))
 device = "cuda" if torch.cuda.is_available() else "cpu"
-tok = MiniTokenizer.load(I["tokenizer"])
 choice = read_jsonl(I["choice"], limit=int(P["limit"]))
-models = [("this run", I["model"])]
+models = [("this run", {"format": I.get("model_format", "atelier"), "model": I["model"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter"), "system": I.get("system")})]
 cmp = I.get("compare_run_run")
-if cmp:
-    o = cmp["outputs"]
-    models.append((f"run {cmp['id']}", o.get("sft_model") or o.get("model")))
+if str(P["compare_source"]) == "prepared" or cmp:
+    # the second model is optional: a run of yours, or a prepared model
+    run_key = "sft_model" if cmp and cmp["outputs"].get("sft_model") else "model"
+    other = choose_model(P, I, run_key="compare_run", run_model_key=run_key, source_key="compare_source", material_key="compare_material", hint="Choose a second model to compare with, or leave it empty.")
+    models.append((f"run {cmp['id']}" if other["source"] == "generated" else other["label"], other))
 
 shots = sorted(int(s) for s in P["shot_values"])
 configs = [{"name": f"{s}-shot", "shots": s, "shuffle": False} for s in shots]
@@ -34,9 +34,9 @@ if bool(P["shuffle_options"]):
     configs.append({"name": f"{shots[0]}-shot, shuffled", "shots": shots[0], "shuffle": True})
 
 rows, total, done = [], len(models) * len(configs), 0
-for label, path in models:
-    model, _ = MiniLM.load(path, device)
-    model.eval()
+for label, info in models:
+    lm = load_lm(info, device)
+    lm.model.eval()
     for cfg in configs:
         prefix = few_shot_prefix(choice, cfg["shots"])
         rng = random.Random(5)
@@ -48,13 +48,14 @@ for label, path in models:
                 rng.shuffle(order)
                 options = [item["options"][j] for j in order]
                 answer = order.index(item["answer"])
-            scores = option_logprobs(model, tok, prefix + item["question"], options, 16)
+            scores = score_options(lm, prefix + item["question"], options, 16)
             correct += pick(scores, "mean") == answer
         rows.append({"model": label, "config": cfg["name"], "accuracy": correct / len(choice)})
         done += 1
         progress(5 + 90 * done / total, f"{label} · {cfg['name']}: {correct / len(choice):.1%}")
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 by_model = {}
 for r in rows:
@@ -80,7 +81,7 @@ R.chart("spread", "Swing per model", [{"model": m, "spread": s} for m, s in spre
 R.table("rows", "Every configuration", [{"key": "model", "label": "Model"}, {"key": "config", "label": "Harness"}, {"key": "accuracy", "label": "Accuracy", "fmt": "pct"}], rows)
 R.artifact(run_dir / "sensitivity.json", "sensitivity.json")
 R.output("sensitivity", str(run_dir / "sensitivity.json")).output("spread", worst)
-for k in ("choice", "open", "model", "tokenizer", "scores", "lang", "seed", "n_options", "accuracy"):
+for k in ("choice", "open", "model", "tokenizer", "scores", "lang", "seed", "n_options", "accuracy", "model_format", "adapter", "model_label", "system", "data_source", "data_label"):
     if k in I:
         R.output(k, I[k])
 R.save()

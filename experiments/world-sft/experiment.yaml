@@ -14,7 +14,19 @@ description: |
   family, before and after, on problems the model has never seen. No judge model,
   no win rates, no arguing about what counts as a good answer.
 
-materials: []
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: smol135, name: "SmolLM2-135M", path: models/SmolLM2-135M, kind: model, optional: true, for: [model_material], description: "A 135M base model, small enough to fine-tune in full on one GPU."}
+  - {key: smol360, name: "SmolLM2-360M", path: models/SmolLM2-360M, kind: model, optional: true, for: [model_material], description: "A 360M base model."}
+  - {key: qwen05, name: "Qwen2.5-0.5B", path: models/Qwen2.5-0.5B, kind: model, optional: true, for: [model_material], description: "A 0.5B base model, strong for its size."}
+  - {key: qwen15, name: "Qwen2.5-1.5B", path: models/Qwen2.5-1.5B, kind: model, optional: true, for: [model_material], description: "A 1.5B base model; fine-tuned with a LoRA adapter."}
+  - {key: gpt2, name: "GPT-2", path: models/gpt2, kind: model, optional: true, for: [model_material], description: "The 124M GPT-2 and its byte-level BPE tokenizer."}
+  - {key: p160, name: "Pythia-160m", path: models/pythia-160m, kind: model, optional: true, for: [model_material], description: "Pythia-160m, fully trained."}
+  - {key: alpaca, name: "Alpaca-cleaned", path: datasets/sft/alpaca-cleaned, kind: dataset, optional: true, description: "52k instruction / response pairs. Free-text answers: good demonstrations, poor for exact-match grading."}
+  - {key: dolly, name: "Dolly 15k", path: datasets/sft/dolly-15k, kind: dataset, optional: true, description: "15k human-written instruction / response pairs; the context passage is added to the prompt."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
 
 steps:
   - id: data
@@ -34,13 +46,17 @@ steps:
     needs_previous: false
     figures: [{key: examples, label: examples}]
     params:
-      - {key: base_run, label: Base model (step 3 of Pretraining), type: run, experiment: world-pretrain, step: 3, default: null, help: Required — fine-tuning needs something to fine-tune}
-      - {key: examples, label: Demonstrations, type: int, min: 200, max: 200000, step: 200, default: 20000}
-      - {key: with_steps, label: Include the reasoning steps in the target, type: bool, default: true}
-      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
-      - {key: difficulty, label: Difficulty, type: select, default: mixed, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
+      - {key: model_source, label: Base model, type: select, default: generated, options: [{value: generated, label: generated — one of your Pretraining runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: base_run, label: Pretraining run (step 3), type: run, experiment: world-pretrain, step: 3, default: null, show_if: {model_source: generated}, help: Required — fine-tuning needs something to fine-tune}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is fine-tuned in full; a HuggingFace model gets a LoRA adapter"}
+      - {key: data_source, label: Demonstrations, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional steps. A validation or test file is used for evaluation, otherwise a slice is held out"}
+      - {key: examples, label: Demonstrations (at most, for a prepared dataset), type: int, min: 200, max: 200000, step: 200, default: 20000}
+      - {key: with_steps, label: Include the reasoning steps in the target, type: bool, default: true, help: A prepared dataset contributes steps only where its rows have them}
+      - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], show_if: {data_source: generated}, options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
+      - {key: difficulty, label: Difficulty, type: select, default: mixed, show_if: {data_source: generated}, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
       - {key: val_examples, label: Validation examples, type: int, min: 50, max: 5000, step: 50, default: 500}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 21}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 21, show_if: {data_source: generated}}
   - id: baseline
     title: Baseline
     summary: What the base model does before you touch it

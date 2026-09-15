@@ -1,16 +1,13 @@
 """Step 4 — accuracy before and after, and the reward-hacking checks."""
-import json
 import os
 import sys
 from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, hist, inputs, params, parse_args, progress
-from atelier_mini.gen import generate
-from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_sdk import Result, hist, inputs, params, parse_args, progress, read_jsonl
 from atelier_world import World
+from atelier_world.prepared import load_lm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib_reward import repetition  # noqa: E402
@@ -21,15 +18,22 @@ I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 world = World(lang=I.get("lang", "en"), seed=5)
 trained = list(I.get("families") or world.families)
-families = world.families if bool(P["held_out_families"]) else trained
-tasks = world.eval_set(int(P["n_eval"]), seed=99_881_003, families=families)
-tok = MiniTokenizer.load(I["tokenizer"])
+if I.get("data_source") == "prepared":
+    # the prepared dataset's held-out questions; every family in it was available to training
+    tasks = read_jsonl(I["qa_val"], limit=int(P["n_eval"]))
+else:
+    families = world.families if bool(P["held_out_families"]) else trained
+    tasks = world.eval_set(int(P["n_eval"]), seed=99_881_003, families=families)
+fmt = I.get("model_format", "atelier")
 system = I.get("system") or world.system_prompt
 
 out = {}
-for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["rl_model"]))):
-    model, _ = MiniLM.load(path, device)
-    gens = generate(model, tok, [t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
+# HuggingFace: the starting policy may carry a fine-tuning adapter; the RL policy is a full model
+models = (("before", {"format": fmt, "model": I["policy"], "tokenizer": I["tokenizer"], "adapter": I.get("adapter")}),
+          ("after", {"format": fmt, "model": I["rl_model"], "tokenizer": I["tokenizer"], "adapter": None}))
+for j, (name, info) in enumerate(models):
+    lm = load_lm(info, device)
+    gens = lm.generate([t["prompt"] for t in tasks], int(P["max_new_tokens"]), 0.0, batch_size=32, system=system, progress=lambda d, t: progress(5 + 45 * j + 40 * d / t, f"{name}: {d}/{t}"))
     answers = [g[0] for g in gens]
     correct = [world.grade(a, t["answer"]) for a, t in zip(answers, tasks)]
     by_family = {}
@@ -46,8 +50,9 @@ for j, (name, path) in enumerate((("before", I["policy"]), ("after", I["rl_model
         "repetitive": sum(1 for a in answers if repetition(a) > 0.3) / len(tasks),
         "empty": sum(1 for a in answers if len(a.strip()) < 3) / len(tasks),
     }
-    del model
-    torch.cuda.empty_cache()
+    del lm
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 b, a = out["before"], out["after"]
 trained_acc = ({"before": 0, "after": 0}, {"before": 0, "after": 0})
@@ -74,5 +79,8 @@ R.chart("hacking", "Signs of reward hacking", [
 R.chart("lengths", "Answer length after RL", hist(a["lengths"], bins=18), "bin", [{"key": "count", "label": "Answers", "color": "hold"}], "bar")
 changed = [i for i in range(len(tasks)) if a["correct"][i] != b["correct"][i]]
 R.table("changed", "Questions whose outcome changed", [{"key": "family", "label": "Family"}, {"key": "question", "label": "Question"}, {"key": "gold", "label": "Answer"}, {"key": "before", "label": "Before"}, {"key": "after", "label": "After"}], [{"family": tasks[i]["family"], "question": tasks[i]["prompt"][:180], "gold": tasks[i]["answer"], "before": ("✓ " if b["correct"][i] else "✗ ") + b["answers"][i][:180], "after": ("✓ " if a["correct"][i] else "✗ ") + a["answers"][i][:180]} for i in changed[:30]])
+if I.get("data_source") == "prepared":
+    R.note("Held-out questions from the prepared dataset's validation split (or the slice step 1 set aside): never used for probing or training.")
 R.output("accuracy", a["accuracy"]).output("rl_model", I["rl_model"]).output("tokenizer", I["tokenizer"]).output("lang", I.get("lang", "en"))
+R.output("model_format", fmt).output("adapter", None)
 R.save()

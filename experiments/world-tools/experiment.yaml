@@ -13,7 +13,19 @@ description: |
   to call a tool, does it call the right one with arguments that parse, and does it
   use the result rather than ignoring it.
 
-materials: []
+  The model can be one of your Fine-tuning runs or one prepared under materials/ (an
+  Atelier checkpoint or a HuggingFace model). The questions can be generated, or come
+  from a prepared question-and-answer dataset: the traces are then built from its
+  rows, calling a tool only where the tool's result is the dataset's own answer.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+materials:
+  - {key: smol135i, name: "SmolLM2-135M-Instruct", path: models/SmolLM2-135M-Instruct, kind: model, optional: true, description: "SmolLM2-135M after instruction tuning; asked through its chat template."}
+  - {key: smol360i, name: "SmolLM2-360M-Instruct", path: models/SmolLM2-360M-Instruct, kind: model, optional: true, description: "SmolLM2-360M after instruction tuning."}
+  - {key: qwen05i, name: "Qwen2.5-0.5B-Instruct", path: models/Qwen2.5-0.5B-Instruct, kind: model, optional: true, description: "Qwen2.5-0.5B after instruction tuning."}
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
 
 steps:
   - id: tools
@@ -30,7 +42,12 @@ steps:
     needs_previous: false
     figures: [{key: coverage, label: coverage}]
     params:
-      - {key: sft_run, label: Model (Fine-tuning step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your Fine-tuning runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: sft_run, label: Fine-tuning run (step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is fine-tuned in full on the traces; a HuggingFace model gets a LoRA adapter"}
+      - {key: lang, label: Language of generated questions, type: select, default: en, show_if: {model_source: prepared}, options: [{value: en, label: English}, {value: ja, label: 日本語}], help: Used when the prepared model has no meta.json naming its language}
+      - {key: data_source, label: Questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "Questions with short answers (prompt / question + answer / output). Step 2 turns its training rows into traces — a calc or count call wherever the tool's result is the answer, a plain answer otherwise — and step 4 asks its validation or test rows"}
       - {key: enabled, label: Tools to enable, type: multiselect, default: [calc, lookup, count], options: [{value: calc, label: "calc(expression)"}, {value: lookup, label: "lookup(key)"}, {value: count, label: "count(list)"}]}
       - {key: n_probe, label: Questions to probe, type: int, min: 50, max: 1000, step: 50, default: 300}
       - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 384, step: 16, default: 192}
@@ -49,7 +66,7 @@ steps:
     params:
       - {key: n_traces, label: Demonstrations, type: int, min: 500, max: 40000, step: 500, default: 8000}
       - {key: no_tool_share, label: Share showing no tool call, type: float, min: 0, max: 0.6, step: 0.05, default: 0.25, help: Without these the model calls a tool for everything, including questions that need none}
-      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 33}
+      - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 33, help: For a prepared dataset it only shuffles the rows}
   - id: train
     title: Train
     summary: Fine-tune on the traces

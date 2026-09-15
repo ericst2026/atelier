@@ -14,7 +14,20 @@ description: |
   cache, speculative decoding with a smaller draft model, and distillation from a
   larger teacher. They are a few hundred lines in total and worth reading once.
 
-materials: []
+  The model (and the draft for speculation) can be one of your runs or an Atelier
+  checkpoint prepared under materials/models, and the questions and distillation
+  data can be generated from the world or a prepared question-and-answer dataset —
+  chosen independently. HuggingFace models are not offered: every technique here is
+  applied to the Atelier model's own layers, cache and logits.
+
+# The prepared models and datasets the step forms offer. Nothing else can be chosen;
+# optional: a run needs one on its worker only when it picks it. for: limits an entry
+# to those material params.
+# Its model pickers take Atelier checkpoints only (the experiment works inside the
+# model's own layers) and none is prepared yet: put one under materials/models/ and list it here.
+materials:
+  - {key: gsm8k, name: "GSM8K", path: datasets/rl/gsm8k, kind: dataset, optional: true, description: "Grade-school maths word problems; the number after #### is the answer and the lines above it the worked steps."}
+  - {key: arce, name: "ARC-Easy", path: datasets/eval/arc-easy, kind: dataset, optional: true, description: "Grade-school science multiple choice; the letter is graded."}
 
 steps:
   - id: measure
@@ -31,7 +44,11 @@ steps:
     needs_previous: false
     figures: [{key: tokens_per_sec, label: tok/s}]
     params:
-      - {key: model_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null}
+      - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your runs}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: model_run, label: Model (Fine-tuning step 3 or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json). Quantisation, the cache, speculation and distillation all work on the Atelier model's own layers, so HuggingFace models are not listed"}
+      - {key: data_source, label: Questions and distillation data, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
+      - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response). A validation or test file supplies the questions timed and graded; the training rows are what step 4 distils on"}
       - {key: lengths, label: Generation lengths to time, type: multiselect, default: ["32", "64", "128", "256"], options: [{value: "16", label: "16"}, {value: "32", label: "32"}, {value: "64", label: "64"}, {value: "128", label: "128"}, {value: "256", label: "256"}]}
       - {key: batch_sizes, label: Batch sizes to time, type: multiselect, default: ["1", "4", "16", "64"], options: [{value: "1", label: "1"}, {value: "4", label: "4"}, {value: "16", label: "16"}, {value: "64", label: "64"}, {value: "128", label: "128"}]}
       - {key: n_prompts, label: Prompts per measurement, type: int, min: 4, max: 128, default: 32}
@@ -65,7 +82,9 @@ steps:
     timeout_min: 120
     figures: [{key: cache_speedup, label: cache}, {key: acceptance, label: accepted}]
     params:
-      - {key: draft_run, label: Draft model (a smaller Pretraining run), type: run, experiment: world-pretrain, step: 3, default: null, help: Leave empty to skip speculative decoding}
+      - {key: draft_source, label: Draft model, type: select, default: generated, options: [{value: generated, label: generated — a smaller Pretraining run}, {value: prepared, label: prepared — a model under materials/models}]}
+      - {key: draft_run, label: Draft model (a smaller Pretraining run), type: run, experiment: world-pretrain, step: 3, default: null, show_if: {draft_source: generated}, help: Leave empty to skip speculative decoding}
+      - {key: draft_material, label: Prepared draft model, type: material, kind: model, formats: [atelier], default: null, show_if: {draft_source: prepared}, help: "A smaller Atelier checkpoint trained with the same tokenizer as the model from step 1"}
       - {key: lookahead, label: Tokens the draft proposes, type: int, min: 1, max: 8, default: 4}
       - {key: n_prompts, label: Prompts to time, type: int, min: 4, max: 64, default: 20}
       - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 256, step: 16, default: 128}

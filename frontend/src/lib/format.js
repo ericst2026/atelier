@@ -6,7 +6,17 @@ export const fmtNum = (v, d = 3) => {
   if (Math.abs(n) >= 1e6) return n.toExponential(2);
   return Number(n.toFixed(d)).toLocaleString(undefined, { maximumFractionDigits: d });
 };
-export const fmtPct = (v, d = 1) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "–" : `${(Number(v) * 100).toFixed(d)}%`);
+/** Short tick labels: 60M, 1.2k, 0.35, 1.5e-4. */
+export const fmtAxis = (v) => {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "";
+  const n = Number(v);
+  const a = Math.abs(n);
+  if (a === 0) return "0";
+  if (a >= 1000) return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  if (a < 0.001) return n.toExponential(1);
+  return String(Number(n.toPrecision(3)));
+};
+export const fmtPct =(v, d = 1) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "–" : `${(Number(v) * 100).toFixed(d)}%`);
 export const fmtMs = (ms) => {
   if (ms === null || ms === undefined) return "–";
   const s = Number(ms) / 1000;

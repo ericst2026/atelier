@@ -1,0 +1,35 @@
+# How the experiments page groups experiments. Sections appear in this order, and
+# experiments within a section by their own `order`. An experiment can also set
+# `category: <id>` in its experiment.yaml, which wins over the lists here; anything
+# in neither lands under "Other". Edited like the experiments themselves: save the
+# file and the page picks it up within a few seconds.
+categories:
+  - id: data
+    title: Data
+    summary: Where the text comes from, how it is cleaned, and the vocabulary everything else is built on.
+    experiments: [world-tokenizer, world-curation, tokenizer, curation]
+
+  - id: pretraining
+    title: Pretraining and scale
+    summary: Train a model from nothing, then see how loss moves with size, data and hardware.
+    experiments: [world-pretrain, world-scaling, world-distributed, pretrain]
+
+  - id: adaptation
+    title: Adapting a model
+    summary: Turn a base model into one that answers — demonstrations, adapters, preferences and rewards.
+    experiments: [world-sft, world-lora, world-dpo, world-rl, sft, rl]
+
+  - id: capabilities
+    title: Capabilities
+    summary: Reasoning, tools, retrieval and long context — what a model can do beyond its first answer.
+    experiments: [world-reasoning, world-tools, world-rag, world-longcontext, reasoning, rag]
+
+  - id: analysis
+    title: Evaluation, interpretability and safety
+    summary: Measure a model honestly, look inside it, and check how it behaves when it should not.
+    experiments: [world-evaluation, world-interpretability, evaluation, interpretability, safety]
+
+  - id: efficiency
+    title: Efficiency
+    summary: Make a trained model smaller and faster without losing what it learned.
+    experiments: [world-efficiency]

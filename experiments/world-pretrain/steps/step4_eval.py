@@ -11,7 +11,7 @@ from atelier_sdk import Result, inputs, params, parse_args, progress
 from atelier_mini.data import TokenStream
 from atelier_mini.gen import generate
 from atelier_mini.model import MiniLM
-from atelier_mini.tok import MiniTokenizer
+from atelier_mini.tok import load_tokenizer
 from atelier_world import World
 
 parse_args()
@@ -20,13 +20,16 @@ I = inputs()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 meta = json.loads(Path(I["meta"]).read_text())
 model, ck = MiniLM.load(I["model"], device)
-tok = MiniTokenizer.load(I["tokenizer"])
+# a Tokenizer run's BPE, or the tokenizer.json of a prepared model chosen in step 1
+tok = load_tokenizer(I["tokenizer"])
 world = World(lang=meta.get("lang", "en"), seed=4242)
 val = TokenStream(I["val_bin"], meta["dtype"])
 
 T = model.config.block_size
 torch.manual_seed(0)
-pos = torch.zeros(T - 1, device=device)
+# one loss per position: batch() returns x and y of length T each (y is x shifted by
+# one token), so the model scores all T positions, not T - 1
+pos = torch.zeros(T, device=device)
 total, n = 0.0, 0
 for b in range(int(P["eval_batches"])):
     x, y = val.batch(16, T, device)
@@ -43,7 +46,7 @@ pos_loss = (pos / n).tolist()
 
 prompts = [p for p in str(P["prompts"]).splitlines() if p.strip()]
 if not prompts:
-    prompts = [d["text"][:60] for d in list(world.documents(3))]
+    prompts = meta.get("sample_prompts") or [d["text"][:60] for d in list(world.documents(3))]
 progress(40, "sampling continuations")
 samples = generate(model, tok, prompts, int(P["max_new_tokens"]), float(P["temperature"]), top_k=50, batch_size=8)
 
@@ -85,8 +88,10 @@ if cmp:
     ]
     R.table("compare", "Side by side", [{"key": "run", "label": "Run"}, {"key": "params", "label": "Parameters", "fmt": "int"}, {"key": "tokens", "label": "Tokens", "fmt": "int"}, {"key": "val_loss", "label": "Validation loss", "fmt": "num"}], rows)
     R.chart("scaling", "Loss against parameters", [{"params": r["params"], "val_loss": r["val_loss"]} for r in rows if r["params"] and r["val_loss"]], "params", [{"key": "val_loss", "label": "Validation loss", "color": "hold"}], "line", x_log=True, note="Add runs at other sizes to trace a scaling curve of your own.")
+if meta.get("data_source") == "prepared" and acc is not None:
+    R.note(f"The model was trained on {meta.get('data_label', 'a prepared corpus')}, but the questions come from the world generator: a corpus without worked problems of that kind should score near zero here, and that is not a sign training failed. The validation loss and samples are measured on the prepared corpus itself.")
 R.output("model", I["model"]).output("val_loss", val_loss).output("base_accuracy", acc)
-for k in ("tokenizer", "meta", "lang", "vocab_size"):
+for k in ("tokenizer", "meta", "lang", "vocab_size", "data_source", "data_label", "tokenizer_label"):
     if k in I:
         R.output(k, I[k])
 R.save()

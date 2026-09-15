@@ -13,6 +13,12 @@ description: |
   trained on too few tokens sits above the curve no matter how large it is, and
   that the cheapest way to a lower loss is usually not a bigger model.
 
+  Every point trains on the token stream of a Pretraining step 1 run, so the data
+  is whatever that run packed: generated from the world, or a prepared corpus and
+  tokenizer from `materials/` chosen there. There is no separate data choice here.
+
+# No prepared material is chosen here: the data and tokenizer are the ones
+# chosen in world-pretrain step 1, whose materials list offers them.
 materials: []
 
 steps:
@@ -29,7 +35,7 @@ steps:
     needs_previous: false
     figures: [{key: points, label: points}]
     params:
-      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null, help: Every point in the grid trains on the same data}
+      - {key: pack_run, label: Token stream (Pretraining step 1), type: run, experiment: world-pretrain, step: 1, default: null, help: "Every point in the grid trains on the same data — generated or prepared, as chosen in that run"}
       - {key: sizes, label: Sizes to train, type: multiselect, default: [n1, n2, n3, n4], options: [{value: n1, label: "4 layers × 192 wide"}, {value: n2, label: "6 × 288"}, {value: n3, label: "8 × 384"}, {value: n4, label: "10 × 512"}, {value: n5, label: "12 × 640"}]}
       - {key: tokens_per_param, label: Tokens per parameter, type: float, min: 2, max: 40, step: 1, default: 20, help: "20 is the usual compute-optimal rule; try 5 to see what starvation looks like"}
       - {key: block_size, label: Context length, type: int, min: 128, max: 512, step: 128, default: 256}
