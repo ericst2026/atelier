@@ -12,10 +12,18 @@ are skipped, so re-running after a failure resumes rather than restarts.
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 import yaml
+
+# Plain HTTP instead of the Xet transfer client. Xet has hung here with a partial
+# file and no open connection, cannot resume what it left behind, and fails every
+# later download in the process once one errors. HTTP resumes an interrupted file.
+# Read when huggingface_hub is imported, so it must be set before the imports below;
+# HF_HUB_DISABLE_XET=0 in the environment turns Xet back on.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="./materials")
