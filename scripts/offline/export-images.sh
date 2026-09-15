@@ -63,6 +63,20 @@ for img in "${PULL[@]}"; do
   docker pull "$img"
 done
 
+# The base images the builds started from, saved too so the images can be rebuilt
+# offline. BuildKit keeps what it pulls in its build cache, not as images that
+# docker save can see, so pull them by name; the layers are already local.
+BASE=($(awk 'toupper($1) == "FROM" && $2 !~ /\$/ { print $2 }' backend/Dockerfile frontend/Dockerfile | sort -u))
+for img in "${BASE[@]}"; do
+  echo "pulling base $img"
+  docker pull "$img"
+done
+for v in $CUDA_VARIANTS; do
+  read -r image _ <<< "$(variant_args "$v")"
+  echo "pulling base $image"
+  docker pull "$image"
+done
+
 echo "saving to $OUT (this takes a while; the worker tarballs are several GB each)"
 docker save atelier-api:latest atelier-web:latest | gzip > "$OUT/atelier-app.tar.gz"
 for v in $CUDA_VARIANTS; do
@@ -73,4 +87,13 @@ for v in $CUDA_VARIANTS; do
   docker save "${tags[@]}" | gzip > "$OUT/atelier-worker-$v.tar.gz"
 done
 docker save "${PULL[@]}" | gzip > "$OUT/atelier-infra.tar.gz"
+# base images: the api/web ones together, each worker variant's on its own (the
+# CUDA ones are several GB); only needed on a machine that rebuilds the images
+echo "saving base ${BASE[*]}"
+docker save "${BASE[@]}" | gzip > "$OUT/atelier-base.tar.gz"
+for v in $CUDA_VARIANTS; do
+  read -r image _ <<< "$(variant_args "$v")"
+  echo "saving base $image"
+  docker save "$image" | gzip > "$OUT/atelier-base-$v.tar.gz"
+done
 echo "done. Copy $OUT to the classroom node and run import-images.sh."

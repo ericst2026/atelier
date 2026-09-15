@@ -51,6 +51,7 @@ Materials tab marks it "not installed" and the steps that need it say so clearly
 | Worker/runtime image (PyTorch + CUDA + transformers, trl, peft), one per CUDA variant | built by `export-images.sh` | 4 GB compressed each |
 | API image (python:3.12-slim + FastAPI) and web image (nginx + the built React app) | built by `export-images.sh` | 400 MB |
 | postgres:16-alpine, redis:7-alpine, prometheus, node-exporter, grafana | pulled by `export-images.sh` | 700 MB |
+| Base images the builds start from (`atelier-base.tar.gz`, `atelier-base-<variant>.tar.gz`) — only for rebuilding offline | pulled by `export-images.sh` | 300 MB, plus ~3 GB per CUDA variant |
 | `gpt2` (the tokenizer for pretraining) | `fetch-materials.py` | 0.6 GB |
 | `Qwen2.5-0.5B` and `Qwen2.5-0.5B-Instruct` | `fetch-materials.py` | 2 GB |
 | `Qwen2.5-1.5B` and `Qwen2.5-1.5B-Instruct` (larger runs and the judge) | `fetch-materials.py` | 6 GB |
