@@ -5,14 +5,13 @@ rather than a user JWT, because the caller is a machine, not a person."""
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from .. import storage
 from ..config import settings
-from ..deps import get_db
+from ..db import get_db
 from ..models import Run
-from fastapi import Depends
 
 router = APIRouter(tags=["internal"], include_in_schema=False)
 
