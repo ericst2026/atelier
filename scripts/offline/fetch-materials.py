@@ -70,7 +70,10 @@ if models:
 
     for m in models:
         dest = out / "models" / m["name"]
-        if (dest / "config.json").exists():
+        # config.json alone proves nothing: the small files land first, so a download
+        # that failed on the weights leaves it behind. Only a finished one gets the marker.
+        done = dest / ".atelier-complete"
+        if done.exists():
             print(f"[skip ] model {m['name']}")
             continue
         print(f"[model] {m['repo']}" + (f"@{m['revision']}" if m.get("revision") else "") + f" → {dest}")
@@ -82,6 +85,9 @@ if models:
                 allow_patterns=m.get("allow_patterns", MODEL_PATTERNS),
                 ignore_patterns=["*.bin", "*.h5", "*.msgpack", "*.onnx", "*.gguf"],
             )
+            if not any(dest.glob("*.safetensors")):
+                raise RuntimeError("no *.safetensors weights in the snapshot")
+            done.touch()
         except Exception as exc:
             print(f"        FAILED: {exc}")
             failures.append(("model", m["name"], str(exc)))
@@ -101,15 +107,32 @@ if datasets:
                 continue
             print(f"[data ] {d['repo']} {remote_split} → {path}")
             try:
-                ds = load_dataset(d["repo"], d.get("config"), split=remote_split, streaming=True)
+                # data_dirs: subfolders of the repo read one after another, with `limit`
+                # shared equally between them. A stream stops at the limit, so without this
+                # a dataset stored folder by folder yields only its first folder.
+                parts = d.get("data_dirs") or [None]
+                per_part = -(-limit // len(parts)) if limit and d.get("data_dirs") else None
                 n = 0
                 with open(path, "w", encoding="utf-8") as fh:
-                    for row in ds:
-                        item = {k: row.get(v) for k, v in fields.items()} if fields else dict(row)
-                        if all(v in (None, "", [], {}) for v in item.values()):
-                            continue
-                        fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
-                        n += 1
+                    for part in parts:
+                        if d.get("data_files"):
+                            # Parquet files named directly; there is one set of files, so every
+                            # split in `splits` reads the same ones
+                            ds = load_dataset("parquet", data_files={remote_split: d["data_files"]}, split=remote_split, streaming=True)
+                        else:
+                            ds = load_dataset(d["repo"], d.get("config"), data_dir=part, split=remote_split, streaming=True)
+                        k = 0
+                        for row in ds:
+                            item = {k_: row.get(v) for k_, v in fields.items()} if fields else dict(row)
+                            if all(v in (None, "", [], {}) for v in item.values()):
+                                continue
+                            fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
+                            n += 1
+                            k += 1
+                            if (per_part and k >= per_part) or (limit and n >= limit):
+                                break
+                        if part:
+                            print(f"        {part}: {k:,} rows")
                         if limit and n >= limit:
                             break
                 print(f"        {n:,} rows")

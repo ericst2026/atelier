@@ -14,8 +14,10 @@
 
 models:
   # --- tokenizers and classic baselines -------------------------------------
-  - {repo: gpt2, name: gpt2, track: core, size_gb: 0.6, why: "reference BPE tokenizer; the baseline for pretraining comparisons"}
-  - {repo: distilgpt2, name: distilgpt2, track: core, size_gb: 0.4, why: "a distilled GPT-2, the reference point for the distillation step"}
+  # canonical ids: the old top-level names (gpt2, distilgpt2) redirect, and the Xet
+  # download path does not follow redirects — it 404s and fails every later download too
+  - {repo: openai-community/gpt2, name: gpt2, track: core, size_gb: 0.6, why: "reference BPE tokenizer; the baseline for pretraining comparisons"}
+  - {repo: distilbert/distilgpt2, name: distilgpt2, track: core, size_gb: 0.4, why: "a distilled GPT-2, the reference point for the distillation step"}
 
   # --- the small-model family used across adaptation and capability ---------
   - {repo: HuggingFaceTB/SmolLM2-135M, name: SmolLM2-135M, track: core, size_gb: 0.3, why: "smallest usable base model; fine-tunes on one GPU in minutes"}
@@ -41,7 +43,7 @@ models:
   # --- retrieval ------------------------------------------------------------
   - {repo: sentence-transformers/all-MiniLM-L6-v2, name: all-MiniLM-L6-v2, track: core, size_gb: 0.1, why: "sentence embeddings for the retrieval experiment"}
   - {repo: BAAI/bge-small-en-v1.5, name: bge-small-en-v1.5, track: core, size_gb: 0.14, why: "a stronger embedder to compare against"}
-  - {repo: cross-encoder/ms-marco-MiniLM-L-6-v2, name: ms-marco-MiniLM-L-6-v2, track: core, size_gb: 0.1, why: "reranker: the second stage of retrieval"}
+  - {repo: cross-encoder/ms-marco-MiniLM-L6-v2, name: ms-marco-MiniLM-L-6-v2, track: core, size_gb: 0.1, why: "reranker: the second stage of retrieval"}
 
   # --- classifiers used as tools, not as the subject ------------------------
   - {repo: HuggingFaceFW/fineweb-edu-classifier, name: fineweb-edu-classifier, track: extended, size_gb: 0.6, why: "quality scoring in the data-curation experiment"}
@@ -50,15 +52,19 @@ models:
 datasets:
   # --- tokenizer and data curation ------------------------------------------
   - {repo: Salesforce/wikitext, config: wikitext-103-raw-v1, group: tokenizer, name: wikitext-103-raw, track: core, size_gb: 0.2, splits: {train: train, test: test}, limit: 80000, fields: {text: text}}
-  - {repo: bigcode/the-stack-smol, group: tokenizer, name: code, track: core, size_gb: 0.1, splits: {train: train}, limit: 8000, fields: {text: content, lang: lang}}
-  - {repo: statmt/cc100, config: ja, group: tokenizer, name: multilingual, track: core, size_gb: 0.1, splits: {train: train}, limit: 30000, fields: {text: text}, optional: true, why: "a non-space-separated language; the case where whitespace tokenizers fail"}
+  # stored one language per folder, Assembly first: data_dirs takes 800 rows from each
+  # of these instead of 8000 rows of Assembly. Gated — accept the terms on its page first.
+  - {repo: bigcode/the-stack-smol, data_dirs: [data/python, data/javascript, data/java, data/c, data/c++, data/go, data/rust, data/sql, data/html, data/shell], group: tokenizer, name: code, track: core, size_gb: 0.1, splits: {train: train}, limit: 8000, fields: {text: content, lang: lang}}
+  # cc100 and piqa are script datasets, which datasets 4+ no longer runs; data_files
+  # reads the Hub's own Parquet conversion of them instead
+  - {repo: statmt/cc100, data_files: "hf://datasets/statmt/cc100@refs%2Fconvert%2Fparquet/ja/partial-train/*.parquet", group: tokenizer, name: multilingual, track: core, size_gb: 0.1, splits: {train: train}, limit: 30000, fields: {text: text}, optional: true, why: "a non-space-separated language; the case where whitespace tokenizers fail"}
   - {repo: HuggingFaceFW/fineweb-edu, config: sample-10BT, group: curation, name: fineweb-edu, track: core, size_gb: 1.2, splits: {train: train}, limit: 150000, fields: {text: text, score: score, url: url}, why: "web text with quality scores already attached: the target of curation"}
   - {repo: allenai/c4, config: en, group: curation, name: c4-raw, track: core, size_gb: 1.0, splits: {train: train}, limit: 150000, fields: {text: text, url: url}, why: "the same web, uncurated — students build the filter that separates them"}
 
   # --- pretraining ----------------------------------------------------------
   - {repo: roneneldan/TinyStories, group: pretrain, name: tinystories, track: core, size_gb: 0.5, splits: {train: train, validation: validation}, limit: 500000, fields: {text: text}}
   - {repo: Salesforce/wikitext, config: wikitext-103-raw-v1, group: pretrain, name: wikitext-103, track: core, size_gb: 0.5, splits: {train: train, validation: validation}, limit: 400000, fields: {text: text}}
-  - {repo: HuggingFaceTB/cosmopedia-v2, group: pretrain, name: cosmopedia, track: large, size_gb: 1.5, splits: {train: train}, limit: 200000, fields: {text: text}, optional: true, why: "synthetic textbook-style text; a third domain for the mixing experiment"}
+  - {repo: HuggingFaceTB/smollm-corpus, config: cosmopedia-v2, group: pretrain, name: cosmopedia, track: large, size_gb: 1.5, splits: {train: train}, limit: 200000, fields: {text: text}, optional: true, why: "synthetic textbook-style text; a third domain for the mixing experiment"}
 
   # --- supervised fine-tuning ------------------------------------------------
   - {repo: yahma/alpaca-cleaned, group: sft, name: alpaca-cleaned, track: core, size_gb: 0.05, splits: {train: train}, fields: {instruction: instruction, input: input, output: output}, license: "CC BY-NC 4.0 — teaching only"}
@@ -80,7 +86,7 @@ datasets:
   - {repo: Rowan/hellaswag, group: eval, name: hellaswag, track: core, size_gb: 0.05, splits: {validation: validation}, fields: {ctx: ctx, endings: endings, label: label}}
   - {repo: allenai/ai2_arc, config: ARC-Easy, group: eval, name: arc-easy, track: core, size_gb: 0.01, splits: {test: test}, fields: {question: question, choices: choices, answerKey: answerKey}}
   - {repo: allenai/ai2_arc, config: ARC-Challenge, group: eval, name: arc-challenge, track: core, size_gb: 0.01, splits: {test: test}, fields: {question: question, choices: choices, answerKey: answerKey}}
-  - {repo: ybisk/piqa, group: eval, name: piqa, track: core, size_gb: 0.01, splits: {validation: validation}, fields: {goal: goal, sol1: sol1, sol2: sol2, label: label}, optional: true}
+  - {repo: ybisk/piqa, data_files: "hf://datasets/ybisk/piqa@refs%2Fconvert%2Fparquet/plain_text/validation/*.parquet", group: eval, name: piqa, track: core, size_gb: 0.01, splits: {validation: validation}, fields: {goal: goal, sol1: sol1, sol2: sol2, label: label}, optional: true}
   - {repo: allenai/winogrande, config: winogrande_xs, group: eval, name: winogrande, track: core, size_gb: 0.01, splits: {validation: validation}, fields: {sentence: sentence, option1: option1, option2: option2, answer: answer}, optional: true}
   - {repo: cais/mmlu, config: all, group: eval, name: mmlu, track: core, size_gb: 0.15, splits: {test: test, dev: dev}, fields: {question: question, choices: choices, answer: answer, subject: subject}}
   - {repo: truthfulqa/truthful_qa, config: multiple_choice, group: eval, name: truthfulqa, track: extended, size_gb: 0.01, splits: {validation: validation}, fields: {question: question, mc1_targets: mc1_targets}}
