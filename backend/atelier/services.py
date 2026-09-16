@@ -148,11 +148,15 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
     # in class, whatever the teacher set the experiment to begin from wins: a student
     # has not done the experiment this one builds on, so they cannot pick its run
     session = classroom.active_session(db)
+    in_class = session is not None and session.experiment == spec.slug and (user.id == session.started_by or (classroom.membership(db, session.id, user.id) or None) is not None)
     if session is not None and session.experiment == spec.slug and user.id != session.started_by and session.params:
         fixed = {k: v for k, v in session.params.items() if k in {p["key"] for p in step.params}}
         params = {**params, **fixed}
     params = coerce_params(step.params, params, spec)
     inputs: dict[str, Any] = {
+        # which class this run belongs to, so class work and a student's own work on
+        # the same experiment stay apart even though they share a page
+        "class_session": session.id if in_class else None,
         "code_source": "own" if own else "standard",
         "materials_dir": str(settings.materials_dir),
         "workspace_dir": str(storage.workspace_dir(user.id, spec.slug)),

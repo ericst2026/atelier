@@ -254,12 +254,15 @@ export default function Experiment() {
     const t = setInterval(loadRuns, 10000);
     return () => clearInterval(t);
   }, [loadRuns]);
-  // a class starts afresh: while this experiment is the one being taught, runs from
-  // before the class began are left out, so nobody works from last week's results
+  // the same experiment is one page whether you are in class or working alone, so
+  // the link says which: ?class=<id> is the class, and the runs shown are that
+  // class's. Without it this is your own work, and the class's runs stay out of it.
+  const classId = Number(sp.get("class")) || null;
   const session = cls?.running && cls.session?.experiment === slug ? cls.session : null;
+  const inClass = Boolean(classId && session && session.id === classId);
   const shownRuns = useMemo(
-    () => (session ? runs.filter((r) => new Date(`${r.created_at}Z`) >= new Date(`${session.started_at}Z`)) : runs),
-    [runs, session]
+    () => runs.filter((r) => (inClass ? (r.inputs || {}).class_session === classId : !(r.inputs || {}).class_session)),
+    [runs, inClass, classId]
   );
   const railState = useMemo(() => {
     const st = {};
@@ -295,7 +298,19 @@ export default function Experiment() {
           ))}
         </div>
       </div>
-      <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp({ step: String(n) })} />
+      {inClass && (
+        <div className="tip" style={{ marginBottom: 12 }}>
+          You are in {session.teacher}'s class. This page shows the class's work; your own runs of this experiment are under{" "}
+          <Link to={`/experiments/${slug}`}>on your own</Link>.
+        </div>
+      )}
+      {!inClass && session && (
+        <div className="tip" style={{ marginBottom: 12 }}>
+          {session.teacher} is running a class on this experiment. This page is your own work —{" "}
+          <Link to={`/experiments/${slug}?class=${session.id}`}>open the class</Link>.
+        </div>
+      )}
+      <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp(classId ? { step: String(n), class: String(classId) } : { step: String(n) })} />
       <StepPanel key={step.index} spec={spec} step={step} runs={shownRuns.filter((r) => r.step === step.index)} prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />
       {spec.description && (
         <div className="panel" style={{ marginTop: 20 }}>

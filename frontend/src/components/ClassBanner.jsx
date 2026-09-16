@@ -76,7 +76,7 @@ export default function ClassBanner() {
             </button>
           )}
           {canOpen ? (
-            <Link className="btn" to={`/experiments/${s.experiment}`}>
+            <Link className="btn" to={`/experiments/${s.experiment}?class=${s.id}`}>
               Open it
             </Link>
           ) : (
