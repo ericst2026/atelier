@@ -193,8 +193,10 @@ function StepView({ data }) {
     );
   if (data.error) return <div className="msg"><p>{data.error}</p></div>;
   const c = data.instructions || {};
+  // a step people can write themselves has a list of who handed it in; one they
+  // cannot has nothing to list, so the explanation takes the whole screen
   return (
-    <div className="stepwall">
+    <div className={`stepwall ${data.own_code ? "" : "one"}`}>
       <div className="panel code">
         <div className="bar">
           {data.class_name ? `${data.class_name} · ` : ""}
@@ -229,7 +231,7 @@ function StepView({ data }) {
           )}
         </div>
       </div>
-      <HandedIn list={data.handed_in} />
+      {data.own_code && <HandedIn list={data.handed_in} />}
     </div>
   );
 }
@@ -249,7 +251,7 @@ function StudentView({ data }) {
     );
   const rows = (data.compare || []).slice(0, 9);
   return (
-    <div className="stepwall">
+    <div className={`stepwall ${data.own_code ? "" : "one"}`}>
       <div className="panel code">
         <div className="bar">
           {data.name} · step {data.step}
@@ -287,7 +289,7 @@ function StudentView({ data }) {
           </div>
         )}
       </div>
-      <HandedIn list={data.handed_in} selected={data.user_id} />
+      {data.own_code && <HandedIn list={data.handed_in} selected={data.user_id} />}
     </div>
   );
 }
@@ -319,7 +321,7 @@ function StandardView({ data }) {
           </div>
         </div>
       </div>
-      <HandedIn list={data.handed_in} />
+      {data.own_code && <HandedIn list={data.handed_in} />}
     </div>
   );
 }

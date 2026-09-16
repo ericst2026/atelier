@@ -223,6 +223,7 @@ export default function ClassPanel() {
 export function WallPanel() {
   const [state, setState] = useState(null);
   const [displays, setDisplays] = useState([]);
+  const [spec, setSpec] = useState(null); // to know which steps can be handed in
   const load = useCallback(() => {
     api("/class").then(setState).catch(() => {});
     api("/displays").then(setDisplays).catch(() => {});
@@ -237,6 +238,10 @@ export function WallPanel() {
     load();
   };
   const session = state?.running ? state.session : null;
+  useEffect(() => {
+    if (!session?.experiment) return setSpec(null);
+    api(`/experiments/${session.experiment}`).then(setSpec).catch(() => setSpec(null));
+  }, [session?.experiment]);
   return (
     <div className="stack">
       <div className="panel stack">
@@ -248,7 +253,7 @@ export function WallPanel() {
         </div>
         <div className="grid2">
           {displays.map((d) => (
-            <DisplayControl key={d.id} display={d} session={session} onPush={push} />
+            <DisplayControl key={d.id} display={d} session={session} spec={spec} onPush={push} />
           ))}
         </div>
       </div>
@@ -256,23 +261,27 @@ export function WallPanel() {
   );
 }
 
-function DisplayControl({ display, session, onPush }) {
+function DisplayControl({ display, session, spec, onPush }) {
   const isStep = display.id <= 4;
   const payload = display.payload || {};
   const [step, setStep] = useState(payload.step || display.id);
   const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
-  // the wall reads what was handed in, so only offer people who have
+  // only this step's own_code decides whether there is anything to hand in
+  const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
   const [handed, setHanded] = useState([]);
   useEffect(() => {
-    if (!session?.experiment) return setHanded([]);
+    if (!session?.experiment || !ownCode) return setHanded([]);
     api(`/submissions?experiment=${session.experiment}&step=${Number(step)}`)
       .then((subs) => {
         const seen = new Set();
         setHanded(subs.filter((x) => !seen.has(x.user_id) && seen.add(x.user_id)).map((x) => ({ user_id: x.user_id, name: x.name || x.username })));
       })
       .catch(() => setHanded([]));
-  }, [session?.experiment, step]);
+  }, [session?.experiment, step, ownCode]);
+  // where nobody writes their own, a student's results still exist — they ran the
+  // standard code — so the people to choose from are the class itself
+  const people = ownCode ? handed : (session?.members || []).filter((m) => m.admitted).map((m) => ({ user_id: m.user_id, name: m.name || m.username }));
   const apply = () => {
     const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
@@ -280,6 +289,10 @@ function DisplayControl({ display, session, onPush }) {
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
   };
   const needsPerson = show === "results" || show === "code";
+  // the option can be left behind when the step changes under it
+  useEffect(() => {
+    if (!ownCode && show === "code") setShow("explanation");
+  }, [ownCode, show]);
   return (
     <div className="inset stack" style={{ padding: 10, gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -312,13 +325,13 @@ function DisplayControl({ display, session, onPush }) {
               <option value="explanation">what the step is</option>
               <option value="standard">the standard code</option>
               <option value="results">a student's results</option>
-              <option value="code">a student's code</option>
+              {ownCode && <option value="code">a student's code</option>}
             </select>
           </div>
           {needsPerson && (
             <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!session}>
-              <option value="">{handed.length ? "— who —" : "— nobody has handed this in —"}</option>
-              {handed.map((m) => (
+              <option value="">{people.length ? "— who —" : ownCode ? "— nobody has handed this in —" : "— nobody is in the class —"}</option>
+              {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.name}
                 </option>

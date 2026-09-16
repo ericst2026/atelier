@@ -326,7 +326,7 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
         "own_code": step.own_code,
         "figure": f"/api/experiments/{slug}/figure/{step_no}",
         "instructions": c,
-        "handed_in": handed,
+        "handed_in": handed if step.own_code else [],
     }
 
 
@@ -354,7 +354,8 @@ def standard_view(db: Session, registry: Registry, payload: dict[str, Any]) -> d
         "step": step_no,
         "step_title": step.title,
         "code": code,
-        "handed_in": _handed_in(db, slug, step_no),
+        "own_code": step.own_code,
+        "handed_in": _handed_in(db, slug, step_no) if step.own_code else [],
     }
     # what it produced: whatever this class last ran it for — a baseline queued by a
     # submission, or the teacher's own run of the step
@@ -386,10 +387,13 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
     out: dict[str, Any] = {"experiment": slug, "step": step_no, "show": show, "name": (u.name or u.username) if u else "?", "user_id": user_id}
     try:
         spec = registry.get(slug)
-        out["title"], out["step_title"] = spec.title, spec.step(step_no).title
+        step = spec.step(step_no)
+        out["title"], out["step_title"], out["own_code"] = spec.title, step.title, step.own_code
     except KeyError:
         return {"error": "that experiment is not loaded"}
-    out["handed_in"] = _handed_in(db, slug, step_no)
+    # a step nobody can re-implement has nothing handed in, so the room is not shown
+    # a list of names that would always be empty
+    out["handed_in"] = _handed_in(db, slug, step_no) if step.own_code else []
     sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
     if sub is None:
         # the teacher's own work is not handed in to anybody, so it is read from the
