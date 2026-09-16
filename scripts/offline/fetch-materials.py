@@ -25,6 +25,15 @@ import yaml
 # HF_HUB_DISABLE_XET=0 in the environment turns Xet back on.
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
+# Windows writes cp1252 by default — to a console, and to a pipe or a log file — and
+# the arrows and sizes printed below are not in it. Without this the first line of
+# progress raises UnicodeEncodeError and nothing is downloaded.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="./materials")
 ap.add_argument("--config", default=str(Path(__file__).with_name("materials.yaml")))
