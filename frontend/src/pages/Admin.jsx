@@ -88,7 +88,11 @@ export default function Admin() {
         </div>
       )}
 
-      {editing && <SelfExperiments user={editing} experiments={experiments} onClose={() => setEditing(null)} onSaved={load} />}
+      {editing && (
+        // keyed by the account: without it React keeps the previous person's ticks,
+        // because the editor sits in the same place in the tree
+        <SelfExperiments key={editing.id} user={editing} experiments={experiments} onClose={() => setEditing(null)} onSaved={load} />
+      )}
 
       <div className="panel stack" style={{ marginBottom: 14 }}>
         <h3>Add an account</h3>
@@ -168,6 +172,9 @@ export default function Admin() {
 function SelfExperiments({ user, experiments, onClose, onSaved }) {
   const [chosen, setChosen] = useState(user.self_experiments || []);
   const [error, setError] = useState(null);
+  useEffect(() => {
+    setChosen(user.self_experiments || []);
+  }, [user.id, user.self_experiments]);
   const toggle = (slug) => setChosen(chosen.includes(slug) ? chosen.filter((s) => s !== slug) : [...chosen, slug]);
   const save = async () => {
     try {

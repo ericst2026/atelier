@@ -81,6 +81,10 @@ class Submission(Base):
     graded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     published: Mapped[bool] = mapped_column(Boolean, default=False)
     last_test_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # the run their own code produced, and the same step run by the standard code
+    # with the same settings, so the two can be put side by side
+    own_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    standard_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 

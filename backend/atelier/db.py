@@ -37,7 +37,7 @@ def _add_missing_columns(engine) -> None:
     from sqlalchemy import inspect, text
 
     wanted = {
-        "submissions": {"step": "INTEGER DEFAULT 0"},
+        "submissions": {"step": "INTEGER DEFAULT 0", "own_run_id": "INTEGER", "standard_run_id": "INTEGER"},
         "class_sessions": {"paused_at": "TIMESTAMP", "params": "JSON", "name": "VARCHAR(120) DEFAULT ''"},
     }
     insp = inspect(engine)

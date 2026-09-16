@@ -277,7 +277,9 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .stepwall .panel { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
 .display .stepwall .bar { padding: 12px 18px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 18px; }
 .display .stepwall pre { margin: 0; padding: 16px 18px; overflow: auto; font-family: var(--mono); font-size: 15px; line-height: 1.5; color: #c7d3ea; white-space: pre; }
-.display .steptext { padding: 18px 22px; overflow: auto; font-size: 21px; line-height: 1.5; }
+.display .steptext { padding: 18px 22px; overflow: hidden; font-size: 21px; line-height: 1.5; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.display .steptext .figure { max-width: 100%; max-height: 42vh; object-fit: contain; align-self: center; border-radius: 12px; background: var(--inset); }
+.display .steptext .prose { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; }
 .display .steptext .md p { max-width: none; margin-bottom: 12px; }
 .display .steptext .brief { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 .display .steptext .brief h3 { font-size: 20px; color: var(--raw); margin-bottom: 8px; }
@@ -289,5 +291,10 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .compare .charts { margin-top: 18px; }
 .display .stepwall .handed { padding: 18px; }
 .display .stepwall .handed h2 { font-size: 24px; margin-bottom: 10px; }
-.display .stepwall .handed ol { margin: 0; padding-left: 28px; font-size: 24px; line-height: 1.6; }
+.display .stepwall .handed { display: flex; flex-direction: column; min-height: 0; }
+.display .stepwall .handed ol { margin: 0; padding-left: 28px; font-size: 24px; line-height: 1.6; overflow: hidden; }
+/* the one the teacher is showing */
+.display .stepwall .handed li.on { color: var(--raw); font-weight: 700; }
+.display .compare table.data td.best { color: var(--kept); font-weight: 700; }
+.display .compare table.data td.best::after { content: " ★"; font-size: 0.8em; }
 .display .stepwall .handed li::marker { color: var(--faint); font-size: 18px; }

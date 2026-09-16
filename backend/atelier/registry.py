@@ -30,6 +30,9 @@ class StepSpec:
     # a step a student may re-implement: the form then offers the standard script
     # or their own file, and the run executes whichever they picked
     own_code: bool = False
+    # a drawing that explains the step, shown large on the wall: a path inside the
+    # experiment folder, e.g. figures/step1.svg
+    figure: str = ""
     figures: list[dict[str, Any]] = field(default_factory=list)  # which metrics to show on the rail
 
     def defaults(self) -> dict[str, Any]:
@@ -95,6 +98,7 @@ class ExperimentSpec:
                     "needs_previous": s.needs_previous,
                     "params": s.params,
                     "own_code": s.own_code,
+                    "figure": s.figure,
                     "figures": s.figures,
                 }
                 for s in self.steps
@@ -161,6 +165,7 @@ def load_experiment(path: Path) -> ExperimentSpec:
                 needs_previous=bool(s.get("needs_previous", i > 1)),
                 params=params,
                 own_code=bool(s.get("own_code", False)),
+                figure=str(s.get("figure") or ""),
                 figures=s.get("figures") or [],
             )
         )

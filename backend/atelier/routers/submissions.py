@@ -64,7 +64,7 @@ def submit(slug: str, body: SubmissionCreate, user: User = Depends(current_user)
     last = db.scalars(
         select(Run).where(Run.user_id == user.id, Run.experiment == slug, Run.step == step.index, Run.kind == "step").order_by(Run.id.desc()).limit(1)
     ).first()
-    sub = Submission(user_id=user.id, experiment=slug, step=step.index, note=body.note[:4000])
+    sub = Submission(user_id=user.id, experiment=slug, step=step.index, note=body.note[:4000], own_run_id=last.id if last is not None else None)
     db.add(sub)
     db.commit()
     dest = storage.submission_dir(sub.id)
@@ -73,6 +73,13 @@ def submit(slug: str, body: SubmissionCreate, user: User = Depends(current_user)
     stats = {"files": 1, "bytes": len((dest / src.name).read_bytes())}
     if last is not None:
         sub.last_test_run_id = last.id
+        # run the standard code on the same settings, so the wall can show what their
+        # own version did against what the experiment's own implementation does
+        try:
+            base = services.create_baseline_run(db, bus, user, spec, step.index, last, sub.id)
+            sub.standard_run_id = base.id
+        except HTTPException:
+            pass  # over capacity or no worker: the comparison simply has one side
     sub.sha256 = storage.sha256_dir(dest)
     sub.file_count, sub.bytes = stats["files"], stats["bytes"]
     db.commit()

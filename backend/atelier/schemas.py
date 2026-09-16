@@ -130,6 +130,8 @@ class SubmissionOut(BaseModel):
     name: str = ""
     experiment: str
     step: int = 0
+    own_run_id: Optional[int] = None
+    standard_run_id: Optional[int] = None
     note: str
     sha256: str
     file_count: int

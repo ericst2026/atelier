@@ -218,6 +218,36 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
     return run
 
 
+def create_baseline_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, like: Run, submission_id: int) -> Run:
+    """The standard code, run on the same settings and the same starting point as a
+    student's own attempt, so the two results answer the same question. Queued when
+    the work is handed in; no capacity check, since it is the system's own doing and
+    not another job the student asked for."""
+    step = spec.step(step_no)
+    inputs = dict(like.inputs or {})
+    inputs["code_source"] = "standard"
+    inputs["baseline_for"] = submission_id
+    run = Run(
+        user_id=user.id,
+        experiment=spec.slug,
+        kind="baseline",
+        step=step_no,
+        parent_run_id=like.parent_run_id,
+        submission_id=submission_id,
+        label=f"{spec.title} · {step.title} · the standard code",
+        params=dict(like.params or {}),
+        inputs=inputs,
+        gpus=like.gpus,
+        timeout_min=step.timeout_min,
+        command=f"{settings.python_bin} {spec.dir / step.script} --run-dir {{run_dir}}",
+    )
+    db.add(run)
+    db.commit()
+    _materialize(run, spec)
+    bus.enqueue(run.id)
+    return run
+
+
 def create_command_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, kind: str, command: str, cwd: str, gpus: int, label: str, timeout_min: int, submission_id: Optional[int] = None, extra_inputs: Optional[dict[str, Any]] = None) -> Run:
     check_capacity(db, user, gpus)
     inputs = {

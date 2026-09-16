@@ -157,8 +157,30 @@ function RunView({ data }) {
   );
 }
 
-/** Displays 1-4 while a class runs: what the step is for, what your own version of
- *  it has to do, and who has handed theirs in. No code — the room reads the task. */
+/** Who has handed this step in. It stays on screen whatever the rest shows, with
+ *  the one being looked at marked. Nothing scrolls on a wall, so a long class is
+ *  cut off with a count. */
+function HandedIn({ list, selected, cap = 12 }) {
+  const shown = (list || []).slice(0, cap);
+  const rest = (list || []).length - shown.length;
+  return (
+    <div className="panel handed">
+      <h2>Handed in ({(list || []).length})</h2>
+      {shown.length === 0 && <p className="muted">Nobody yet.</p>}
+      <ol>
+        {shown.map((h) => (
+          <li key={h.user_id} className={h.user_id === selected ? "on" : ""}>
+            {h.name}
+          </li>
+        ))}
+      </ol>
+      {rest > 0 && <p className="muted">and {rest} more</p>}
+    </div>
+  );
+}
+
+/** Displays 1-4 while a class runs: what the step is for, the picture that explains
+ *  it, and what a student's own version of it has to do. */
 function StepView({ data }) {
   if (!data || data.no_class)
     return (
@@ -175,10 +197,15 @@ function StepView({ data }) {
     <div className="stepwall">
       <div className="panel code">
         <div className="bar">
+          {data.class_name ? `${data.class_name} · ` : ""}
           {data.title} · step {data.step}: {data.step_title}
+          {data.over ? " · finished" : ""}
         </div>
         <div className="steptext">
-          <Markdown text={data.description || data.summary} />
+          {data.figure && <img className="figure" src={data.figure} alt="" />}
+          <div className="prose">
+            <Markdown text={data.description || data.summary} />
+          </div>
           {data.own_code && (
             <div className="brief">
               <h3>Writing your own</h3>
@@ -189,12 +216,12 @@ function StepView({ data }) {
                 </li>
                 {(c.outputs || []).length > 0 && (
                   <li>
-                    <b>You must save</b> {c.outputs.join(", ")} — the next step reads them by name.
+                    <b>You must save</b> {c.outputs.join(", ")}.
                   </li>
                 )}
                 {(c.metrics || []).length > 0 && (
                   <li>
-                    <b>You are judged on</b> {(c.metrics || []).slice(0, 4).map((m) => m.label).join(", ")}.
+                    <b>Judged on</b> {(c.metrics || []).slice(0, 4).map((m) => m.label).join(", ")}.
                   </li>
                 )}
               </ul>
@@ -202,21 +229,13 @@ function StepView({ data }) {
           )}
         </div>
       </div>
-      <div className="panel handed">
-        <h2>Handed in ({(data.handed_in || []).length})</h2>
-        {(data.handed_in || []).length === 0 && <p className="muted">Nobody yet.</p>}
-        <ol>
-          {(data.handed_in || []).map((h) => (
-            <li key={h.user_id}>{h.name}</li>
-          ))}
-        </ol>
-      </div>
+      <HandedIn list={data.handed_in} />
     </div>
   );
 }
 
-/** One student, put up by the teacher: their code, or their figures beside the ones
- *  the standard code produced for the same step. */
+/** One person's handed-in work: their figures against the standard code on the same
+ *  settings, with the better one marked — or the code itself. */
 function StudentView({ data }) {
   if (!data) return null;
   if (data.no_class)
@@ -228,17 +247,17 @@ function StudentView({ data }) {
         </div>
       </div>
     );
-  if (data.error) return <div className="msg"><p>{data.error}</p></div>;
-  const rows = data.compare || [];
+  const rows = (data.compare || []).slice(0, 9);
   return (
-    <div className="stepwall one">
+    <div className="stepwall">
       <div className="panel code">
         <div className="bar">
           {data.name} · step {data.step}
-          {data.step_title ? ` · ${data.step_title}` : ""} · {data.show === "code" ? "their code" : "their results against the standard code"}
+          {data.step_title ? ` · ${data.step_title}` : ""} · {data.show === "code" ? "their code" : data.their_own ? "their results" : "their results against the standard code"}
         </div>
-        {data.show === "code" && <pre>{data.code}</pre>}
-        {data.show !== "code" && (
+        {data.error && <p className="muted" style={{ padding: 20 }}>{data.error}</p>}
+        {data.show === "code" && data.code !== undefined && <pre>{data.code}</pre>}
+        {data.show !== "code" && !data.error && (
           <div className="compare">
             {rows.length > 0 ? (
               <table className="data">
@@ -253,10 +272,8 @@ function StudentView({ data }) {
                   {rows.map((r) => (
                     <tr key={r.key}>
                       <td>{r.label}</td>
-                      <td>
-                        <b>{r.mine === null || r.mine === undefined ? "–" : fmtNum(r.mine)}</b>
-                      </td>
-                      <td className="muted">{r.standard === null || r.standard === undefined ? "–" : fmtNum(r.standard)}</td>
+                      <td className={r.best === "mine" ? "best" : ""}>{r.mine === null || r.mine === undefined ? "–" : fmtNum(r.mine)}</td>
+                      <td className={r.best === "standard" ? "best" : ""}>{r.standard === null || r.standard === undefined ? "–" : fmtNum(r.standard)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -264,18 +281,13 @@ function StudentView({ data }) {
             ) : (
               <Kpis metrics={data.result?.metrics} />
             )}
-            {!data.standard && <p className="muted">Nothing to compare with yet: the standard code has not been run on this step.</p>}
-            {(data.result?.charts || []).length > 0 && (
-              <div className="charts">
-                {data.result.charts.slice(0, 3).map((c) => (
-                  <ChartCard key={c.id} spec={c} height={240} allowStretch={false} />
-                ))}
-              </div>
+            {data.standard_state && data.standard_state !== "succeeded" && (
+              <p className="muted">The standard code is still {data.standard_state === "missing" ? "not there" : data.standard_state}.</p>
             )}
-            {data.run?.own_code === false && <p className="muted">This run used the standard code.</p>}
           </div>
         )}
       </div>
+      <HandedIn list={data.handed_in} selected={data.user_id} />
     </div>
   );
 }

@@ -233,27 +233,56 @@ def run_view(db: Session, run_id: int) -> Optional[dict[str, Any]]:
     }
 
 
-def _standard_run(db: Session, slug: str, step_no: int, teacher_id: Optional[int] = None) -> Optional[Run]:
-    """What the step produces when the code that ships with it is run: the teacher's
-    latest such run, or anyone's if the teacher has not run it."""
-    base = select(Run).where(Run.experiment == slug, Run.step == step_no, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc())
-    for q in ([base.where(Run.user_id == teacher_id)] if teacher_id else []) + [base]:
-        for run in db.scalars(q).all():
-            if (run.inputs or {}).get("code_source") != "own":
-                return run
-    return None
+# Which way is better for a figure, when the name says so plainly. Anything not
+# recognised is shown without a winner rather than guessed at.
+LOWER_IS_BETTER = ("loss", "perplexity", "ppl", "error", "err", "removed", "duplicate", "dup", "seconds", "sec", "ms", "latency", "time", "bytes", "memory", "mem", "cost")
+HIGHER_IS_BETTER = ("accuracy", "acc", "score", "correct", "pass", "recall", "precision", "f1", "kept", "coverage", "throughput", "tokens_per", "speedup", "reward", "win")
+
+
+def _better(key: str, label: str) -> int:
+    """1 when more is better, -1 when less is, 0 when it is not for us to say."""
+    text = f"{key} {label}".lower()
+    for word in HIGHER_IS_BETTER:
+        if word in text:
+            return 1
+    for word in LOWER_IS_BETTER:
+        if word in text:
+            return -1
+    return 0
 
 
 def _metric_pairs(mine: list[dict], standard: list[dict]) -> list[dict[str, Any]]:
-    """The same figures side by side, in the order the step reports them."""
+    """The same figures side by side, with the better one marked where the figure
+    says which way is better."""
     by_key = {m.get("key"): m for m in standard or []}
     rows = []
     for m in mine or []:
         other = by_key.pop(m.get("key"), None)
-        rows.append({"key": m.get("key"), "label": m.get("label"), "fmt": m.get("fmt"), "mine": m.get("value"), "standard": other.get("value") if other else None})
+        row = {"key": m.get("key"), "label": m.get("label"), "fmt": m.get("fmt"), "mine": m.get("value"), "standard": other.get("value") if other else None}
+        d = _better(str(row["key"] or ""), str(row["label"] or ""))
+        if d and isinstance(row["mine"], (int, float)) and isinstance(row["standard"], (int, float)) and row["mine"] != row["standard"]:
+            row["best"] = "mine" if (row["mine"] > row["standard"]) == (d > 0) else "standard"
+        rows.append(row)
     for key, m in by_key.items():
         rows.append({"key": key, "label": m.get("label"), "fmt": m.get("fmt"), "mine": None, "standard": m.get("value")})
     return rows
+
+
+def _handed_in(db: Session, slug: str, step_no: int) -> list[dict[str, Any]]:
+    """Who has handed this step in, newest attempt each, in the order they did."""
+    seen: set[int] = set()
+    out = []
+    for sub in db.scalars(select(Submission).where(Submission.experiment == slug, Submission.step == step_no).order_by(Submission.id.desc())).all():
+        if sub.user_id in seen:
+            continue
+        seen.add(sub.user_id)
+        u = db.get(User, sub.user_id)
+        out.append({"user_id": sub.user_id, "name": (u.name or u.username) if u else "?", "submission_id": sub.id, "at": sub.created_at.isoformat(), "score": sub.score})
+    return out
+
+
+def _result_of(run_id: Optional[int]) -> dict[str, Any]:
+    return storage.read_json(storage.run_dir(int(run_id)) / "result.json", {}) if run_id else {}
 
 
 def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
@@ -295,49 +324,56 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
         "summary": step.summary,
         "description": step.description,
         "own_code": step.own_code,
+        "figure": f"/api/experiments/{slug}/figure/{step_no}" if step.figure else None,
         "instructions": c,
         "handed_in": handed,
     }
 
 
 def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
-    """One student put up by the teacher: their code, or their results against what
-    the standard code produced for the same step."""
+    """One person's handed-in work, put up by the teacher: their code, or what their
+    code produced against the standard code on the same settings. The list of who has
+    handed in stays beside it, with this one marked."""
     session_id = payload.get("session_id")
     session = db.get(ClassSession, int(session_id)) if session_id else None
     if session_id and (session is None or (session.ended_at is not None and not payload.get("pinned"))):
-        return {"no_class": True}  # the class it belonged to is over
+        return {"no_class": True}
     slug = (session.experiment if session else payload.get("experiment")) or ""
     step_no = int(payload.get("step") or 1)
     user_id, show = int(payload.get("user_id") or 0), (payload.get("show") or "results")
     u = db.get(User, user_id)
-    out: dict[str, Any] = {"experiment": slug, "step": step_no, "show": show, "name": (u.name or u.username) if u else "?"}
+    out: dict[str, Any] = {"experiment": slug, "step": step_no, "show": show, "name": (u.name or u.username) if u else "?", "user_id": user_id}
     try:
         spec = registry.get(slug)
         out["title"], out["step_title"] = spec.title, spec.step(step_no).title
     except KeyError:
         return {"error": "that experiment is not loaded"}
-    if show == "code":
-        sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
-        if sub is None:
-            out["error"] = "they have not handed in this step"
+    out["handed_in"] = _handed_in(db, slug, step_no)
+    sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
+    if sub is None:
+        # the teacher's own work is not handed in to anybody, so it is read from the
+        # last run they made of this step
+        run = db.scalar(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc()))
+        if run is None:
+            out["error"] = "they have not handed this step in"
             return out
+        out["their_own"] = True
+        out["result"] = _result_of(run.id)
+        out["run"] = {"id": run.id, "own_code": (run.inputs or {}).get("code_source") == "own"}
+        return out
+    out["submission_id"] = sub.id
+    out["at"] = sub.created_at.isoformat()
+    if show == "code":
         path = storage.submission_dir(sub.id) / f"step{step_no}.py"
         out["code"] = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
-        out["at"] = sub.created_at.isoformat()
         return out
-    run = db.scalar(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc()))
-    if run is None:
-        out["error"] = "no finished run of this step yet"
-        return out
-    result = storage.read_json(storage.run_dir(run.id) / "result.json", {})
-    out["run"] = {"id": run.id, "label": run.label, "metrics": run.metrics, "own_code": (run.inputs or {}).get("code_source") == "own"}
-    out["result"] = result
-    standard = _standard_run(db, slug, step_no, session.started_by if session else None)
-    if standard is not None and standard.id != run.id:
-        base = storage.read_json(storage.run_dir(standard.id) / "result.json", {})
-        out["standard"] = {"run_id": standard.id, "result": base}
-        out["compare"] = _metric_pairs(result.get("metrics") or [], base.get("metrics") or [])
+    mine = _result_of(sub.own_run_id or sub.last_test_run_id)
+    base = _result_of(sub.standard_run_id)
+    out["result"] = mine
+    out["compare"] = _metric_pairs(mine.get("metrics") or [], base.get("metrics") or [])
+    if sub.standard_run_id and not base:
+        run = db.get(Run, sub.standard_run_id)
+        out["standard_state"] = run.status if run else "missing"
     return out
 
 

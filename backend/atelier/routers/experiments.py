@@ -163,3 +163,19 @@ def reset_step_code(slug: str, step_no: int, user: User = Depends(current_user),
     if not step.own_code:
         raise HTTPException(400, "This step runs the standard code only")
     return {"code": stepcode.reset(user.id, spec, step), "saved": True}
+
+
+@router.get("/{slug}/figure/{step_no}")
+def step_figure(slug: str, step_no: int, registry: Registry = Depends(get_registry)):
+    """The drawing that explains a step. Public, like the wall displays that show it."""
+    spec = _spec(registry, slug)
+    try:
+        step = spec.step(step_no)
+    except KeyError:
+        raise HTTPException(404, "No such step")
+    if not step.figure:
+        raise HTTPException(404, "This step has no figure")
+    path = storage.safe_join(spec.dir, step.figure)
+    if not path.exists():
+        raise HTTPException(404, f"{step.figure} is not in the experiment folder")
+    return FileResponse(path)
