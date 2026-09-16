@@ -6,7 +6,7 @@ import { fmtTime } from "../lib/format";
 import { useAuth } from "../lib/auth";
 
 export default function Home() {
-  const { user, isTeacher } = useAuth();
+  const { user, isTeacher, isAdmin, refresh } = useAuth();
   const [data, setData] = useState(null);
   const [cls, setCls] = useState(null);
   const [past, setPast] = useState([]);
@@ -14,20 +14,23 @@ export default function Home() {
   useEffect(() => {
     api("/experiments").then(setData).catch((e) => setError(e.message));
     const poll = () => {
+      refresh(); // a permission granted a minute ago should show up without a reload
       api("/class").then(setCls).catch(() => {});
       api("/class/history?limit=12").then((d) => setPast(d.sessions || [])).catch(() => {});
     };
     poll();
     const t = setInterval(poll, 8000);
     return () => clearInterval(t);
-  }, []);
+  }, [refresh]);
   const granted = user?.self_experiments || [];
   const byslug = Object.fromEntries((data?.experiments || []).map((e) => [e.slug, e]));
   // the class half: what is running now, and the classes that have been held
   const now = cls?.running ? cls.session : null;
   const held = past.filter((h) => h.ended_at);
-  // the self half: only what an admin granted this person
-  const own = (data?.experiments || []).filter((e) => granted.includes(e.slug));
+  // the self half: what an admin granted this person — and for an admin, everything,
+  // since their permission is the role itself and never a granted list
+  const all = data?.experiments || [];
+  const own = isAdmin ? all : all.filter((e) => granted.includes(e.slug));
   return (
     <main className="page">
       <div className="hero">
@@ -90,11 +93,12 @@ export default function Home() {
         <div className="expsection-head">
           <h2>On your own</h2>
           <span className="muted small">
-            {own.length} experiment{own.length === 1 ? "" : "s"} granted
+            {own.length} experiment{own.length === 1 ? "" : "s"}
+            {isAdmin ? " · you are an admin, so all of them" : " granted"}
           </span>
         </div>
         {own.length === 0 ? (
-          <p className="muted small">An admin has not given you anything to run by yourself yet.</p>
+          <p className="muted small">{isAdmin ? "No experiments are loaded." : "An admin has not given you anything to run by yourself yet."}</p>
         ) : (
           <div className="cards">
             {own.map((e) => (

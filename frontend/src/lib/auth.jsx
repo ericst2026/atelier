@@ -6,6 +6,15 @@ const Ctx = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
+  // what an admin grants you can change while you are signed in, so this is worth
+  // re-reading rather than trusting what the session started with
+  const refresh = useCallback(
+    () =>
+      api("/auth/me")
+        .then(setUser)
+        .catch(() => {}),
+    []
+  );
   useEffect(() => {
     if (!getToken()) {
       setReady(true);
@@ -26,7 +35,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
   }, []);
-  return <Ctx.Provider value={{ user, ready, login, logout, isTeacher: user?.role === "teacher" || user?.role === "admin", isAdmin: user?.role === "admin" }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, ready, login, logout, refresh, isTeacher: user?.role === "teacher" || user?.role === "admin", isAdmin: user?.role === "admin" }}>{children}</Ctx.Provider>;
 }
 
 export const useAuth = () => useContext(Ctx);
