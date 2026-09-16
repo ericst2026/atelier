@@ -286,12 +286,14 @@ export default function Display() {
   const [conn, setConn] = useState("closed");
   useSocket(wsUrl(`/ws/displays/${n}`, false), (m) => m.type === "display" && setState(m.display), { onStatus: setConn });
   const mode = state?.mode;
+  // the screen says what it is showing, not which screen it is
+  const step = state?.payload?.step || state?.data?.step;
+  const title = mode === "step" || mode === "student" ? `Step ${step || n}` : mode === "leaderboard" ? "Leaderboard" : state?.name || "Atelier";
   return (
     <div className="display">
       {mode !== "grafana" && (
         <div className="dhead">
-          <span className="n">{n}</span>
-          <h1>{state?.name || "Atelier"}</h1>
+          <h1>{title}</h1>
           <Clock />
         </div>
       )}
@@ -312,7 +314,7 @@ export default function Display() {
         </div>
       )}
       <div className="foot">
-        display {n} · {conn === "open" ? "live" : "reconnecting"} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
+        {conn === "open" ? "live" : "reconnecting"} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
       </div>
     </div>
   );

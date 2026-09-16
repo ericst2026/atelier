@@ -216,7 +216,6 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display { min-height: 100vh; background: var(--bg); color: var(--text); padding: 32px 40px; font-size: 20px; display: flex; flex-direction: column; gap: 22px; }
 .display .dhead { display: flex; align-items: baseline; gap: 18px; }
 .display .dhead h1 { font-size: 40px; }
-.display .dhead .n { color: var(--raw); font-weight: 700; }
 .display .dhead .clock { margin-left: auto; color: var(--muted); font-size: 22px; }
 .display .gpugrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .display .gpu { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
