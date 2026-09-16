@@ -36,7 +36,10 @@ def _add_missing_columns(engine) -> None:
     release are put on by hand here, so an existing database keeps working."""
     from sqlalchemy import inspect, text
 
-    wanted = {"submissions": {"step": "INTEGER DEFAULT 0"}}
+    wanted = {
+        "submissions": {"step": "INTEGER DEFAULT 0"},
+        "class_sessions": {"paused_at": "TIMESTAMP", "params": "JSON"},
+    }
     insp = inspect(engine)
     for table, cols in wanted.items():
         if table not in insp.get_table_names():

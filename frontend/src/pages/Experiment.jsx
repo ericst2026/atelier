@@ -242,19 +242,28 @@ export default function Experiment() {
   const stepNo = Number(sp.get("step") || 1);
   const [spec, setSpec] = useState(null);
   const [runs, setRuns] = useState([]);
+  const [cls, setCls] = useState(null);
   const [error, setError] = useState(null);
   const loadRuns = useCallback(() => api(`/runs?experiment=${slug}&kind=step&mine=true&limit=300`).then(setRuns), [slug]);
   useEffect(() => {
     api(`/experiments/${slug}`).then(setSpec).catch((e) => setError(e.message));
+    api("/class").then(setCls).catch(() => {});
     loadRuns();
   }, [slug, loadRuns]);
   useEffect(() => {
     const t = setInterval(loadRuns, 10000);
     return () => clearInterval(t);
   }, [loadRuns]);
+  // a class starts afresh: while this experiment is the one being taught, runs from
+  // before the class began are left out, so nobody works from last week's results
+  const session = cls?.running && cls.session?.experiment === slug ? cls.session : null;
+  const shownRuns = useMemo(
+    () => (session ? runs.filter((r) => new Date(`${r.created_at}Z`) >= new Date(`${session.started_at}Z`)) : runs),
+    [runs, session]
+  );
   const railState = useMemo(() => {
     const st = {};
-    for (const r of runs) {
+    for (const r of shownRuns) {
       const cur = st[r.step] || {};
       if (!cur.latest || r.id > cur.latest) cur.latest = r.id;
       if (!cur.status) cur.status = r.status;
@@ -262,7 +271,7 @@ export default function Experiment() {
       st[r.step] = cur;
     }
     return st;
-  }, [runs]);
+  }, [shownRuns]);
   if (error) return <main className="page empty">{error}</main>;
   if (!spec) return <main className="page muted">Loading…</main>;
   const step = spec.steps[stepNo - 1] || spec.steps[0];
@@ -287,7 +296,7 @@ export default function Experiment() {
         </div>
       </div>
       <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp({ step: String(n) })} />
-      <StepPanel key={step.index} spec={spec} step={step} runs={runs.filter((r) => r.step === step.index)} prevRuns={runs.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />
+      <StepPanel key={step.index} spec={spec} step={step} runs={shownRuns.filter((r) => r.step === step.index)} prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />
       {spec.description && (
         <div className="panel" style={{ marginTop: 20 }}>
           <Markdown text={spec.description} />

@@ -104,7 +104,13 @@ class ClassSession(Base):
     experiment: Mapped[str] = mapped_column(String(64), index=True)
     started_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     started_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    # a paused class keeps its roster and its settings, and frees the room for
+    # another teacher until it is resumed
+    paused_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # what the teacher set when starting it: the run or prepared material each step
+    # begins from, so students do not have to have done the earlier experiment
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class SessionMember(Base):

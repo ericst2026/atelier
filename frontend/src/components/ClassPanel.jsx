@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Play, Square } from "lucide-react";
+import { Pause, Play, Square } from "lucide-react";
+import ParamsForm from "./ParamsForm";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtTime } from "../lib/format";
@@ -15,6 +16,8 @@ export default function ClassPanel() {
   const [displays, setDisplays] = useState([]);
   const [past, setPast] = useState([]);
   const [pick, setPick] = useState("");
+  const [spec, setSpec] = useState(null); // the chosen experiment, to ask what it starts from
+  const [startParams, setStartParams] = useState({});
   const [error, setError] = useState(null);
   const load = useCallback(() => {
     api("/class").then(setState).catch((e) => setError(e.message));
@@ -27,10 +30,15 @@ export default function ClassPanel() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [load]);
+  useEffect(() => {
+    setStartParams({});
+    if (!pick) return setSpec(null);
+    api(`/experiments/${pick}`).then(setSpec).catch(() => setSpec(null));
+  }, [pick]);
   const start = async () => {
     setError(null);
     try {
-      setState(await api("/class", { method: "POST", body: { experiment: pick } }));
+      setState(await api("/class", { method: "POST", body: { experiment: pick, params: startParams } }));
       load();
     } catch (e) {
       setError(e.message);
@@ -61,6 +69,24 @@ export default function ClassPanel() {
       setError(e.message);
     }
   };
+  const pause = async () => {
+    setError(null);
+    try {
+      setState(await api("/class/pause", { method: "POST", body: {} }));
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const resume = async (id) => {
+    setError(null);
+    try {
+      setState(await api(`/class/${id}/resume`, { method: "POST", body: {} }));
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   const push = async (displayId, payload) => {
     await api(`/displays/${displayId}`, { method: "PUT", body: payload });
     load();
@@ -80,9 +106,14 @@ export default function ClassPanel() {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h3>{running ? `Running: ${s.title || s.experiment}` : "No class is running"}</h3>
           {running && ours ? (
-            <button className="btn sm danger" onClick={stop}>
-              <Square size={13} /> End the class
-            </button>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={pause} title="Free the room without ending the class">
+                <Pause size={13} /> Pause
+              </button>
+              <button className="btn sm danger" onClick={stop}>
+                <Square size={13} /> End the class
+              </button>
+            </div>
           ) : null}
         </div>
         {running && !ours && (
@@ -105,6 +136,15 @@ export default function ClassPanel() {
             <button className="btn primary" onClick={start} disabled={!pick || (running && !ours)}>
               <Play size={14} /> {running ? "Switch the class to this" : "Start it for the class"}
             </button>
+          </div>
+        )}
+        {pick && spec && startFields(spec).length > 0 && (
+          <div className="inset stack" style={{ padding: 12, gap: 8 }}>
+            <b className="small">What the class starts from</b>
+            <div className="help">
+              Students have not done the experiment this one builds on, so choose it once here. These are fixed for everyone in the class.
+            </div>
+            <ParamsForm params={startFields(spec)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
           </div>
         )}
         {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
@@ -160,6 +200,23 @@ export default function ClassPanel() {
               <DisplayControl key={d.id} display={d} session={s} onPush={push} />
             ))}
           </div>
+        </div>
+      )}
+
+      {(state?.paused || []).length > 0 && (
+        <div className="panel stack" style={{ gap: 8, borderColor: "var(--sun)" }}>
+          <h3>Paused ({state.paused.length})</h3>
+          <div className="help">A paused class keeps who is in it and what it starts from. It can carry on once the room is free.</div>
+          {state.paused.map((ps) => (
+            <div key={ps.id} className="row" style={{ justifyContent: "space-between" }}>
+              <span>
+                {ps.title || ps.experiment} <span className="faint small">{ps.teacher} · paused {fmtTime(ps.paused_at)} · {ps.members.filter((m) => m.admitted).length} in it</span>
+              </span>
+              <button className="btn sm good" onClick={() => resume(ps.id)} disabled={running}>
+                Resume
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -239,4 +296,11 @@ function DisplayControl({ display, session, onPush }) {
       )}
     </div>
   );
+}
+
+/** The first step's run and material params: what an experiment needs before a
+ *  student can start it, which in class the teacher settles once. */
+function startFields(spec) {
+  const first = (spec?.steps || [])[0];
+  return (first?.params || []).filter((p) => p.type === "run" || p.type === "material" || (p.type === "select" && /source/.test(p.key)));
 }

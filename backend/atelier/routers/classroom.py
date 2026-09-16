@@ -29,8 +29,17 @@ STEP_DISPLAYS = 4  # displays 1-4 follow the four steps of the class
 
 
 def active_session(db: Session) -> Optional[ClassSession]:
-    """The one class running now, whoever is teaching it."""
-    return db.scalar(select(ClassSession).where(ClassSession.ended_at.is_(None)).order_by(ClassSession.id.desc()))
+    """The one class running now, whoever is teaching it. A paused class is not it:
+    it has given the room up until someone resumes it."""
+    return db.scalar(select(ClassSession).where(ClassSession.ended_at.is_(None), ClassSession.paused_at.is_(None)).order_by(ClassSession.id.desc()))
+
+
+def paused_sessions(db: Session, teacher_id: Optional[int] = None) -> list[ClassSession]:
+    """Classes that are stopped but not finished, newest first."""
+    q = select(ClassSession).where(ClassSession.ended_at.is_(None), ClassSession.paused_at.is_not(None)).order_by(ClassSession.id.desc())
+    if teacher_id is not None:
+        q = q.where(ClassSession.started_by == teacher_id)
+    return list(db.scalars(q).all())
 
 
 def membership(db: Session, session_id: int, user_id: int) -> Optional[SessionMember]:
@@ -87,6 +96,9 @@ def _session_dict(db: Session, s: ClassSession, user: Optional[User], registry: 
     return {
         "id": s.id,
         "experiment": s.experiment,
+        "paused": s.paused_at is not None,
+        "paused_at": s.paused_at.isoformat() if s.paused_at else None,
+        "params": s.params or {},
         "title": title,
         "teacher": (teacher.name or teacher.username) if teacher else "?",
         "teacher_id": s.started_by,
@@ -102,7 +114,12 @@ def _session_dict(db: Session, s: ClassSession, user: Optional[User], registry: 
 
 def _state(db: Session, user: User, registry: Registry) -> dict:
     s = active_session(db)
-    return {"running": s is not None, "session": _session_dict(db, s, user, registry) if s is not None else None}
+    mine_paused = paused_sessions(db, None if user.role == "admin" else user.id) if user.role in ("teacher", "admin") else []
+    return {
+        "running": s is not None,
+        "session": _session_dict(db, s, user, registry) if s is not None else None,
+        "paused": [_session_dict(db, x, user, registry) for x in mine_paused],
+    }
 
 
 @router.get("")
@@ -141,7 +158,7 @@ def start_class(body: dict, teacher: User = Depends(require_teacher), db: Sessio
         raise HTTPException(409, f"{(who.name or who.username) if who else 'Another teacher'} is running a class ({current.experiment}). It has to end before yours can start.")
     if current is not None:
         current.ended_at = datetime.utcnow()  # your own class, or an admin taking the room
-    s = ClassSession(experiment=slug, started_by=teacher.id)
+    s = ClassSession(experiment=slug, started_by=teacher.id, params=dict(body.get("params") or {}))
     db.add(s)
     db.commit()
     # the wall follows the class: one display per step, and any display showing a
@@ -170,6 +187,47 @@ def stop_class(teacher: User = Depends(require_teacher), db: Session = Depends(g
     bus.publish_event({"type": "class", "session": s.id, "running": False})
     for d in db.scalars(select(Display)).all():
         bus.publish_event({"type": "display", "id": d.id})  # the wall now says no class is running
+    return _state(db, teacher, registry)
+
+
+@router.post("/pause")
+def pause_class(teacher: User = Depends(require_teacher), db: Session = Depends(get_db), registry: Registry = Depends(get_registry), bus: SyncBus = Depends(get_bus)):
+    """Put the class down without ending it: the room is free for another teacher,
+    and this one keeps its roster and its settings until it is resumed."""
+    s = active_session(db)
+    if s is None:
+        raise HTTPException(400, "No class is running")
+    if teacher.role != "admin" and s.started_by != teacher.id:
+        raise HTTPException(403, "That is another teacher's class")
+    s.paused_at = datetime.utcnow()
+    db.commit()
+    bus.publish_event({"type": "class", "session": s.id, "paused": True})
+    for d in db.scalars(select(Display)).all():
+        bus.publish_event({"type": "display", "id": d.id})
+    return _state(db, teacher, registry)
+
+
+@router.post("/{session_id}/resume")
+def resume_class(session_id: int, teacher: User = Depends(require_teacher), db: Session = Depends(get_db), registry: Registry = Depends(get_registry), bus: SyncBus = Depends(get_bus)):
+    """Pick a paused class back up, if the room is free."""
+    s = db.get(ClassSession, session_id)
+    if s is None or s.ended_at is not None or s.paused_at is None:
+        raise HTTPException(404, "That class is not paused")
+    if teacher.role != "admin" and s.started_by != teacher.id:
+        raise HTTPException(403, "That is another teacher's class")
+    current = active_session(db)
+    if current is not None:
+        who = db.get(User, current.started_by)
+        raise HTTPException(409, f"{(who.name or who.username) if who else 'Another teacher'} is running a class ({current.experiment}). It has to stop before this one can carry on.")
+    s.paused_at = None
+    db.commit()
+    # the wall picks the class back up where it was
+    for d in db.scalars(select(Display).order_by(Display.id)).all():
+        if d.id <= STEP_DISPLAYS:
+            d.mode, d.payload, d.updated_at = "step", {"session_id": s.id, "experiment": s.experiment, "step": d.id}, datetime.utcnow()
+        bus.publish_event({"type": "display", "id": d.id})
+    db.commit()
+    bus.publish_event({"type": "class", "session": s.id, "running": True})
     return _state(db, teacher, registry)
 
 
