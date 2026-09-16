@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { StatusPill } from "../components/RunStatus";
-import ClassPanel from "../components/ClassPanel";
+import ClassHistory from "../components/ClassHistory";
+import ClassPanel, { WallPanel } from "../components/ClassPanel";
 import { api, wsUrl } from "../lib/api";
 import { fmtBytes, fmtDuration, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
@@ -219,48 +220,6 @@ function DisplaysPanel() {
   );
 }
 
-function SubmissionsPanel() {
-  const [subs, setSubs] = useState([]);
-  useEffect(() => {
-    api("/submissions").then(setSubs);
-  }, []);
-  return (
-    <div className="tablewrap">
-      <table className="data">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Student</th>
-            <th>Experiment</th>
-            <th>Step</th>
-            <th>Submitted</th>
-            <th>Size</th>
-            <th>Grade</th>
-            <th>Published</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {subs.map((s) => (
-            <tr key={s.id}>
-              <td>{s.id}</td>
-              <td>{s.name || s.username}</td>
-              <td>{s.experiment}</td>
-              <td>{s.step || "–"}</td>
-              <td>{fmtTime(s.created_at)}</td>
-              <td>{fmtBytes(s.bytes)}</td>
-              <td>{s.score ?? "–"}</td>
-              <td>{s.published ? "yes" : "no"}</td>
-              <td>
-                <Link to={`/teacher/submissions/${s.id}`}>review</Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function Teacher() {
   const [sp, setSp] = useSearchParams();
@@ -278,11 +237,11 @@ export default function Teacher() {
       </div>
       <div className="tabs">
         {[
-          ["class", "Class"],
-          ["submissions", "Handed in"],
+          ["class", "The class"],
+          ["history", "Past classes"],
+          ["displays", "The wall"],
           ["runs", "Runs"],
-          ["live", "Now running"],
-          ["displays", "Displays"],
+          ["live", "The node"],
         ].map(([k, l]) => (
           <button key={k} className={section === k ? "active" : ""} onClick={() => setSection(k)}>
             {l}
@@ -290,10 +249,15 @@ export default function Teacher() {
         ))}
       </div>
       {section === "class" && <ClassPanel />}
+      {section === "history" && <ClassHistory onResumed={() => setSection("class")} />}
       {section === "live" && <LivePanel live={live} />}
-      {section === "submissions" && <SubmissionsPanel />}
       {section === "runs" && <RunsPanel />}
-      {section === "displays" && <DisplaysPanel />}
+      {section === "displays" && (
+        <div className="stack">
+          <WallPanel />
+          <DisplaysPanel />
+        </div>
+      )}
     </main>
   );
 }

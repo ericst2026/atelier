@@ -14,7 +14,6 @@ export default function ClassPanel() {
   const [state, setState] = useState(null);
   const [experiments, setExperiments] = useState([]);
   const [displays, setDisplays] = useState([]);
-  const [past, setPast] = useState([]);
   const [pick, setPick] = useState("");
   const [spec, setSpec] = useState(null); // the chosen experiment, to ask what it starts from
   const [startParams, setStartParams] = useState({});
@@ -22,7 +21,6 @@ export default function ClassPanel() {
   const load = useCallback(() => {
     api("/class").then(setState).catch((e) => setError(e.message));
     api("/displays").then(setDisplays).catch(() => {});
-    api("/class/history?limit=10").then((d) => setPast(d.sessions || [])).catch(() => {});
   }, []);
   useEffect(() => {
     api("/experiments").then((d) => setExperiments(d.experiments || []));
@@ -191,50 +189,44 @@ export default function ClassPanel() {
         </div>
       )}
 
-      {running && ours && (
-        <div className="panel stack">
-          <h3>What the wall shows</h3>
-          <div className="help">Each of displays 1–4 shows its step and who has handed that step in. Pick a student to put their work up instead.</div>
-          <div className="grid2">
-            {displays.map((d) => (
-              <DisplayControl key={d.id} display={d} session={s} onPush={push} />
-            ))}
-          </div>
-        </div>
-      )}
+    </div>
+  );
+}
 
-      {(state?.paused || []).length > 0 && (
-        <div className="panel stack" style={{ gap: 8, borderColor: "var(--sun)" }}>
-          <h3>Paused ({state.paused.length})</h3>
-          <div className="help">A paused class keeps who is in it and what it starts from. It can carry on once the room is free.</div>
-          {state.paused.map((ps) => (
-            <div key={ps.id} className="row" style={{ justifyContent: "space-between" }}>
-              <span>
-                {ps.title || ps.experiment} <span className="faint small">{ps.teacher} · paused {fmtTime(ps.paused_at)} · {ps.members.filter((m) => m.admitted).length} in it</span>
-              </span>
-              <button className="btn sm good" onClick={() => resume(ps.id)} disabled={running}>
-                Resume
-              </button>
-            </div>
+/** The wall: one control per screen, so the teacher can follow a step or put a
+ *  student up. Lives in its own tab, but needs the same class state. */
+export function WallPanel() {
+  const [state, setState] = useState(null);
+  const [displays, setDisplays] = useState([]);
+  const load = useCallback(() => {
+    api("/class").then(setState).catch(() => {});
+    api("/displays").then(setDisplays).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [load]);
+  const push = async (displayId, body) => {
+    await api(`/displays/${displayId}`, { method: "PUT", body });
+    load();
+  };
+  const session = state?.running ? state.session : null;
+  return (
+    <div className="stack">
+      <div className="panel stack">
+        <h3>What the wall shows</h3>
+        <div className="help">
+          {session
+            ? "Screens 1–4 follow the four steps: what the step is for, what your own version has to do, and who has handed it in. Put a student up to compare their figures with the standard code."
+            : "No class is running, so the step screens say so. The last screen keeps the hardware dashboard."}
+        </div>
+        <div className="grid2">
+          {displays.map((d) => (
+            <DisplayControl key={d.id} display={d} session={session} onPush={push} />
           ))}
         </div>
-      )}
-
-      {past.length > 0 && (
-        <div className="panel stack" style={{ gap: 8 }}>
-          <h3>Earlier classes</h3>
-          {past.map((p) => (
-            <div key={p.id} className="row" style={{ justifyContent: "space-between" }}>
-              <span>
-                {p.title || p.experiment} <span className="faint small">{p.teacher}</span>
-              </span>
-              <span className="small muted">
-                {fmtTime(p.started_at)} · {p.ended_at ? `${p.members.filter((m) => m.admitted).length} took part` : "running now"}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

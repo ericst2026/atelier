@@ -83,7 +83,7 @@ def submit(slug: str, body: SubmissionCreate, user: User = Depends(current_user)
 
 
 @router.get("/submissions", response_model=list[SubmissionOut])
-def list_submissions(experiment: Optional[str] = None, user_id: Optional[int] = None, limit: int = Query(200, le=2000), user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_submissions(experiment: Optional[str] = None, step: Optional[int] = None, user_id: Optional[int] = None, limit: int = Query(200, le=2000), user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = select(Submission).order_by(Submission.id.desc()).limit(limit)
     if not is_staff(user):
         q = q.where(Submission.user_id == user.id)
@@ -91,6 +91,8 @@ def list_submissions(experiment: Optional[str] = None, user_id: Optional[int] = 
         q = q.where(Submission.user_id == user_id)
     if experiment:
         q = q.where(Submission.experiment == experiment)
+    if step:
+        q = q.where(Submission.step == step)
     subs = db.scalars(q).all()
     users = {u.id: u for u in db.scalars(select(User)).all()}
     return [_out(s, users) for s in subs]
