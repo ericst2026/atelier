@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import create_token, current_user, hash_password, verify_password
+from .. import services
 from ..db import get_db
 from ..models import User
 from ..schemas import LoginIn, PasswordIn, SignUpIn, TokenOut, UserOut
@@ -18,7 +19,7 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     if not user.active:
         # the password was right, so say what is actually wrong
         raise HTTPException(403, "Your account is waiting for an admin to approve it.")
-    return TokenOut(token=create_token(user), user=UserOut.model_validate(user))
+    return TokenOut(token=create_token(user), user=services.user_out(db, user))
 
 
 @router.post("/signup", response_model=UserOut, status_code=201)
@@ -40,8 +41,8 @@ def signup(body: SignUpIn, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(current_user)):
-    return user
+def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return services.user_out(db, user)
 
 
 @router.post("/password")

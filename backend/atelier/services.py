@@ -13,6 +13,16 @@ from .config import settings
 from .models import Run, Submission, User
 from .auth import is_staff
 from .registry import ExperimentSpec, Registry
+from .schemas import UserOut
+
+
+def user_out(db: Session, user: User) -> UserOut:
+    """A user as the app sees them, including the experiments an admin has granted
+    them. Every endpoint that returns an account goes through this: /auth/me told
+    people they had none, which emptied their page."""
+    out = UserOut.model_validate(user)
+    out.self_experiments = sorted(classroom.self_allowed(db, user.id))
+    return out
 
 
 def visible_run(db: Session, run_id: int, user: User) -> Run:

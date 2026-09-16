@@ -2,31 +2,24 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ClassBanner from "../components/ClassBanner";
 import { api } from "../lib/api";
-import { fmtTime } from "../lib/format";
 import { useAuth } from "../lib/auth";
 
 export default function Home() {
   const { user, isTeacher, isAdmin, refresh } = useAuth();
   const [data, setData] = useState(null);
-  const [cls, setCls] = useState(null);
-  const [past, setPast] = useState([]);
   const [error, setError] = useState(null);
   useEffect(() => {
-    api("/experiments").then(setData).catch((e) => setError(e.message));
     const poll = () => {
-      refresh(); // a permission granted a minute ago should show up without a reload
-      api("/class").then(setCls).catch(() => {});
-      api("/class/history?limit=12").then((d) => setPast(d.sessions || [])).catch(() => {});
+      // a permission granted a minute ago should show up without a reload, and the
+      // list itself is filtered by permission, so both are re-read
+      refresh();
+      api("/experiments").then(setData).catch((e) => setError(e.message));
     };
     poll();
     const t = setInterval(poll, 8000);
     return () => clearInterval(t);
   }, [refresh]);
   const granted = user?.self_experiments || [];
-  const byslug = Object.fromEntries((data?.experiments || []).map((e) => [e.slug, e]));
-  // the class half: what is running now, and the classes that have been held
-  const now = cls?.running ? cls.session : null;
-  const held = past.filter((h) => h.ended_at);
   // the self half: what an admin granted this person — and for an admin, everything,
   // since their permission is the role itself and never a granted list
   const all = data?.experiments || [];
@@ -52,63 +45,48 @@ export default function Home() {
           ))}
         </div>
       )}
-      <section className="expsection">
-        <div className="expsection-head">
-          <h2>In class</h2>
-          <span className="muted small">{now ? "one running" : "nothing running"}</span>
-        </div>
-        {now ? (
-          <div className="cards">
-            {byslug[now.experiment] ? (
-              <ExperimentCard e={byslug[now.experiment]} note={`${now.teacher}'s class · ${now.me?.admitted ? "you are in" : now.me?.asked ? "waiting to be let in" : "ask to join"}`} />
-            ) : (
-              <div className="panel">
-                {now.title || now.experiment} · {now.teacher}
-              </div>
-            )}
+      <div className="expsection-head" style={{ marginBottom: 12 }}>
+        <h2>On your own</h2>
+        <span className="muted small">
+          {own.length} experiment{own.length === 1 ? "" : "s"}
+          {isAdmin ? " · you are an admin, so all of them" : " granted to you"}
+        </span>
+      </div>
+      {own.length === 0 && (
+        <p className="muted small">{isAdmin ? "No experiments are loaded." : "An admin has not given you anything to run by yourself yet. In class you work on whatever your teacher starts."}</p>
+      )}
+      {sections(own, data?.categories).map((sec) => (
+        <section key={sec.id} className="expsection">
+          <div className="expsection-head">
+            <h2>{sec.title}</h2>
+            <span className="muted small">
+              {sec.experiments.length} experiment{sec.experiments.length > 1 ? "s" : ""}
+              {sec.done ? ` · ${sec.done} finished` : ""}
+            </span>
           </div>
-        ) : (
-          <p className="muted small">No class is running. Your teacher starts one and lets you in.</p>
-        )}
-        {held.length > 0 && (
-          <div className="panel tight" style={{ marginTop: 10 }}>
-            <div className="small muted" style={{ marginBottom: 6 }}>
-              Classes already held
-            </div>
-            <div className="stack" style={{ gap: 4 }}>
-              {held.map((h) => (
-                <div key={h.id} className="row small" style={{ justifyContent: "space-between" }}>
-                  <span>
-                    {h.title || h.experiment} <span className="faint">· {h.teacher}</span>
-                  </span>
-                  <span className="faint">{fmtTime(h.started_at)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="expsection">
-        <div className="expsection-head">
-          <h2>On your own</h2>
-          <span className="muted small">
-            {own.length} experiment{own.length === 1 ? "" : "s"}
-            {isAdmin ? " · you are an admin, so all of them" : " granted"}
-          </span>
-        </div>
-        {own.length === 0 ? (
-          <p className="muted small">{isAdmin ? "No experiments are loaded." : "An admin has not given you anything to run by yourself yet."}</p>
-        ) : (
+          {sec.summary && <p className="muted small">{sec.summary}</p>}
           <div className="cards">
-            {own.map((e) => (
+            {sec.experiments.map((e) => (
               <ExperimentCard key={e.slug} e={e} />
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      ))}
     </main>
   );
+}
+
+/** Categories in the order categories.yaml lists them, empty ones dropped, anything
+ * uncategorised last under "Other". Experiments keep their own order inside a section. */
+function sections(experiments, categories) {
+  const cats = [...(categories || []), { id: "other", title: "Other", summary: "" }];
+  const byCat = {};
+  for (const e of experiments || []) (byCat[e.category || "other"] ||= []).push(e);
+  const known = new Set(cats.map((c) => c.id));
+  for (const id of Object.keys(byCat)) if (!known.has(id)) byCat.other = [...(byCat.other || []), ...byCat[id]];
+  return cats
+    .filter((c) => byCat[c.id]?.length)
+    .map((c) => ({ ...c, experiments: byCat[c.id], done: byCat[c.id].filter((e) => (e.progress?.best_step || 0) >= 4).length }));
 }
 
 function ExperimentCard({ e, note }) {

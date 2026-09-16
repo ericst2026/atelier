@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import services
 from ..auth import hash_password, require_admin
 from ..db import get_db
 from ..deps import get_registry
@@ -17,9 +18,7 @@ router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(requir
 
 
 def _out(user: User, db: Session) -> UserOut:
-    o = UserOut.model_validate(user)
-    o.self_experiments = sorted(db.scalars(select(SelfPermission.experiment).where(SelfPermission.user_id == user.id)).all())
-    return o
+    return services.user_out(db, user)
 
 
 @router.get("", response_model=list[UserOut])
