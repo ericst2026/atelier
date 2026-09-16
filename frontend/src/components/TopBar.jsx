@@ -17,9 +17,6 @@ export default function TopBar() {
         </NavLink>
         {isTeacher && <NavLink to="/teacher">Class</NavLink>}
         {isAdmin && <NavLink to="/admin">Accounts</NavLink>}
-        <NavLink to="/display/1" target="_blank">
-          Displays
-        </NavLink>
       </nav>
       <span className="spacer" />
       <GpuStrip />
