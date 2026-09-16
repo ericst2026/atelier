@@ -6,10 +6,12 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import materials, storage
+from . import materials, stepcode, storage
+from .routers import classroom
 from .bus import SyncBus, cluster_capacity
 from .config import settings
 from .models import Run, Submission, User
+from .auth import is_staff
 from .registry import ExperimentSpec, Registry
 
 
@@ -17,7 +19,7 @@ def visible_run(db: Session, run_id: int, user: User) -> Run:
     run = db.get(Run, run_id)
     if run is None:
         raise HTTPException(404, "Run not found")
-    if user.role != "teacher" and run.user_id != user.id:
+    if not is_staff(user) and run.user_id != user.id:
         raise HTTPException(403, "This run belongs to someone else")
     return run
 
@@ -26,13 +28,13 @@ def visible_submission(db: Session, submission_id: int, user: User) -> Submissio
     sub = db.get(Submission, submission_id)
     if sub is None:
         raise HTTPException(404, "Submission not found")
-    if user.role != "teacher" and sub.user_id != user.id:
+    if not is_staff(user) and sub.user_id != user.id:
         raise HTTPException(403, "This submission belongs to someone else")
     return sub
 
 
 def check_capacity(db: Session, user: User, gpus: int) -> None:
-    if user.role == "teacher":
+    if is_staff(user):
         cap = cluster_capacity(SyncBus())
         # a single run stays on one machine, so the biggest node is the limit. With no GPU
         # anywhere the run goes to CPU, and with no worker checked in the size is unknown:
@@ -122,10 +124,20 @@ def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]],
     return refs
 
 
-def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, params: dict[str, Any], parent_run_id: Optional[int], gpus: Optional[int], label: str) -> Run:
+def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, params: dict[str, Any], parent_run_id: Optional[int], gpus: Optional[int], label: str, code_source: str = "standard") -> Run:
     step = spec.step(step_no)
+    own = code_source == "own"
+    if own and not step.own_code:
+        raise HTTPException(400, f"Step {step_no} of {spec.slug} runs the standard code only")
+    script = stepcode.code_path(user.id, spec.slug, step_no) if own else spec.dir / step.script
+    if own and not script.exists():
+        raise HTTPException(400, "Write and save your own code for this step first")
+    allowed, why = classroom.may_run(db, user, spec.slug)
+    if not allowed:
+        raise HTTPException(403, why)
     params = coerce_params(step.params, params, spec)
     inputs: dict[str, Any] = {
+        "code_source": "own" if own else "standard",
         "materials_dir": str(settings.materials_dir),
         "workspace_dir": str(storage.workspace_dir(user.id, spec.slug)),
         "experiment_dir": str(spec.dir),
@@ -143,7 +155,7 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
         inputs["parent_run_dir"] = str(storage.run_dir(parent.id))
     inputs.update(resolve_run_refs(db, user, step.params, params))
     want_gpus = step.gpus if gpus is None else int(gpus)
-    if want_gpus > step.gpus and user.role != "teacher":
+    if want_gpus > step.gpus and not is_staff(user):
         want_gpus = step.gpus
     check_capacity(db, user, want_gpus)
     run = Run(
@@ -152,12 +164,12 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
         kind="step",
         step=step_no,
         parent_run_id=parent_run_id,
-        label=label or f"{spec.title} · {step.title}",
+        label=(label or f"{spec.title} · {step.title}") + (" · own code" if own else ""),
         params=params,
         inputs=inputs,
         gpus=want_gpus,
         timeout_min=step.timeout_min,
-        command=f"{settings.python_bin} {spec.dir / step.script} --run-dir {{run_dir}}",
+        command=f"{settings.python_bin} {script} --run-dir {{run_dir}}",
     )
     db.add(run)
     db.commit()

@@ -52,7 +52,7 @@ R.chart("curve", "Tokens as the vocabulary grows",
         [{"vocab": c["vocab"], "tokens": c["tokens"], "chars_per_token": chars / max(1, c["tokens"])} for c in model.checkpoints],
         "vocab", [{"key": "tokens", "label": "Tokens in the corpus", "color": "kept"}, {"key": "chars_per_token", "label": "Chars per token", "color": "sky", "axis": "right"}],
         "line", x_log=True, note="Where this flattens is where a bigger vocabulary stops buying you shorter sequences.")
-R.chart("kinds", "Learned tokens by kind", [{"kind": k, "count": v} for k, v in kinds.most_common()], "kind", [{"key": "count", "label": "Tokens", "color": "hold"}], "bar")
+R.chart("kinds", "Learned tokens by kind", [{"kind": k, "count": v} for k, v in kinds.most_common()], "kind", [{"key": "count", "label": "Tokens"}], "donut", note="What the vocabulary spent itself on: whole words, word pieces, numbers, or raw bytes.")
 R.chart("embcost", "Embedding parameters by vocabulary and model width", emb, "width",
         [{"key": "vocab_1024", "label": "1024", "color": "kept"}, {"key": "vocab_4096", "label": "4096", "color": "raw"}, {"key": "vocab_16384", "label": "16384", "color": "dup"}],
         "bar", note="Tied input and output embeddings. At 10M parameters this table is most of the model, which is why vocabulary size is a modelling decision, not a detail.")

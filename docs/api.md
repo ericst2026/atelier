@@ -27,6 +27,9 @@ browser opens directly (downloads, iframes, websockets). Interactive docs live a
 |---|---|---|
 | GET | `/experiments` | cards + this user's progress (+ registry errors for teachers) |
 | GET | `/experiments/{slug}` | full spec: steps, params, materials with availability, README |
+| GET | `/experiments/{slug}/steps/{n}/code` | the student's own code for a step, or the prototype to start from (`?user_id=` for teachers) |
+| PUT | `/experiments/{slug}/steps/{n}/code` | save it (`{code}`); the reply reports a syntax error without refusing the save |
+| POST | `/experiments/{slug}/steps/{n}/code/reset` | back to the prototype |
 | GET | `/experiments/{slug}/materials-tree?path=` | browse a material folder |
 | GET | `/experiments/{slug}/materials/{path}` | download one material file |
 | GET | `/experiments/{slug}/sample/tree` | sample project file list |
@@ -51,6 +54,10 @@ browser opens directly (downloads, iframes, websockets). Interactive docs live a
 Run kinds: `step` (guided), `workspace` (free command in the project), `test`
 (grader on the live project), `grade` (grader on a frozen submission).
 
+A step run carries `code_source`: `standard` runs the script the experiment ships
+with, `own` runs the student's own file for that step. Only steps declaring
+`own_code: true` accept it.
+
 ## Workspace — the student's project
 
 | Method | Path | What |
@@ -68,7 +75,7 @@ Run kinds: `step` (guided), `workspace` (free command in the project), `test`
 
 | Method | Path | What |
 |---|---|---|
-| POST | `/experiments/{slug}/submissions` | freeze the workspace, auto-grade |
+| POST | `/experiments/{slug}/submissions` | hand in your own code for one step (`{step, note}`) |
 | GET | `/submissions` | own, or all with `?experiment=&user_id=` for teachers |
 | GET | `/submissions/{id}` · `/tree` · `/file?path=` · `/download` · `/runs` | inspect |
 | POST | `/submissions/{id}/test` | teachers: re-run the grader |

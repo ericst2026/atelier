@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Download, Wand2 } from "lucide-react";
+import { Download } from "lucide-react";
 import CodeEditor from "../components/CodeEditor";
 import FileTree from "../components/FileTree";
 import LogView from "../components/LogView";
@@ -43,11 +43,6 @@ export default function SubmissionReview() {
   useEffect(() => {
     if (path) api(`/submissions/${id}/file?path=${encodeURIComponent(path)}`).then(setFile);
   }, [id, path]);
-  const test = async () => {
-    const r = await api(`/submissions/${id}/test`, { method: "POST" });
-    setSelected(r.id);
-    load();
-  };
   const grade = async () => {
     const s = await api(`/submissions/${id}/grade`, { method: "POST", body: { score: score === "" ? null : Number(score), feedback, published } });
     setSub(s);
@@ -64,6 +59,7 @@ export default function SubmissionReview() {
           </div>
           <h1>
             {sub.name || sub.username} · {sub.experiment}
+            {sub.step ? ` · step ${sub.step}` : ""}
           </h1>
           <div className="muted small">
             {fmtTime(sub.created_at)} · {sub.file_count} files · {fmtBytes(sub.bytes)} · sha256 {sub.sha256.slice(0, 12)}
@@ -74,9 +70,6 @@ export default function SubmissionReview() {
         <a className="btn sm" href={fileUrl(`/submissions/${id}/download`)}>
           <Download size={13} /> Download
         </a>
-        <button className="btn sm primary" onClick={test}>
-          <Wand2 size={13} /> Run the grader
-        </button>
       </div>
       <div className="workspace">
         <div className="panel tight">
@@ -92,14 +85,11 @@ export default function SubmissionReview() {
           <div className="stack" style={{ gap: 6 }}>
             <label className="field">
               <span>Score (0–100)</span>
-              <input type="number" min={0} max={100} value={score} onChange={(e) => setScore(e.target.value)} placeholder={sub.auto_score !== null ? `auto ${sub.auto_score}` : ""} />
+              <input type="number" min={0} max={100} value={score} onChange={(e) => setScore(e.target.value)} />
             </label>
             <label className="field">
               <span>Feedback</span>
               <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} />
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> Show on the leaderboard
             </label>
             <button className="btn good" onClick={grade}>
               Save grade
@@ -107,7 +97,7 @@ export default function SubmissionReview() {
             {msg && <div className="small" style={{ color: "var(--kept)" }}>{msg}</div>}
           </div>
           <div className="stack" style={{ gap: 4 }}>
-            <div className="small muted">Grader runs</div>
+            <div className="small muted">What this code produced when they ran it</div>
             {runs.map((r) => (
               <button key={r.id} className={`btn sm ${selected === r.id ? "" : "ghost"}`} style={{ justifyContent: "flex-start" }} onClick={() => setSelected(r.id)}>
                 <StatusPill status={r.status} /> #{r.id} <span className="faint">{fmtTime(r.created_at)}</span> {(r.metrics || []).find((m) => m.key === "score") && <b>score {(r.metrics || []).find((m) => m.key === "score").value}</b>}

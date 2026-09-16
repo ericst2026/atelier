@@ -51,6 +51,7 @@ steps:
       than a slow large one. The run relaunches itself under `torchrun` for each
       width you ask for.
     script: steps/step2_scale.py
+    own_code: true
     gpus: 8
     timeout_min: 120
     figures: [{key: efficiency_8, label: 8-GPU eff}]
@@ -69,6 +70,7 @@ steps:
       much has to move at all. Each is a row in the table; the combination is the
       last row.
     script: steps/step3_optimise.py
+    own_code: true
     gpus: 8
     timeout_min: 180
     figures: [{key: best_throughput, label: best tok/s}]
@@ -87,6 +89,7 @@ steps:
       — and compares the loss curves. Small differences are expected from ordering
       and reduced precision; a systematic gap means the recipe is not equivalent.
     script: steps/step4_verify.py
+    own_code: true
     gpus: 8
     timeout_min: 180
     figures: [{key: loss_gap, label: loss gap}]

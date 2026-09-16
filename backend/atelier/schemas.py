@@ -10,6 +10,8 @@ class UserOut(BaseModel):
     name: str
     role: str
     active: bool
+    # the experiments this person may run on their own, outside a class
+    self_experiments: list[str] = []
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -43,6 +45,17 @@ class UserPatch(BaseModel):
     password: Optional[str] = None
 
 
+class SelfPermissionsIn(BaseModel):
+    experiments: list[str] = []
+
+
+class SignUpIn(BaseModel):
+    username: str = Field(min_length=2, max_length=64)
+    name: str = ""
+    password: str = Field(min_length=4)
+    role: str = "student"  # asking for a teacher account waits for an admin
+
+
 class RunOut(BaseModel):
     id: int
     user_id: int
@@ -74,6 +87,7 @@ class RunOut(BaseModel):
 
 class StepRunCreate(BaseModel):
     params: dict[str, Any] = {}
+    code_source: str = "standard"  # "own" runs the student's file for this step
     parent_run_id: Optional[int] = None
     gpus: Optional[int] = None
     label: str = ""
@@ -90,8 +104,13 @@ class FileWrite(BaseModel):
     content: str
 
 
+class StepCodeWrite(BaseModel):
+    code: str = Field(max_length=400_000)
+
+
 class SubmissionCreate(BaseModel):
     note: str = ""
+    step: int = 0
 
 
 class GradeIn(BaseModel):
@@ -106,6 +125,7 @@ class SubmissionOut(BaseModel):
     username: str = ""
     name: str = ""
     experiment: str
+    step: int = 0
     note: str
     sha256: str
     file_count: int

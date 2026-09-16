@@ -56,13 +56,13 @@ export function TokenView({ view }) {
 export default function ResultsView({ result, runId, compact = false }) {
   if (!result) return null;
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="stack" style={{ gap: 14 }}>
       <Kpis metrics={result.metrics} />
       {result.notes && result.notes.length > 0 && <Markdown text={result.notes.join("\n\n")} />}
       {result.charts && result.charts.length > 0 && (
         <div className="charts">
           {result.charts.map((c) => (
-            <ChartCard key={c.id} spec={c} height={compact ? 200 : 240} />
+            <ChartCard key={c.id} spec={c} height={compact ? 180 : 210} />
           ))}
         </div>
       )}

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import __version__, metrics
-from ..auth import current_user, require_teacher
+from ..auth import current_user, is_staff, require_teacher
 from ..bus import SyncBus, cluster_capacity
 from .. import materials
 from ..config import settings
@@ -25,7 +25,7 @@ def materials_catalog(kind: str = "model", formats: str = "", schemas: str = "",
     With experiment, step and param the list is that param's declared choices only:
     each one found on some machine, or listed with a problem when it is not there or
     does not have the format or fields the step reads."""
-    cat = materials.catalog(bus, force=refresh and user.role == "teacher")
+    cat = materials.catalog(bus, force=refresh and is_staff(user))
     if experiment:
         try:
             p = next(x for x in registry.get(experiment).step(step).params if x.get("key") == param and x.get("type") == "material")
@@ -87,7 +87,7 @@ def info(user: User = Depends(current_user), registry: Registry = Depends(get_re
         "display_count": settings.display_count,
         "limits": {"max_running_per_student": settings.max_running_per_student, "max_gpus_per_student_run": settings.max_gpus_per_student_run},
         "experiments": [s.slug for s in registry.list()],
-        "registry_errors": registry.errors if user.role == "teacher" else {},
+        "registry_errors": registry.errors if is_staff(user) else {},
     }
 
 

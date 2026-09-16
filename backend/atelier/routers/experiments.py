@@ -1,13 +1,16 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .. import materials, services, storage
-from ..auth import current_user
+from .. import materials, services, stepcode, storage
+from ..auth import current_user, is_staff
 from ..db import get_db
 from ..deps import get_bus, get_registry
 from ..models import User
 from ..registry import Registry
+from ..schemas import StepCodeWrite
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -22,7 +25,7 @@ def _spec(registry: Registry, slug: str):
 @router.get("")
 def list_experiments(user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
     progress = services.user_progress(db, user, registry)
-    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in registry.list()], "categories": registry.categories(), "errors": registry.errors if user.role == "teacher" else {}}
+    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in registry.list()], "categories": registry.categories(), "errors": registry.errors if is_staff(user) else {}}
 
 
 @router.get("/{slug}")
@@ -95,3 +98,51 @@ def sample_download(slug: str, user: User = Depends(current_user), registry: Reg
 
     spec = _spec(registry, slug)
     return Response(storage.zip_dir(spec.sample_dir), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{slug}-sample.zip"'})
+
+
+@router.get("/{slug}/steps/{step_no}/code")
+def read_step_code(slug: str, step_no: int, user_id: Optional[int] = None, user: User = Depends(current_user), registry: Registry = Depends(get_registry)):
+    """The student's own code for this step, or the prototype to start from.
+    A teacher may read another student's by passing user_id."""
+    spec = _spec(registry, slug)
+    try:
+        step = spec.step(step_no)
+    except KeyError:
+        raise HTTPException(404, "No such step")
+    whose = user.id
+    if user_id is not None and user_id != user.id:
+        if not is_staff(user):
+            raise HTTPException(403, "That is someone else's code")
+        whose = user_id
+    if not step.own_code:
+        raise HTTPException(400, "This step runs the standard code only")
+    d = stepcode.read(whose, spec, step)
+    return {"step": step_no, "user_id": whose, "code": d["code"], "saved": d["saved"]}
+
+
+@router.put("/{slug}/steps/{step_no}/code")
+def write_step_code(slug: str, step_no: int, body: StepCodeWrite, user: User = Depends(current_user), registry: Registry = Depends(get_registry)):
+    spec = _spec(registry, slug)
+    try:
+        step = spec.step(step_no)
+    except KeyError:
+        raise HTTPException(404, "No such step")
+    if not step.own_code:
+        raise HTTPException(400, "This step runs the standard code only")
+    # a syntax error is worth catching here rather than in a queued run
+    error = stepcode.compile_error(body.code)
+    stepcode.write(user.id, spec, step, body.code)
+    return {"saved": True, "error": error}
+
+
+@router.post("/{slug}/steps/{step_no}/code/reset")
+def reset_step_code(slug: str, step_no: int, user: User = Depends(current_user), registry: Registry = Depends(get_registry)):
+    """Back to the prototype. What was written is gone."""
+    spec = _spec(registry, slug)
+    try:
+        step = spec.step(step_no)
+    except KeyError:
+        raise HTTPException(404, "No such step")
+    if not step.own_code:
+        raise HTTPException(400, "This step runs the standard code only")
+    return {"code": stepcode.reset(user.id, spec, step), "saved": True}

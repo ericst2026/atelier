@@ -52,7 +52,7 @@ steps:
     params:
       - {key: sources, label: Sources, type: multiselect, default: [pools], options: [{value: pools, label: Sample pools}, {value: wikitext, label: WikiText-103}, {value: code, label: Source code}, {value: multilingual, label: Multilingual}, {value: workspace, label: My project files (data/)}]}
       - {key: max_docs, label: Documents, type: int, min: 50, max: 200000, step: 50, default: 2000, help: Upper bound after mixing all sources}
-      - {key: split, label: Split files into documents by, type: select, default: auto, options: [{value: auto, label: blank line if any, else line}, {value: paragraph, label: blank line}, {value: line, label: line}, {value: whole, label: whole file}]}
+      - {key: split, label: Split files into documents by, type: select, default: auto, options: [{value: auto, label: "blank line if any, else line"}, {value: paragraph, label: blank line}, {value: line, label: line}, {value: whole, label: whole file}]}
       - {key: min_chars, label: Minimum characters per document, type: int, min: 1, max: 5000, default: 20}
       - {key: exact_dup_rate, label: Planted exact duplicates, type: float, min: 0, max: 0.5, step: 0.01, default: 0.1, help: Fraction of documents copied verbatim}
       - {key: near_dup_rate, label: Planted near duplicates, type: float, min: 0, max: 0.5, step: 0.01, default: 0.1, help: Fraction of documents copied with small edits}

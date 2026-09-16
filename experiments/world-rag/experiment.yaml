@@ -51,10 +51,10 @@ steps:
       - {key: data_source, label: Library, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — datasets under materials/datasets}]}
       - {key: queries_material, label: Prepared questions, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question and an answer, plus the gold document: a doc_id / document_id / gold_id / doc / source / file / title field equal to a document's id, title or file name, or a context / passage field holding its text. The validation or test file gives the evaluation queries, the rest the training pairs"}
       - {key: docs_material, label: Prepared documents, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (linked by file name) or JSONL rows with a text field (linked by their id / title / name, or by position when they have none). Leave empty when every question carries its passage in a context field"}
-      - {key: n_docs, label: Documents (at most, for prepared documents), type: int, min: 500, max: 100000, step: 500, default: 8000}
+      - {key: n_docs, label: "Documents (at most, for prepared documents)", type: int, min: 500, max: 100000, step: 500, default: 8000}
       - {key: cluster_size, label: Documents per cluster, type: int, min: 1, max: 12, default: 4, show_if: {data_source: generated}, help: How many documents share a place and an object. Raise it to make lexical search worse.}
-      - {key: n_queries, label: Evaluation queries (at most, for prepared questions), type: int, min: 100, max: 5000, step: 100, default: 800}
-      - {key: n_pairs, label: Training pairs (at most, for prepared questions), type: int, min: 500, max: 100000, step: 500, default: 20000}
+      - {key: n_queries, label: "Evaluation queries (at most, for prepared questions)", type: int, min: 100, max: 5000, step: 100, default: 800}
+      - {key: n_pairs, label: "Training pairs (at most, for prepared questions)", type: int, min: 500, max: 100000, step: 500, default: 20000}
       - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 4242, help: For prepared questions without a validation file it picks the held-out slice}
   - id: encode
     title: Encode
@@ -65,6 +65,7 @@ steps:
       into the last position, not into summarising — but it is a real baseline, and
       which layer you pool from matters more than most people expect.
     script: steps/step2_encode.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: zero_shot_recall5, label: zero-shot@5}]
@@ -86,6 +87,7 @@ steps:
       Training against exactly the confusions you measured in step 1 is the cheapest
       improvement available.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: in_batch_accuracy, label: in-batch}]
@@ -93,11 +95,11 @@ steps:
       - {key: layer, label: Layer to pool from, type: int, min: -1, max: 24, default: -1}
       - {key: dim, label: Embedding dimension, type: int, min: 0, max: 1024, step: 32, default: 0, help: 0 keeps the model's width; a smaller projection makes the index smaller and is usually free}
       - {key: epochs, label: Epochs, type: float, min: 0.5, max: 10, step: 0.5, default: 3}
-      - {key: batch_size, label: Batch size, type: int, min: 8, max: 256, default: 64, help: This is the number of negatives per example, so it is a quality parameter and not only a speed one}
+      - {key: batch_size, label: Batch size, type: int, min: 8, max: 256, default: 64, help: "This is the number of negatives per example, so it is a quality parameter and not only a speed one"}
       - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0001}
       - {key: temperature, label: Temperature, type: float, min: 0.01, max: 0.5, step: 0.01, default: 0.05}
       - {key: hard_negatives, label: Add hard negatives from BM25, type: bool, default: true}
-      - {key: freeze_body, label: Train only the projection, type: bool, default: false, help: Much faster, much worse — worth running once to see how much the body was doing}
+      - {key: freeze_body, label: Train only the projection, type: bool, default: false, help: "Much faster, much worse — worth running once to see how much the body was doing"}
   - id: eval
     title: Evaluate
     summary: Recall, hybrid search, and answering with what you found
@@ -107,6 +109,7 @@ steps:
       different queries. Finally the end of the pipeline: hand the retrieved document
       to your fine-tuned model and see whether the answer comes out.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: recall5, label: recall@5}, {key: answer_accuracy, label: answers}]

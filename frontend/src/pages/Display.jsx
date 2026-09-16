@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import ChartCard from "../components/ChartCard";
 import Kpis from "../components/Kpi";
 import { wsUrl } from "../lib/api";
-import { fmtDuration, fmtNum } from "../lib/format";
+import { fmtDuration, fmtNum, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
 
 function Clock() {
@@ -12,7 +12,7 @@ function Clock() {
     const i = setInterval(() => setT(new Date()), 1000);
     return () => clearInterval(i);
   }, []);
-  return <span className="clock">{t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>;
+  return <span className="clock">{`${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`}</span>;
 }
 
 function Live({ data }) {
@@ -156,6 +156,61 @@ function RunView({ data }) {
   );
 }
 
+/** Displays 1-4 during a class: the code of one step, and who has handed in their
+ *  own version of it. The names are the point — the room can see who is done. */
+function StepView({ data }) {
+  if (!data || data.error) return <div className="msg"><p>{data?.error || "Nothing on this display yet."}</p></div>;
+  return (
+    <div className="stepwall">
+      <div className="panel code">
+        <div className="bar">
+          {data.title} · step {data.step}: {data.step_title}
+        </div>
+        <pre>{data.code}</pre>
+      </div>
+      <div className="panel handed">
+        <h2>Handed in ({(data.handed_in || []).length})</h2>
+        {(data.handed_in || []).length === 0 && <p className="muted">Nobody yet.</p>}
+        <ol>
+          {(data.handed_in || []).map((h) => (
+            <li key={h.user_id}>{h.name}</li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+/** One student's work, put up by the teacher: their code, or what they got. */
+function StudentView({ data }) {
+  if (!data) return null;
+  return (
+    <div className="stepwall one">
+      <div className="panel code">
+        <div className="bar">
+          {data.name} · step {data.step}
+          {data.step_title ? ` · ${data.step_title}` : ""} · {data.show === "code" ? "their code" : "their results"}
+        </div>
+        {data.error && <p className="muted" style={{ padding: 20 }}>{data.error}</p>}
+        {data.show === "code" && data.code !== undefined && <pre>{data.code}</pre>}
+        {data.show !== "code" && data.result && (
+          <div style={{ padding: 16, overflow: "auto" }}>
+            <Kpis metrics={data.result.metrics} />
+            {(data.result.charts || []).length > 0 && (
+              <div className="charts" style={{ marginTop: 16 }}>
+                {data.result.charts.slice(0, 4).map((c) => (
+                  <ChartCard key={c.id} spec={c} height={260} allowStretch={false} />
+                ))}
+              </div>
+            )}
+            {data.run?.own_code && <div className="muted" style={{ marginTop: 10 }}>Run with their own code.</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Display() {
   const { n } = useParams();
   const [state, setState] = useState(null);
@@ -177,6 +232,8 @@ export default function Display() {
       {mode === "progress" && state.data && <Progress data={state.data} />}
       {mode === "leaderboard" && state.data && <Leaderboard data={state.data} />}
       {mode === "run" && <RunView data={state.data} />}
+      {mode === "step" && <StepView data={state.data} />}
+      {mode === "student" && <StudentView data={state.data} />}
       {mode === "message" && (
         <div className="msg">
           <div>
@@ -186,7 +243,7 @@ export default function Display() {
         </div>
       )}
       <div className="foot">
-        display {n} · {conn === "open" ? "live" : "reconnecting"} · {state?.updated_at ? new Date(state.updated_at).toLocaleTimeString() : ""}
+        display {n} · {conn === "open" ? "live" : "reconnecting"} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
       </div>
     </div>
   );

@@ -51,7 +51,7 @@ steps:
       - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier, hf], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json) is fine-tuned in full; a HuggingFace model gets a LoRA adapter"}
       - {key: data_source, label: Demonstrations, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
       - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional steps. A validation or test file is used for evaluation, otherwise a slice is held out"}
-      - {key: examples, label: Demonstrations (at most, for a prepared dataset), type: int, min: 200, max: 200000, step: 200, default: 20000}
+      - {key: examples, label: "Demonstrations (at most, for a prepared dataset)", type: int, min: 200, max: 200000, step: 200, default: 20000}
       - {key: with_steps, label: Include the reasoning steps in the target, type: bool, default: true, help: A prepared dataset contributes steps only where its rows have them}
       - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], show_if: {data_source: generated}, options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
       - {key: difficulty, label: Difficulty, type: select, default: mixed, show_if: {data_source: generated}, options: [{value: mixed, label: mixed}, {value: "0", label: easiest}, {value: "1", label: easy}, {value: "2", label: medium}, {value: "3", label: hard}]}
@@ -66,6 +66,7 @@ steps:
       is the part fine-tuning does not deserve credit for. Keep this run open when
       you read step 4.
     script: steps/step2_baseline.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: best_baseline, label: baseline}]
@@ -82,6 +83,7 @@ steps:
       too long forgets how to write sentences and starts answering everything with
       the most common number in the data.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: eval_loss, label: val loss}]
@@ -91,7 +93,7 @@ steps:
       - {key: batch_size, label: Examples per step, type: int, min: 4, max: 128, default: 24}
       - {key: warmup, label: Warmup steps, type: int, min: 0, max: 500, default: 20}
       - {key: weight_decay, label: Weight decay, type: float, min: 0, max: 0.3, step: 0.01, default: 0.1}
-      - {key: use_system, label: Keep the instruction in the prompt, type: bool, default: true, help: Whatever you choose here, the evaluation does the same}
+      - {key: use_system, label: Keep the instruction in the prompt, type: bool, default: true, help: "Whatever you choose here, the evaluation does the same"}
   - id: eval
     title: Evaluate
     summary: Accuracy per family, before and after
@@ -100,6 +102,7 @@ steps:
       shows what changed and what did not: a family that stays at zero usually needs
       more demonstrations of that family, not more steps.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: accuracy, label: accuracy}]

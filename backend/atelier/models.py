@@ -18,8 +18,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128), default="")
-    role: Mapped[str] = mapped_column(String(16), default="student")  # teacher | student
+    role: Mapped[str] = mapped_column(String(16), default="student")  # admin | teacher | student
     password_hash: Mapped[str] = mapped_column(String(128))
+    # active is "may sign in". A student who signs up is let in at once; someone
+    # asking for a teacher account waits for an admin.
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -66,6 +68,8 @@ class Submission(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     experiment: Mapped[str] = mapped_column(String(64), index=True)
+    # the step whose code was handed in; 0 is a submission from before steps had code
+    step: Mapped[int] = mapped_column(Integer, default=0, index=True)
     note: Mapped[str] = mapped_column(Text, default="")
     sha256: Mapped[str] = mapped_column(String(64), default="")
     file_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -89,3 +93,39 @@ class Display(Base):
     mode: Mapped[str] = mapped_column(String(16), default="message")
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ClassSession(Base):
+    """One experiment the teacher is running with the class. At most one has
+    ended_at NULL at any time: that is the class currently in the room."""
+
+    __tablename__ = "class_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experiment: Mapped[str] = mapped_column(String(64), index=True)
+    started_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class SessionMember(Base):
+    """A student who asked to attend, and whether the teacher let them in."""
+
+    __tablename__ = "session_members"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("class_sessions.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    admitted: Mapped[bool] = mapped_column(Boolean, default=False)
+    asked_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SelfPermission(Base):
+    """One experiment one person may run on their own, outside any class. Nobody
+    has this by default — not students and not teachers; an admin grants it per
+    person and per experiment."""
+
+    __tablename__ = "self_permissions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    experiment: Mapped[str] = mapped_column(String(64), index=True)
+    granted_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    granted_at: Mapped[datetime] = mapped_column(DateTime, default=now)

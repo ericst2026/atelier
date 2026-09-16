@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import ClassBanner from "../components/ClassBanner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -15,10 +16,11 @@ export default function Home() {
       <div className="hero">
         <div>
           <h1>Experiments</h1>
-          <p className="muted">Four steps each. Run them on the server, then build your own version in the project workspace.</p>
+          <p className="muted">Four steps each. Run them on the server with the standard code, or write your own for the steps that allow it.</p>
         </div>
         <div className="muted small">signed in as {user.name || user.username}</div>
       </div>
+      <ClassBanner />
       {error && <div className="empty">{error}</div>}
       {data && isTeacher && Object.keys(data.errors || {}).length > 0 && (
         <div className="panel" style={{ borderColor: "var(--dup)", marginBottom: 14 }}>

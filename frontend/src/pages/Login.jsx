@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 export default function Login() {
@@ -45,7 +45,9 @@ export default function Login() {
         <button className="btn primary" type="submit" disabled={busy || !username || !password}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
-        <div className="help">Ask your teacher for an account. Wall displays need no sign-in: /display/1 … /display/5.</div>
+        <div className="help">
+          No account? <Link to="/signup">Make one</Link>. Wall displays need no sign-in: /display/1 … /display/5.
+        </div>
       </form>
     </div>
   );

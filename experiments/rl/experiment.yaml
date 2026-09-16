@@ -14,8 +14,8 @@ description: |
 materials:
   - {key: policy, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: Default starting policy.}
   - {key: policy15, name: Qwen2.5-1.5B-Instruct, path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Stronger policy; slower.}
-  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: 7.5k grade-school maths problems with worked answers (question, answer with '#### number').}
-  - {key: hh, name: Anthropic HH-RLHF, path: datasets/rl/hh-rlhf, kind: dataset, format: jsonl, description: Human preference pairs (chosen, rejected) for training a reward model.}
+  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: "7.5k grade-school maths problems with worked answers (question, answer with '#### number')."}
+  - {key: hh, name: Anthropic HH-RLHF, path: datasets/rl/hh-rlhf, kind: dataset, format: jsonl, description: "Human preference pairs (chosen, rejected) for training a reward model."}
 
 steps:
   - id: reward

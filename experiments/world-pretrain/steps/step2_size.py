@@ -40,7 +40,7 @@ R.metric("embedding_share", "Embedding share", est["embedding"] / est["total"], 
 R.metric("chinchilla", "Compute-optimal tokens", est["chinchilla_tokens"], "int", "hold", help=f"you packed {train_tokens:,}" if train_tokens else "about 20 per parameter")
 R.metric("step_sec", "Seconds per step", step_sec, "num", "sky", help=f"one A6000 at {step_tokens:,} tokens per step")
 R.metric("mem_gb", "Memory estimate", mem_gb, "num", "raw", help="weights, gradients, AdamW moments and activations; an A6000 has 48 GB")
-R.chart("parts", "Parameters by component", [{"part": k, "params": est[k]} for k in ("embedding", "attention", "mlp", "norms")], "part", [{"key": "params", "label": "Parameters", "color": "kept"}], "bar")
+R.chart("parts", "Parameters by component", [{"part": k, "params": est[k]} for k in ("embedding", "attention", "mlp", "norms")], "part", [{"key": "params", "label": "Parameters"}], "donut", note="Where the parameters of this model actually sit. At a small vocabulary the embedding is a footnote; at a large one it can outweigh the layers that do the thinking.")
 R.chart("presets", "What each size costs to train well", rows, "preset", [{"key": "params", "label": "Parameters", "color": "kept"}, {"key": "hours", "label": "Hours on one A6000", "color": "raw", "axis": "right"}], "bar", note="Hours assume the compute-optimal token budget. Fewer tokens is a valid choice — the loss is simply higher.")
 R.table("shapes", "Presets", [{"key": "preset", "label": "Preset"}, {"key": "shape", "label": "Shape"}, {"key": "params", "label": "Parameters", "fmt": "int"}, {"key": "tokens", "label": "Tokens (20/param)", "fmt": "int"}, {"key": "hours", "label": "Hours", "fmt": "num"}], rows)
 if train_tokens:

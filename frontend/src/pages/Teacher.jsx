@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusPill } from "../components/RunStatus";
+import ClassPanel from "../components/ClassPanel";
 import { api, wsUrl } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { fmtBytes, fmtDuration, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
 
@@ -75,7 +77,61 @@ function LivePanel({ live }) {
   );
 }
 
+/** Which experiments one person may run outside a class. Only an admin sets this. */
+function SelfExperiments({ user, onClose, onSaved }) {
+  const [experiments, setExperiments] = useState([]);
+  const [chosen, setChosen] = useState(user.self_experiments || []);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    api("/experiments").then((d) => setExperiments(d.experiments || []));
+  }, []);
+  const toggle = (slug) => setChosen(chosen.includes(slug) ? chosen.filter((s) => s !== slug) : [...chosen, slug]);
+  const save = async () => {
+    try {
+      await api(`/users/${user.id}/self-experiments`, { method: "PUT", body: { experiments: chosen } });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  return (
+    <div className="panel stack">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h3>{user.name || user.username} may run these on their own</h3>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn sm ghost" onClick={() => setChosen([])}>
+            none
+          </button>
+          <button className="btn sm ghost" onClick={() => setChosen(experiments.map((e) => e.slug))}>
+            all
+          </button>
+          <button className="btn sm primary" onClick={save}>
+            Save
+          </button>
+          <button className="btn sm ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+      <div className="help">Outside a class, this is everything they can run. In class they work on whatever you started, once you let them in.</div>
+      {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
+      <div className="grid3">
+        {experiments.map((e) => (
+          <label key={e.slug} className="check">
+            <input type="checkbox" checked={chosen.includes(e.slug)} onChange={() => toggle(e.slug)} />
+            <span>{e.title}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function UsersPanel() {
+  const { user: me } = useAuth();
+  const isAdmin = me?.role === "admin";
+  const [editing, setEditing] = useState(null);
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ username: "", name: "", role: "student", password: "" });
   const [msg, setMsg] = useState(null);
@@ -107,12 +163,14 @@ function UsersPanel() {
   };
   return (
     <div className="stack">
+      {editing && <SelfExperiments user={editing} onClose={() => setEditing(null)} onSaved={load} />}
       <div className="row">
         <input type="text" placeholder="username" style={{ width: 140 }} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         <input type="text" placeholder="name" style={{ width: 160 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <select style={{ width: 120 }} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
           <option value="student">student</option>
           <option value="teacher">teacher</option>
+          {isAdmin && <option value="admin">admin</option>}
         </select>
         <input type="text" placeholder="password" style={{ width: 140 }} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         <button className="btn primary sm" onClick={create} disabled={!form.username || !form.password}>
@@ -132,7 +190,8 @@ function UsersPanel() {
               <th>Username</th>
               <th>Name</th>
               <th>Role</th>
-              <th>Active</th>
+              <th>Signed in</th>
+              <th>On their own</th>
               <th></th>
             </tr>
           </thead>
@@ -141,17 +200,33 @@ function UsersPanel() {
               <tr key={u.id}>
                 <td>{u.username}</td>
                 <td>{u.name}</td>
-                <td>{u.role}</td>
-                <td>{u.active ? "yes" : "no"}</td>
+                <td>
+                  {isAdmin ? (
+                    <select value={u.role} onChange={(e) => patch(u, { role: e.target.value })} style={{ width: 110 }}>
+                      <option value="student">student</option>
+                      <option value="teacher">teacher</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  ) : (
+                    u.role
+                  )}
+                </td>
+                <td>{u.active ? "yes" : <b style={{ color: "var(--raw)" }}>waiting</b>}</td>
+                <td style={{ maxWidth: 280 }}>
+                  {isAdmin ? (
+                    <button className="btn sm ghost" onClick={() => setEditing(u)}>
+                      {(u.self_experiments || []).length ? `${u.self_experiments.length} allowed` : "none"}
+                    </button>
+                  ) : (
+                    (u.self_experiments || []).join(", ") || "–"
+                  )}
+                </td>
                 <td className="row" style={{ gap: 6 }}>
                   <button className="btn sm ghost" onClick={() => { const p = window.prompt(`New password for ${u.username}`); if (p) patch(u, { password: p }); }}>
                     reset password
                   </button>
-                  <button className="btn sm ghost" onClick={() => patch(u, { active: !u.active })}>
-                    {u.active ? "deactivate" : "activate"}
-                  </button>
-                  <button className="btn sm ghost" onClick={() => patch(u, { role: u.role === "teacher" ? "student" : "teacher" })}>
-                    make {u.role === "teacher" ? "student" : "teacher"}
+                  <button className={`btn sm ${u.active ? "ghost" : "good"}`} onClick={() => patch(u, { active: !u.active })}>
+                    {u.active ? "deactivate" : "approve"}
                   </button>
                 </td>
               </tr>
@@ -317,9 +392,9 @@ function SubmissionsPanel() {
             <th>#</th>
             <th>Student</th>
             <th>Experiment</th>
+            <th>Step</th>
             <th>Submitted</th>
             <th>Size</th>
-            <th>Auto</th>
             <th>Grade</th>
             <th>Published</th>
             <th></th>
@@ -331,9 +406,9 @@ function SubmissionsPanel() {
               <td>{s.id}</td>
               <td>{s.name || s.username}</td>
               <td>{s.experiment}</td>
+              <td>{s.step || "–"}</td>
               <td>{fmtTime(s.created_at)}</td>
               <td>{fmtBytes(s.bytes)}</td>
-              <td>{s.auto_score ?? "–"}</td>
               <td>{s.score ?? "–"}</td>
               <td>{s.published ? "yes" : "no"}</td>
               <td>
@@ -348,7 +423,7 @@ function SubmissionsPanel() {
 }
 
 export default function Teacher() {
-  const [section, setSection] = useState("live");
+  const [section, setSection] = useState("class");
   const [live, setLive] = useState(null);
   useSocket(wsUrl("/ws/teacher"), (m) => m.type === "live" && setLive(m.live));
   return (
@@ -361,6 +436,7 @@ export default function Teacher() {
       </div>
       <div className="tabs">
         {[
+          ["class", "Class"],
           ["live", "Live"],
           ["submissions", "Submissions"],
           ["users", "Users"],
@@ -372,6 +448,7 @@ export default function Teacher() {
           </button>
         ))}
       </div>
+      {section === "class" && <ClassPanel />}
       {section === "live" && <LivePanel live={live} />}
       {section === "submissions" && <SubmissionsPanel />}
       {section === "users" && <UsersPanel />}

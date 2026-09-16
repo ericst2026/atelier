@@ -61,8 +61,20 @@ def current_user(
     return user
 
 
+def is_staff(user: Optional[User]) -> bool:
+    """A teacher or an admin: the people who see everyone's work."""
+    return user is not None and user.role in ("teacher", "admin")
+
+
+def require_admin(user: User = Depends(current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(403, "Only an admin can do that")
+    return user
+
+
 def require_teacher(user: User = Depends(current_user)) -> User:
-    if user.role != "teacher":
+    # an admin outranks a teacher, so anything a teacher may do, an admin may do
+    if user.role not in ("teacher", "admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Teachers only")
     return user
 

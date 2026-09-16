@@ -81,6 +81,10 @@ for i, doc in enumerate(docs):
 R = Result()
 R.metric("docs", "Documents", len(docs), "int", "kept", help="shown under the number")
 R.chart("lengths", "Document lengths", rows, "bin", [{"key": "count", "label": "Docs", "color": "raw"}], "bar")
+R.chart("kinds", "Documents by kind", rows, "kind", [{"key": "count", "label": "Docs"}], "donut")
+R.chart("fit", "Loss against size", rows, "params",
+        [{"key": "fit", "label": "Fitted", "form": "line"},
+         {"key": "measured", "label": "Measured", "form": "scatter"}], "line", x_log=True)
 R.table("preview", "Preview", [{"key": "text", "label": "Text"}], rows[:40])
 R.tokens("sample", "Your text in tokens", [{"text": "▁the", "id": 12, "kind": "word"}])
 R.artifact(path, "corpus.jsonl")
@@ -94,9 +98,23 @@ already restricted to the allocated GPUs, HuggingFace pinned offline, and
 `PYTHONPATH` covering `experiments/_lib`, `experiments/`, and the student's project.
 
 Metric `fmt`: `num, int, pct, ms, bytes, text`. Accents: `raw, kept, dup, hold, sky, sun`.
-Chart `type`: `bar, line, area`; options `x_log, y_log, y_domain, ref_x, ref_label,
-note, stretch`, and `axis: "right"` on a series for a second axis. The student can
-switch type and log axes in the UI, so pick the sensible default and move on.
+A step marked `own_code: true` lets a student run their own implementation of it
+instead of the shipped script. They get a prototype generated from your script — the
+params it takes, the inputs it is handed, the metrics and outputs it has to leave
+behind — and write the body themselves. Their file runs with exactly the same
+params, inputs and environment, and they can hand it in for you to mark. Leave the
+flag off for a step where re-implementing it teaches nothing.
+
+Chart `type`: `bar` compares magnitudes, `stacked` shows parts of a whole across a
+dimension, `line` and `area` show a trend, `scatter` puts one number against
+another, and `donut` shows parts of a single whole — at most five slices, the tail
+folded into `other`, so prefer a bar when the shares are close or many. A series
+can set `form` (`line, scatter, bar, area`) to draw itself differently from the
+chart's own type: measured points sitting on a fitted line. Options: `x_log, y_log,
+y_domain, ref_x, ref_label, note, stretch`, and `axis: "right"` on a series for a
+second axis. The student can switch between the sensible forms and the log axes in
+the UI, so pick the honest default and move on. Leave `color` off unless it carries
+meaning — the chart picks colours that stay apart for colour-blind readers.
 
 ## The grader
 

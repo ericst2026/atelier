@@ -232,6 +232,59 @@ def run_view(db: Session, run_id: int) -> Optional[dict[str, Any]]:
     }
 
 
+def step_view(db: Session, registry: Registry, slug: str, step_no: int) -> dict[str, Any]:
+    """Display 1-4 during a class: the code of one step, and who has handed in
+    their own version of it."""
+    try:
+        spec = registry.get(slug)
+        step = spec.step(step_no)
+    except KeyError:
+        return {"error": "no experiment on this display"}
+    try:
+        code = (spec.dir / step.script).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        code = ""
+    seen: set[int] = set()
+    handed = []
+    for sub in db.scalars(select(Submission).where(Submission.experiment == slug, Submission.step == step_no).order_by(Submission.id.desc())).all():
+        if sub.user_id in seen:
+            continue
+        seen.add(sub.user_id)
+        u = db.get(User, sub.user_id)
+        handed.append({"user_id": sub.user_id, "name": (u.name or u.username) if u else "?", "submission_id": sub.id, "at": sub.created_at.isoformat()})
+    return {"experiment": slug, "title": spec.title, "step": step_no, "step_title": step.title, "summary": step.summary, "code": code, "handed_in": handed}
+
+
+def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
+    """What the teacher pushed to a display: one student's code for a step, or the
+    results of their last run of it."""
+    slug, step_no = payload.get("experiment") or "", int(payload.get("step") or 1)
+    user_id, show = int(payload.get("user_id") or 0), (payload.get("show") or "results")
+    u = db.get(User, user_id)
+    out: dict[str, Any] = {"experiment": slug, "step": step_no, "show": show, "name": (u.name or u.username) if u else "?"}
+    try:
+        spec = registry.get(slug)
+        out["title"], out["step_title"] = spec.title, spec.step(step_no).title
+    except KeyError:
+        pass
+    if show == "code":
+        sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
+        if sub is None:
+            out["error"] = "they have not handed in this step"
+            return out
+        path = storage.submission_dir(sub.id) / f"step{step_no}.py"
+        out["code"] = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        out["at"] = sub.created_at.isoformat()
+        return out
+    run = db.scalar(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc()))
+    if run is None:
+        out["error"] = "no finished run of this step yet"
+        return out
+    out["run"] = {"id": run.id, "label": run.label, "metrics": run.metrics, "own_code": (run.inputs or {}).get("code_source") == "own"}
+    out["result"] = storage.read_json(storage.run_dir(run.id) / "result.json", {})
+    return out
+
+
 def display_states(db: Session, registry: Registry, worker_state: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Everything the display clients need, keyed by display id."""
     ensure_displays(db)
@@ -252,5 +305,9 @@ def display_states(db: Session, registry: Registry, worker_state: Optional[dict[
             data = run_view(db, int(d.payload.get("run_id", 0) or 0))
         elif d.mode == "grafana":
             data = {"url": d.payload.get("url") or settings.grafana_url}
+        elif d.mode == "step":
+            data = step_view(db, registry, d.payload.get("experiment") or "", int(d.payload.get("step") or 1))
+        elif d.mode == "student":
+            data = student_view(db, registry, d.payload)
         out[str(d.id)] = {"id": d.id, "name": d.name, "mode": d.mode, "payload": d.payload, "updated_at": d.updated_at.isoformat(), "data": data}
     return out

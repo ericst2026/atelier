@@ -61,6 +61,7 @@ steps:
       and separately for per-tensor and per-channel scales, because that choice is
       usually the difference between int4 working and int4 producing noise.
     script: steps/step2_quantize.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: int8_accuracy, label: int8}]
@@ -78,6 +79,7 @@ steps:
       checks in a single pass — free when the draft is right, wasted work when it is
       wrong, so the acceptance rate decides whether it pays.
     script: steps/step3_accelerate.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: cache_speedup, label: cache}, {key: acceptance, label: accepted}]
@@ -98,6 +100,7 @@ steps:
       against the same student trained from scratch on the same data and the same
       steps.
     script: steps/step4_distil.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: student_accuracy, label: student}]

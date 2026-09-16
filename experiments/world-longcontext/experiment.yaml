@@ -61,6 +61,7 @@ steps:
       relations. Try both before training anything — the effect is visible
       immediately in perplexity.
     script: steps/step2_extend.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: best_scale, label: scale}]
@@ -78,6 +79,7 @@ steps:
       are genuinely long, not short ones concatenated, or the model learns that
       distant text is always irrelevant.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: val_loss, label: val loss}]
@@ -96,6 +98,7 @@ steps:
       beginning, strong at the end, weakest in the middle — the same shape larger
       models show, at a scale you can train in an afternoon.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: needle_accuracy, label: needle}]

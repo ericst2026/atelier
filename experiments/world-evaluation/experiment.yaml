@@ -57,7 +57,7 @@ steps:
     params:
       - {key: data_source, label: Benchmark questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
       - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional category or subject. A test or validation file is used if there is one. Wrong options are drawn from other rows' answers (same category first), so the dataset needs at least as many different answers as options per item"}
-      - {key: n_choice, label: Multiple-choice items (at most, for a prepared dataset), type: int, min: 50, max: 5000, step: 50, default: 600}
+      - {key: n_choice, label: "Multiple-choice items (at most, for a prepared dataset)", type: int, min: 50, max: 5000, step: 50, default: 600}
       - {key: n_open, label: Open-answer items, type: int, min: 0, max: 2000, step: 50, default: 300, help: A prepared dataset's rows are shared between the two kinds of item — no row is used twice}
       - {key: n_options, label: Options per item, type: int, min: 2, max: 6, default: 4}
       - {key: families, label: Task families, type: multiselect, default: [arith, count, sort, lookup, path, shop, compare, seq], show_if: {data_source: generated}, options: [{value: arith, label: arithmetic}, {value: count, label: counting}, {value: sort, label: sorting}, {value: lookup, label: lookup}, {value: path, label: paths}, {value: shop, label: shopping}, {value: compare, label: comparison}, {value: seq, label: sequences}]}
@@ -73,6 +73,7 @@ steps:
       favours short options, the per-token version favours long ones, and neither is
       obviously correct.
     script: steps/step2_harness.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: accuracy, label: accuracy}]
@@ -92,6 +93,7 @@ steps:
       count, the order of the options, the answer format. A score that swings several
       points under these is not a measurement of the model.
     script: steps/step3_sensitivity.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: spread, label: spread}]
@@ -115,6 +117,7 @@ steps:
       less than it appears to. The step ends with a model card that records what was
       measured, under which harness, and with what contamination.
     script: steps/step4_report.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: inflation, label: inflation}]
@@ -126,7 +129,7 @@ steps:
       - {key: corpus_material, label: Prepared documents, type: material, kind: dataset, schemas: [documents], default: null, show_if: {corpus_source: prepared}, help: ".txt / .md files, or JSONL rows with a text field. A twentieth is held out for the validation loss"}
       - {key: contamination_rate, label: Share of the benchmark mixed into training, type: float, min: 0, max: 1, step: 0.05, default: 0.5}
       - {key: repeats, label: Times each leaked item appears, type: int, min: 1, max: 20, default: 4, help: Once is easy to miss; the effect grows steeply with repetition}
-      - {key: docs, label: Pretraining documents (at most, for a prepared corpus), type: int, min: 2000, max: 200000, step: 1000, default: 40000}
+      - {key: docs, label: "Pretraining documents (at most, for a prepared corpus)", type: int, min: 2000, max: 200000, step: 1000, default: 40000}
       - {key: max_iters, label: Steps per model, type: int, min: 100, max: 5000, step: 100, default: 600}
       - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
       - {key: notes, label: Notes for the card, type: textarea, default: ""}

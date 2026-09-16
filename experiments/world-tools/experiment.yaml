@@ -60,12 +60,13 @@ steps:
       the tool's output actually leads to the right answer — no incorrect
       demonstrations enter the training set.
     script: steps/step2_traces.py
+    own_code: true
     gpus: 0
     timeout_min: 60
     figures: [{key: traces, label: traces}]
     params:
       - {key: n_traces, label: Demonstrations, type: int, min: 500, max: 40000, step: 500, default: 8000}
-      - {key: no_tool_share, label: Share showing no tool call, type: float, min: 0, max: 0.6, step: 0.05, default: 0.25, help: Without these the model calls a tool for everything, including questions that need none}
+      - {key: no_tool_share, label: Share showing no tool call, type: float, min: 0, max: 0.6, step: 0.05, default: 0.25, help: "Without these the model calls a tool for everything, including questions that need none"}
       - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 33, help: For a prepared dataset it only shuffles the rows}
   - id: train
     title: Train
@@ -75,6 +76,7 @@ steps:
       result is in the context but masked out of the loss. The model is learning to
       write calls and to use results, not to predict what the calculator will say.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: eval_loss, label: val loss}]
@@ -91,6 +93,7 @@ steps:
       calling correctly then ignoring the answer. The last is the most common and the
       easiest to miss if you only look at the final score.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: accuracy, label: accuracy}, {key: valid_calls, label: valid}]

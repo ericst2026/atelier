@@ -52,7 +52,7 @@ steps:
     figures: [{key: best_layer, label: best layer}]
     params:
       - {key: model_source, label: Model, type: select, default: generated, options: [{value: generated, label: generated — one of your runs}, {value: prepared, label: prepared — a model under materials/models}]}
-      - {key: model_run, label: Model (Fine-tuning step 3, or Pretraining step 3), type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
+      - {key: model_run, label: "Model (Fine-tuning step 3, or Pretraining step 3)", type: run, experiment: world-sft, step: 3, default: null, show_if: {model_source: generated}}
       - {key: model_material, label: Prepared model, type: material, kind: model, formats: [atelier], default: null, show_if: {model_source: prepared}, help: "An Atelier checkpoint (model.pt + tokenizer.json). Probes, attention maps, the logit lens and steering read the Atelier model's own layers, so HuggingFace models are not listed"}
       - {key: data_source, label: Questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
       - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional family (or category) and difficulty to probe for, and steps for the steering contrast. Steps 3 and 4 use the same questions"}
@@ -73,6 +73,7 @@ steps:
       lengths and you can watch the heads appear — the same observation the published
       checkpoints are used for, on a model you trained this afternoon.
     script: steps/step2_attention.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: top_induction, label: best head}]
@@ -96,6 +97,7 @@ steps:
       the same matrix the final layer uses, which makes the reading cleaner here than
       on models where they are not.
     script: steps/step3_lens.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: decision_layer, label: decided at}]
@@ -115,12 +117,13 @@ steps:
       matter of opinion: steer towards showing working and count how many answers
       show working; steer towards brevity and measure the length.
     script: steps/step4_steer.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: effect, label: effect}, {key: usable, label: usable}]
     params:
       - {key: contrast, label: What to steer towards, type: select, default: working, options: [{value: working, label: showing its working}, {value: brevity, label: short answers}, {value: family, label: one task family's style}]}
-      - {key: layer, label: Layer to inject at, type: int, min: -1, max: 24, default: -1, help: -1 picks the middle, which is usually right}
+      - {key: layer, label: Layer to inject at, type: int, min: -1, max: 24, default: -1, help: "-1 picks the middle, which is usually right"}
       - {key: strengths, label: Strengths to try, type: multiselect, default: ["0", "1", "2", "4", "8"], options: [{value: "0", label: "0"}, {value: "1", label: "1"}, {value: "2", label: "2"}, {value: "4", label: "4"}, {value: "8", label: "8"}, {value: "16", label: "16"}]}
       - {key: n_test, label: Questions to generate for, type: int, min: 10, max: 300, step: 10, default: 60}
       - {key: sweep_layers, label: Try every layer, type: bool, default: true}

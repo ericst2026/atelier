@@ -16,11 +16,11 @@ description: |
   which is the intended outcome.
 
 materials:
-  - {key: hellaswag, name: HellaSwag, path: datasets/eval/hellaswag, kind: dataset, format: jsonl, description: Sentence completion; four endings, one plausible.}
-  - {key: arc, name: ARC Easy and Challenge, path: datasets/eval/arc-easy, kind: dataset, format: jsonl, description: Grade-school science questions, multiple choice.}
-  - {key: mmlu, name: MMLU, path: datasets/eval/mmlu, kind: dataset, format: jsonl, description: 57 subjects, four choices each. The benchmark everyone quotes.}
-  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: Generation scoring rather than likelihood — the answer has to be produced, not chosen.}
-  - {key: models, name: Small models to compare, path: models, kind: model, description: SmolLM2, Qwen2.5 and Pythia at several sizes.}
+  - {key: hellaswag, name: HellaSwag, path: datasets/eval/hellaswag, kind: dataset, format: jsonl, description: "Sentence completion; four endings, one plausible."}
+  - {key: arc, name: ARC Easy and Challenge, path: datasets/eval/arc-easy, kind: dataset, format: jsonl, description: "Grade-school science questions, multiple choice."}
+  - {key: mmlu, name: MMLU, path: datasets/eval/mmlu, kind: dataset, format: jsonl, description: "57 subjects, four choices each. The benchmark everyone quotes."}
+  - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: "Generation scoring rather than likelihood — the answer has to be produced, not chosen."}
+  - {key: models, name: Small models to compare, path: models, kind: model, description: "SmolLM2, Qwen2.5 and Pythia at several sizes."}
   - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: A stand-in training corpus for the contamination search.}
 
 steps:

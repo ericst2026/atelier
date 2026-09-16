@@ -52,7 +52,7 @@ steps:
     params:
       - {key: data_source, label: Corpus, type: select, default: generated, options: [{value: generated, label: generated from the world and spoiled (labelled)}, {value: prepared, label: prepared — a dataset under materials/datasets (no labels)}]}
       - {key: data_material, label: Prepared corpus, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field. Without labels, precision and recall cannot be measured"}
-      - {key: docs, label: Documents (to generate, or at most from a prepared corpus), type: int, min: 500, max: 200000, step: 500, default: 20000}
+      - {key: docs, label: "Documents (to generate, or at most from a prepared corpus)", type: int, min: 500, max: 200000, step: 500, default: 20000}
       - {key: dirty_share, label: Share spoiled, type: float, min: 0.1, max: 0.9, step: 0.05, default: 0.55, show_if: {data_source: generated}}
       - {key: duplicate_share, label: Share duplicated, type: float, min: 0, max: 0.4, step: 0.02, default: 0.12, show_if: {data_source: generated}}
       - {key: heldout_share, label: Held out for validation, type: float, min: 0.02, max: 0.3, step: 0.02, default: 0.1, show_if: {data_source: prepared}, help: "Set aside before filtering; step 4 validates on these (a generated corpus validates on fresh generated text instead)"}
@@ -67,6 +67,7 @@ steps:
       table of documents you removed by mistake is the one to read — a rule tuned
       until nothing dirty survives usually takes a third of the good text with it.
     script: steps/step2_filter.py
+    own_code: true
     gpus: 0
     timeout_min: 30
     figures: [{key: f1, label: F1}, {key: recall, label: recall}]
@@ -88,6 +89,7 @@ steps:
       documents with each other, and because the corpus knows which ones were planted,
       the step reports exactly how many you caught and how many good documents you lost.
     script: steps/step3_dedup.py
+    own_code: true
     gpus: 0
     timeout_min: 60
     figures: [{key: dup_recall, label: caught}]
@@ -108,6 +110,7 @@ steps:
       keeps a small, clean corpus and can still lose to a bigger, dirtier one, because
       the model was starved of tokens. Curation is not only about cleanliness.
     script: steps/step4_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: val_loss, label: val loss}, {key: vs_ceiling, label: vs perfect}]

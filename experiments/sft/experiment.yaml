@@ -14,8 +14,8 @@ materials:
   - {key: qwen05b, name: Qwen2.5-0.5B (base), path: models/Qwen2.5-0.5B, kind: model, description: Base model to tune. 0.5B parameters fits on one A6000 even with full fine-tuning.}
   - {key: qwen15b, name: Qwen2.5-1.5B (base), path: models/Qwen2.5-1.5B, kind: model, description: Larger base model; use LoRA.}
   - {key: judge, name: Qwen2.5-1.5B-Instruct (judge), path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Instruction-tuned model used as the judge in step 4.}
-  - {key: alpaca, name: Alpaca-cleaned, path: datasets/sft/alpaca-cleaned, kind: dataset, format: jsonl, description: 52k instruction/response pairs (instruction, input, output).}
-  - {key: dolly, name: Dolly 15k, path: datasets/sft/dolly-15k, kind: dataset, format: jsonl, description: 15k human-written pairs with categories (instruction, context, response, category).}
+  - {key: alpaca, name: Alpaca-cleaned, path: datasets/sft/alpaca-cleaned, kind: dataset, format: jsonl, description: "52k instruction/response pairs (instruction, input, output)."}
+  - {key: dolly, name: Dolly 15k, path: datasets/sft/dolly-15k, kind: dataset, format: jsonl, description: "15k human-written pairs with categories (instruction, context, response, category)."}
   - {key: smoltalk, name: SmolTalk (everyday conversations), path: datasets/sft/smoltalk, kind: dataset, format: jsonl, description: Multi-turn chats in messages format.}
 
 steps:

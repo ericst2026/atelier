@@ -49,6 +49,7 @@ steps:
       same schedule shape, same seed — because a scaling law fitted across changing
       recipes measures the recipe, not the scale.
     script: steps/step2_sweep.py
+    own_code: true
     gpus: 1
     timeout_min: 360
     figures: [{key: trained, label: models}]
@@ -67,6 +68,7 @@ steps:
       a point well above the line usually means that model saw too few tokens, or
       that its learning rate was wrong for its width.
     script: steps/step3_fit.py
+    own_code: true
     gpus: 0
     timeout_min: 10
     figures: [{key: alpha, label: alpha}]
@@ -82,6 +84,7 @@ steps:
       is normal; being far off is worth understanding, and usually points at the
       token budget rather than the fit.
     script: steps/step4_verify.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: error, label: error}]

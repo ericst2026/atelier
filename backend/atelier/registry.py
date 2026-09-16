@@ -27,6 +27,9 @@ class StepSpec:
     timeout_min: int = 120
     needs_previous: bool = True
     params: list[dict[str, Any]] = field(default_factory=list)
+    # a step a student may re-implement: the form then offers the standard script
+    # or their own file, and the run executes whichever they picked
+    own_code: bool = False
     figures: list[dict[str, Any]] = field(default_factory=list)  # which metrics to show on the rail
 
     def defaults(self) -> dict[str, Any]:
@@ -91,6 +94,7 @@ class ExperimentSpec:
                     "timeout_min": s.timeout_min,
                     "needs_previous": s.needs_previous,
                     "params": s.params,
+                    "own_code": s.own_code,
                     "figures": s.figures,
                 }
                 for s in self.steps
@@ -156,6 +160,7 @@ def load_experiment(path: Path) -> ExperimentSpec:
                 timeout_min=int(s.get("timeout_min", 120)),
                 needs_previous=bool(s.get("needs_previous", i > 1)),
                 params=params,
+                own_code=bool(s.get("own_code", False)),
                 figures=s.get("figures") or [],
             )
         )

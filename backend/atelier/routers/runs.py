@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import services, storage
-from ..auth import current_user, require_teacher
+from ..auth import current_user, is_staff, require_teacher
 from ..bus import SyncBus
 from ..db import get_db
 from ..deps import get_bus, get_registry
@@ -31,7 +31,7 @@ def start_step(slug: str, step_no: int, body: StepRunCreate, user: User = Depend
         spec.step(step_no)
     except KeyError:
         raise HTTPException(404, "Unknown experiment or step")
-    run = services.create_step_run(db, bus, user, spec, step_no, body.params, body.parent_run_id, body.gpus, body.label)
+    run = services.create_step_run(db, bus, user, spec, step_no, body.params, body.parent_run_id, body.gpus, body.label, body.code_source)
     return _out(run, {user.id: user})
 
 
@@ -48,7 +48,7 @@ def list_runs(
     db: Session = Depends(get_db),
 ):
     q = select(Run).order_by(Run.id.desc()).limit(limit)
-    if user.role != "teacher" or mine:
+    if not is_staff(user) or mine:
         q = q.where(Run.user_id == user.id)
     elif user_id:
         q = q.where(Run.user_id == user_id)

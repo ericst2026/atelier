@@ -1,27 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Download, Play } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Play } from "lucide-react";
 import ChartCard from "../components/ChartCard";
 import CodeEditor from "../components/CodeEditor";
-import FileTree from "../components/FileTree";
 import LogView from "../components/LogView";
 import Markdown from "../components/Markdown";
 import ParamsForm from "../components/ParamsForm";
 import Rail from "../components/Rail";
 import ResultsView from "../components/ResultsView";
 import RunStatus, { StatusPill } from "../components/RunStatus";
-import { api, fileUrl } from "../lib/api";
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { fmtBytes, fmtTime } from "../lib/format";
+import { fmtTime } from "../lib/format";
 import { liveCharts, useRunStream } from "../lib/runs";
 
-const TABS = [
-  ["guide", "Guide"],
-  ["materials", "Materials"],
-  ["sample", "Sample code"],
-  ["project", "My project"],
-  ["submissions", "Submissions"],
-];
 
 function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
   const { isTeacher } = useAuth();
@@ -33,12 +25,56 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  // a step the student may re-implement: "standard" runs the shipped script, "own" their file
+  const [codeSource, setCodeSource] = useState("standard");
+  const [code, setCode] = useState(null);
+  const [codeSaved, setCodeSaved] = useState(true);
+  const [codeNote, setCodeNote] = useState("");
   useEffect(() => {
     setParams(defaults);
     setGpus(step.gpus);
     setSelected(runs[0]?.id || null);
     setError(null);
+    setCodeSource("standard");
+    setCode(null);
+    setCodeNote("");
   }, [step.index]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // the file, or the prototype to start from when there is none yet
+    if (codeSource !== "own" || code !== null) return;
+    api(`/experiments/${spec.slug}/steps/${step.index}/code`)
+      .then((r) => {
+        setCode(r.code);
+        setCodeSaved(r.saved);
+        if (!r.saved) setCodeNote("This is a prototype: the inputs and outputs are filled in, the work is yours.");
+      })
+      .catch((e) => setError(e.message));
+  }, [codeSource, code, spec.slug, step.index]);
+  const saveCode = async () => {
+    try {
+      const r = await api(`/experiments/${spec.slug}/steps/${step.index}/code`, { method: "PUT", body: { code } });
+      setCodeSaved(true);
+      setCodeNote(r.error ? `Saved, but Python cannot read it yet — ${r.error}` : "Saved.");
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const resetCode = async () => {
+    if (!window.confirm("Replace your code for this step with the prototype? What you wrote is lost.")) return;
+    const r = await api(`/experiments/${spec.slug}/steps/${step.index}/code/reset`, { method: "POST" });
+    setCode(r.code);
+    setCodeSaved(true);
+    setCodeNote("Back to the prototype.");
+  };
+  const submitCode = async () => {
+    if (!codeSaved) await saveCode();
+    try {
+      const sub = await api(`/experiments/${spec.slug}/submissions`, { method: "POST", body: { step: step.index, note: "" } });
+      setCodeNote(`Handed in to your teacher as submission #${sub.id}.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   useEffect(() => {
     if (!parentId && prevRuns[0]) setParentId(prevRuns[0].id);
   }, [prevRuns, parentId]);
@@ -47,7 +83,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
     setBusy(true);
     setError(null);
     try {
-      const run = await api(`/experiments/${spec.slug}/steps/${step.index}/runs`, { method: "POST", body: { params, parent_run_id: step.needs_previous ? parentId : null, gpus: isTeacher ? gpus : null } });
+      const run = await api(`/experiments/${spec.slug}/steps/${step.index}/runs`, { method: "POST", body: { params, parent_run_id: step.needs_previous ? parentId : null, gpus: isTeacher ? gpus : null, code_source: codeSource } });
       setSelected(run.id);
       setShowLog(true);
       onStarted(run);
@@ -83,6 +119,16 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
               {prevRuns.length === 0 && <span className="help">Finish step {step.index - 1} first.</span>}
             </label>
           )}
+          {step.own_code && (
+            <label className="field">
+              <span>Code for this step</span>
+              <select value={codeSource} onChange={(e) => setCodeSource(e.target.value)} disabled={busy}>
+                <option value="standard">the standard code</option>
+                <option value="own">my own code</option>
+              </select>
+              <span className="help">{codeSource === "own" ? "Your file runs with the same params and inputs as the standard one." : "The implementation this experiment ships with."}</span>
+            </label>
+          )}
           <ParamsForm params={step.params || []} values={params} onChange={setParams} disabled={busy} experiment={spec.slug} step={step.index} />
           {isTeacher && step.gpus > 0 && (
             <label className="field">
@@ -93,7 +139,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
           )}
           {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
           <button className="btn primary" onClick={start} disabled={busy || (step.needs_previous && !parentId)}>
-            <Play size={14} /> {busy ? "Starting…" : `Run step ${step.index}`}
+            <Play size={14} /> {busy ? "Starting…" : codeSource === "own" ? `Run my code for step ${step.index}` : `Run step ${step.index}`}
           </button>
           <div className="help">
             {step.gpus ? `${step.gpus} GPU` : "CPU"} · up to {step.timeout_min} min
@@ -115,6 +161,36 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
         )}
       </div>
       <div className="stack">
+        {step.own_code && codeSource === "own" && (
+          <div className="panel stack" style={{ gap: 8 }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <h3>Your code · step {step.index}</h3>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn sm" onClick={saveCode} disabled={codeSaved}>
+                  {codeSaved ? "Saved" : "Save"}
+                </button>
+                <button className="btn sm ghost" onClick={resetCode}>
+                  Prototype
+                </button>
+                <button className="btn sm good" onClick={submitCode}>
+                  Hand in
+                </button>
+              </div>
+            </div>
+            <div className="inset" style={{ height: 420, overflow: "hidden" }}>
+              <CodeEditor
+                path="step.py"
+                value={code ?? "loading…"}
+                onChange={(v) => {
+                  setCode(v);
+                  setCodeSaved(false);
+                }}
+                onSave={saveCode}
+              />
+            </div>
+            {codeNote && <div className="help">{codeNote}</div>}
+          </div>
+        )}
         {!selected && <div className="empty">Set the parameters and run the step. Output streams here while it runs.</div>}
         {selected && (
           <div className="panel stack">
@@ -141,148 +217,10 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
   );
 }
 
-function MaterialsTab({ spec }) {
-  const [trees, setTrees] = useState({});
-  const load = (m) => api(`/experiments/${spec.slug}/materials-tree?path=${encodeURIComponent(m.path)}`).then((t) => setTrees((s) => ({ ...s, [m.key]: t.entries })));
-  return (
-    <div className="grid2">
-      {spec.materials.map((m) => (
-        <div key={m.key} className="panel stack" style={{ gap: 8 }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3>{m.name}</h3>
-            <span className={`pill ${m.available ? "succeeded" : "failed"}`}>
-                {m.available ? (m.local ? "on the server" : `on ${(m.nodes || []).join(", ")}`) : "not installed"}
-              </span>
-          </div>
-          <div className="muted">{m.description}</div>
-          <div className="small faint mono">
-            {m.kind} · {m.path}
-            {m.stats ? ` · ${m.stats.files} files · ${fmtBytes(m.stats.bytes)}` : ""}
-          </div>
-          {m.available && !m.local && <div className="muted small">Runs will find this. It lives on the GPU node, so it cannot be browsed from here.</div>}
-              {m.available && m.local && !trees[m.key] && (
-            <button className="btn sm" onClick={() => load(m)}>
-              Browse files
-            </button>
-          )}
-          {trees[m.key] && (
-            <div className="inset" style={{ padding: 8, maxHeight: 220, overflow: "auto" }}>
-              <FileTree entries={trees[m.key]} onSelect={(p) => window.open(fileUrl(`/experiments/${spec.slug}/materials/${m.path}/${p}`), "_blank")} />
-            </div>
-          )}
-        </div>
-      ))}
-      {spec.materials.length === 0 && <div className="empty">This experiment needs no prepared materials.</div>}
-    </div>
-  );
-}
-
-function SampleTab({ spec }) {
-  const nav = useNavigate();
-  const [entries, setEntries] = useState([]);
-  const [path, setPath] = useState(null);
-  const [file, setFile] = useState(null);
-  useEffect(() => {
-    api(`/experiments/${spec.slug}/sample/tree`).then((t) => {
-      setEntries(t.entries);
-      const readme = t.entries.find((e) => e.path.toLowerCase() === "readme.md") || t.entries.find((e) => e.type === "file");
-      if (readme) setPath(readme.path);
-    });
-  }, [spec.slug]);
-  useEffect(() => {
-    if (path) api(`/experiments/${spec.slug}/sample/file?path=${encodeURIComponent(path)}`).then(setFile);
-  }, [spec.slug, path]);
-  const copy = async () => {
-    if (!window.confirm("Replace your project with a fresh copy of the sample?")) return;
-    await api(`/workspaces/${spec.slug}/reset`, { method: "POST" });
-    nav(`/experiments/${spec.slug}/workspace`);
-  };
-  return (
-    <div className="stack">
-      <div className="panel">
-        <h3 style={{ marginBottom: 6 }}>What to build</h3>
-        <Markdown text={spec.project?.interface || ""} />
-        <div className="row" style={{ marginTop: 8 }}>
-          <a className="btn sm" href={fileUrl(`/experiments/${spec.slug}/sample/download`)}>
-            <Download size={13} /> Download sample (.zip)
-          </a>
-          <button className="btn sm" onClick={copy}>
-            Reset my project to the sample
-          </button>
-          <Link className="btn sm primary" to={`/experiments/${spec.slug}/workspace`}>
-            Open my project
-          </Link>
-        </div>
-      </div>
-      <div className="workspace" style={{ gridTemplateColumns: "240px 1fr", height: "60vh" }}>
-        <div className="panel tight">
-          <FileTree entries={entries} selected={path} onSelect={setPath} />
-        </div>
-        <div className="panel editor">
-          <div className="bar">
-            <span className="mono">{path || ""}</span>
-          </div>
-          <div style={{ flex: 1 }}>{file && !file.binary && <CodeEditor path={path} value={file.content} readOnly />}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SubmissionsTab({ spec }) {
-  const { isTeacher } = useAuth();
-  const [subs, setSubs] = useState([]);
-  useEffect(() => {
-    api(`/submissions?experiment=${spec.slug}`).then(setSubs);
-  }, [spec.slug]);
-  if (!subs.length) return <div className="empty">{isTeacher ? "No submissions yet." : "You have not submitted yet. Open My project, test it, then submit."}</div>;
-  return (
-    <div className="tablewrap" style={{ maxHeight: "70vh" }}>
-      <table className="data">
-        <thead>
-          <tr>
-            <th>#</th>
-            {isTeacher && <th>Student</th>}
-            <th>Submitted</th>
-            <th>Files</th>
-            <th>Auto score</th>
-            <th>Grade</th>
-            <th>Feedback</th>
-            <th>Published</th>
-            {isTeacher && <th></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {subs.map((s) => (
-            <tr key={s.id}>
-              <td>{s.id}</td>
-              {isTeacher && <td>{s.name || s.username}</td>}
-              <td>{fmtTime(s.created_at)}</td>
-              <td>
-                {s.file_count} · {fmtBytes(s.bytes)}
-              </td>
-              <td>{s.auto_score ?? "–"}</td>
-              <td>{s.score ?? "–"}</td>
-              <td>{s.feedback}</td>
-              <td>{s.published ? "yes" : "no"}</td>
-              {isTeacher && (
-                <td>
-                  <Link to={`/teacher/submissions/${s.id}`}>review</Link>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function Experiment() {
   const { slug } = useParams();
-  const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") || "guide";
   const stepNo = Number(sp.get("step") || 1);
   const [spec, setSpec] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -310,7 +248,6 @@ export default function Experiment() {
   if (error) return <main className="page empty">{error}</main>;
   if (!spec) return <main className="page muted">Loading…</main>;
   const step = spec.steps[stepNo - 1] || spec.steps[0];
-  const setTab = (t) => (t === "project" ? nav(`/experiments/${slug}/workspace`) : setSp({ tab: t, step: String(stepNo) }));
   return (
     <main className="page">
       <div className="hero">
@@ -331,19 +268,9 @@ export default function Experiment() {
           ))}
         </div>
       </div>
-      <Rail steps={spec.steps} state={railState} active={tab === "guide" ? stepNo : null} onSelect={(n) => setSp({ tab: "guide", step: String(n) })} />
-      <div className="tabs">
-        {TABS.map(([k, label]) => (
-          <button key={k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {tab === "guide" && <StepPanel key={step.index} spec={spec} step={step} runs={runs.filter((r) => r.step === step.index)} prevRuns={runs.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />}
-      {tab === "materials" && <MaterialsTab spec={spec} />}
-      {tab === "sample" && <SampleTab spec={spec} />}
-      {tab === "submissions" && <SubmissionsTab spec={spec} />}
-      {tab === "guide" && spec.description && (
+      <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp({ step: String(n) })} />
+      <StepPanel key={step.index} spec={spec} step={step} runs={runs.filter((r) => r.step === step.index)} prevRuns={runs.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />
+      {spec.description && (
         <div className="panel" style={{ marginTop: 20 }}>
           <Markdown text={spec.description} />
           {spec.readme && <Markdown text={spec.readme} />}

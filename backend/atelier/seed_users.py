@@ -62,7 +62,7 @@ def create(rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], list[str]]
             db.add(User(
                 username=r["username"],
                 name=r["name"],
-                role=r["role"] if r["role"] in ("teacher", "student") else "student",
+                role=r["role"] if r["role"] in ("admin", "teacher", "student") else "student",
                 password_hash=hash_password(r["password"]),
             ))
             created.append(r)

@@ -15,10 +15,10 @@ description: |
   are wrong you already know whether it was the retriever or the reader.
 
 materials:
-  - {key: wiki, name: Simple Wikipedia, path: datasets/rag/wikipedia-simple, kind: dataset, format: jsonl, description: The corpus to chunk, embed and search.}
-  - {key: squad, name: SQuAD v2, path: datasets/rag/squad-v2, kind: dataset, format: jsonl, description: Questions with the paragraph that answers them — and questions with no answer at all, which is the interesting half.}
+  - {key: wiki, name: Simple Wikipedia, path: datasets/rag/wikipedia-simple, kind: dataset, format: jsonl, description: "The corpus to chunk, embed and search."}
+  - {key: squad, name: SQuAD v2, path: datasets/rag/squad-v2, kind: dataset, format: jsonl, description: "Questions with the paragraph that answers them — and questions with no answer at all, which is the interesting half."}
   - {key: hotpot, name: HotpotQA, path: datasets/rag/hotpotqa, kind: dataset, format: jsonl, description: Multi-hop questions where one retrieval is never enough.}
-  - {key: minilm, name: all-MiniLM-L6-v2, path: models/all-MiniLM-L6-v2, kind: model, description: A small, fast sentence embedder.}
+  - {key: minilm, name: all-MiniLM-L6-v2, path: models/all-MiniLM-L6-v2, kind: model, description: "A small, fast sentence embedder."}
   - {key: bge, name: bge-small-en-v1.5, path: models/bge-small-en-v1.5, kind: model, description: A stronger embedder to compare against.}
   - {key: reranker, name: ms-marco-MiniLM-L-6-v2, path: models/ms-marco-MiniLM-L-6-v2, kind: model, description: A cross-encoder that rescores the top candidates.}
   - {key: reader, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: The model that reads the retrieved passage and answers.}
@@ -38,7 +38,7 @@ steps:
     needs_previous: false
     figures: [{key: chunks, label: chunks}]
     params:
-      - {key: embedder, label: Embedder, type: select, default: all-MiniLM-L6-v2, options: [{value: all-MiniLM-L6-v2, label: MiniLM (384d, fast)}, {value: bge-small-en-v1.5, label: BGE-small (384d, stronger)}]}
+      - {key: embedder, label: Embedder, type: select, default: all-MiniLM-L6-v2, options: [{value: all-MiniLM-L6-v2, label: "MiniLM (384d, fast)"}, {value: bge-small-en-v1.5, label: "BGE-small (384d, stronger)"}]}
       - {key: n_articles, label: Articles to index, type: int, min: 1000, max: 120000, step: 1000, default: 20000}
       - {key: chunk_size, label: Chunk size (characters), type: int, min: 100, max: 2000, step: 50, default: 400}
       - {key: overlap, label: Overlap (characters), type: int, min: 0, max: 400, step: 20, default: 80}

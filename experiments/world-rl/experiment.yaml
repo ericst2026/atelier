@@ -70,6 +70,7 @@ steps:
       measures where it is for your model by sampling each family and difficulty.
       Pick the mix that leaves the most room to improve.
     script: steps/step2_prompts.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: learnable, label: learnable}]
@@ -88,6 +89,7 @@ steps:
       real learning. Reward up with length climbing is usually the model discovering
       that your shaping pays for words.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 360
     figures: [{key: final_reward, label: reward}, {key: final_kl, label: KL}]
@@ -109,6 +111,7 @@ steps:
       did the model start marking answers it cannot compute, did whole families
       collapse while the ones you trained on improved.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 120
     figures: [{key: accuracy, label: accuracy}]

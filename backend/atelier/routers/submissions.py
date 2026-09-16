@@ -6,8 +6,8 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import services, storage
-from ..auth import current_user, require_teacher
+from .. import services, stepcode, storage
+from ..auth import current_user, is_staff, require_teacher
 from ..bus import SyncBus
 from ..config import settings
 from ..db import get_db
@@ -43,29 +43,41 @@ def _grade_run(db: Session, bus: SyncBus, actor: User, sub: Submission, registry
 
 @router.post("/experiments/{slug}/submissions", response_model=SubmissionOut, status_code=201)
 def submit(slug: str, body: SubmissionCreate, user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry), bus: SyncBus = Depends(get_bus)):
+    """Hand in your own code for one step, for the teacher to read and mark."""
     try:
         spec = registry.get(slug)
     except KeyError:
         raise HTTPException(404, "Experiment not found")
-    root = storage.workspace_dir(user.id, slug)
-    if not root.exists():
-        raise HTTPException(400, "Your project is empty. Open the workspace first.")
-    stats = storage.dir_stats(root)
-    if stats["bytes"] > settings.submission_max_mb * 1024 * 1024:
-        raise HTTPException(413, f"Your project is larger than {settings.submission_max_mb} MB. Remove large outputs before submitting.")
-    sub = Submission(user_id=user.id, experiment=slug, note=body.note[:4000])
+    try:
+        step = spec.step(int(body.step))
+    except (KeyError, ValueError):
+        raise HTTPException(400, "Say which step you are handing in")
+    if not step.own_code:
+        raise HTTPException(400, f"Step {step.index} runs the standard code only, so there is nothing to hand in")
+    src = stepcode.code_path(user.id, slug, step.index)
+    if not src.exists():
+        raise HTTPException(400, "Write and save your own code for this step first")
+    code = src.read_text(encoding="utf-8", errors="replace")
+    if not code.strip():
+        raise HTTPException(400, "Your code for this step is empty")
+    # the run it last produced, so the teacher can see it working (or not)
+    last = db.scalars(
+        select(Run).where(Run.user_id == user.id, Run.experiment == slug, Run.step == step.index, Run.kind == "step").order_by(Run.id.desc()).limit(1)
+    ).first()
+    sub = Submission(user_id=user.id, experiment=slug, step=step.index, note=body.note[:4000])
     db.add(sub)
     db.commit()
     dest = storage.submission_dir(sub.id)
-    storage.copy_tree(root, dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / src.name).write_text(code, encoding="utf-8", newline="")
+    stats = {"files": 1, "bytes": len((dest / src.name).read_bytes())}
+    if last is not None:
+        sub.last_test_run_id = last.id
     sub.sha256 = storage.sha256_dir(dest)
     sub.file_count, sub.bytes = stats["files"], stats["bytes"]
     db.commit()
-    if spec.grader.get("auto_on_submit", True):
-        try:
-            _grade_run(db, bus, user, sub, registry)
-        except HTTPException:
-            pass  # over capacity: the teacher can start the grader later
+    # no automatic grading: a step submission is code for the teacher to read, and
+    # the run it produced is linked above
     bus.publish_event({"type": "submission", "id": sub.id, "user_id": user.id, "experiment": slug})
     return _out(sub, {user.id: user})
 
@@ -73,7 +85,7 @@ def submit(slug: str, body: SubmissionCreate, user: User = Depends(current_user)
 @router.get("/submissions", response_model=list[SubmissionOut])
 def list_submissions(experiment: Optional[str] = None, user_id: Optional[int] = None, limit: int = Query(200, le=2000), user: User = Depends(current_user), db: Session = Depends(get_db)):
     q = select(Submission).order_by(Submission.id.desc()).limit(limit)
-    if user.role != "teacher":
+    if not is_staff(user):
         q = q.where(Submission.user_id == user.id)
     elif user_id:
         q = q.where(Submission.user_id == user_id)

@@ -15,8 +15,8 @@ description: |
   of loss come from the mix rather than the filter.
 
 materials:
-  - {key: fineweb, name: FineWeb-Edu sample, path: datasets/curation/fineweb-edu, kind: dataset, format: jsonl, description: Web text already filtered for educational quality, with the classifier's score attached.}
-  - {key: c4, name: C4 raw sample, path: datasets/curation/c4-raw, kind: dataset, format: jsonl, description: The same web, uncurated. This is what you are cleaning.}
+  - {key: fineweb, name: FineWeb-Edu sample, path: datasets/curation/fineweb-edu, kind: dataset, format: jsonl, description: "Web text already filtered for educational quality, with the classifier's score attached.}"}
+  - {key: c4, name: C4 raw sample, path: datasets/curation/c4-raw, kind: dataset, format: jsonl, description: "The same web, uncurated. This is what you are cleaning."}
   - {key: gpt2, name: GPT-2 tokenizer, path: models/gpt2, kind: model, description: A fixed tokenizer so every mix is measured on the same footing.}
   - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: Held out as the clean validation set every mix is scored against.}
 
@@ -94,7 +94,7 @@ steps:
       - {key: max_tokens, label: Token budget, type: int, min: 1000000, max: 200000000, step: 1000000, default: 20000000}
       - {key: preset, label: Model size, type: select, default: tiny, options: [{value: tiny, label: "tiny · ~10M"}, {value: small, label: "small · ~30M"}]}
       - {key: max_iters, label: Steps, type: int, min: 200, max: 20000, step: 100, default: 1500}
-      - {key: compare_baselines, label: Also train on raw and on FineWeb alone, type: bool, default: true, help: Three runs instead of one, and the only way to know whether your filter helped}
+      - {key: compare_baselines, label: Also train on raw and on FineWeb alone, type: bool, default: true, help: "Three runs instead of one, and the only way to know whether your filter helped"}
       - {key: seed, label: Seed, type: int, min: 0, max: 99999, default: 1}
 
 project:

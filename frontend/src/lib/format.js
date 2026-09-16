@@ -1,20 +1,26 @@
 export const fmtInt = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "–" : Math.round(Number(v)).toLocaleString());
+/** Plain digits, never exponential: 1,234,567 and 0.00015, not 1.23e+6 and 1.5e-4.
+ *  Values below the rounding step keep three significant digits instead of
+ *  collapsing to 0.000 — a learning rate or a loss delta has to stay readable. */
 export const fmtNum = (v, d = 3) => {
   if (v === null || v === undefined || v === "" || Number.isNaN(Number(v))) return "–";
   const n = Number(v);
-  if (Number.isInteger(n) && Math.abs(n) >= 1000) return n.toLocaleString();
-  if (Math.abs(n) >= 1e6) return n.toExponential(2);
-  return Number(n.toFixed(d)).toLocaleString(undefined, { maximumFractionDigits: d });
+  if (!Number.isFinite(n)) return n > 0 ? "∞" : "−∞";
+  if (Number.isInteger(n)) return n.toLocaleString();
+  const a = Math.abs(n);
+  const digits = a > 0 && a < 1 ? Math.max(d, Math.ceil(-Math.log10(a)) + 2) : d;
+  return n.toLocaleString(undefined, { maximumFractionDigits: Math.min(20, digits) });
 };
-/** Short tick labels: 60M, 1.2k, 0.35, 1.5e-4. */
+/** Short tick labels, and no exponents on an axis: 60M, 1.2K, 0.35, 0.00015.
+ *  Intl in standard notation writes the digits out however small the value is. */
 export const fmtAxis = (v) => {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return "";
   const n = Number(v);
   const a = Math.abs(n);
+  if (!Number.isFinite(n)) return n > 0 ? "∞" : "−∞";
   if (a === 0) return "0";
   if (a >= 1000) return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
-  if (a < 0.001) return n.toExponential(1);
-  return String(Number(n.toPrecision(3)));
+  return new Intl.NumberFormat("en", { maximumSignificantDigits: 3 }).format(n);
 };
 export const fmtPct =(v, d = 1) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "–" : `${(Number(v) * 100).toFixed(d)}%`);
 export const fmtMs = (ms) => {
@@ -37,7 +43,22 @@ export const fmtBytes = (b) => {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 };
 export const fmtDuration = (sec) => fmtMs(Number(sec || 0) * 1000);
-export const fmtTime = (iso) => (iso ? new Date(iso.endsWith("Z") || iso.includes("+") ? iso : `${iso}Z`).toLocaleString() : "–");
+/** The server sends naive UTC; mark it as UTC so it shows in local time. */
+const asDate = (iso) => {
+  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : `${iso}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const pad = (n) => String(n).padStart(2, "0");
+/** YYYY/MM/DD — one date format across the app, whatever the browser's locale. */
+export const fmtDate = (iso) => {
+  const d = iso ? asDate(iso) : null;
+  return d ? `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}` : "–";
+};
+/** YYYY/MM/DD HH:MM, 24-hour. */
+export const fmtTime = (iso) => {
+  const d = iso ? asDate(iso) : null;
+  return d ? `${fmtDate(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}` : "–";
+};
 export const fmtMetric = (m) => {
   const f = m.fmt || "num";
   if (f === "int") return fmtInt(m.value);

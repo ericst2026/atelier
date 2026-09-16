@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import board as svc
-from ..auth import current_user, optional_user
+from ..auth import current_user, is_staff, optional_user
 from ..bus import SyncBus
 from ..config import settings
 from ..db import get_db
@@ -35,7 +35,7 @@ def progress(user: Optional[User] = Depends(optional_user), db: Session = Depend
 @router.get("/leaderboard")
 def leaderboard(experiment: Optional[str] = None, metric: Optional[str] = None, user: Optional[User] = Depends(optional_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
     _public_or_user(user)
-    include_unpublished = user is not None and user.role == "teacher"
+    include_unpublished = is_staff(user)
     return svc.leaderboard(db, registry, experiment, metric, include_unpublished=include_unpublished)
 
 

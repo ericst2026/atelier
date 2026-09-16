@@ -52,7 +52,7 @@ steps:
       - {key: data_source, label: Demonstrations and questions, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
       - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared}, help: "JSONL rows with a question (prompt / question / instruction) and an answer (answer / output / response); optional steps. A validation or test file is used for evaluation, otherwise a slice is held out. Steps 2 and 3 train on at most their Demonstrations setting"}
       - {key: r, label: Rank, type: int, min: 1, max: 256, default: 16}
-      - {key: alpha, label: Alpha, type: int, min: 1, max: 512, default: 32, help: The update is scaled by alpha/r, so doubling the rank without doubling alpha halves each adapter's influence}
+      - {key: alpha, label: Alpha, type: int, min: 1, max: 512, default: 32, help: "The update is scaled by alpha/r, so doubling the rank without doubling alpha halves each adapter's influence}"}
       - {key: targets, label: Adapt these projections, type: multiselect, default: [qkv, proj, gate, up, down], options: [{value: qkv, label: attention qkv}, {value: proj, label: attention output}, {value: gate, label: mlp gate}, {value: up, label: mlp up}, {value: down, label: mlp down}]}
       - {key: dropout, label: Adapter dropout, type: float, min: 0, max: 0.3, step: 0.05, default: 0}
   - id: sweep
@@ -64,6 +64,7 @@ steps:
       falls off a cliff at the bottom — the useful information is where the cliff is,
       not that rank 64 works.
     script: steps/step2_sweep.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: best_rank, label: best r}]
@@ -83,6 +84,7 @@ steps:
       copies you have to store. Whether the gap matters depends on how many different
       adapted models you intend to keep.
     script: steps/step3_compare.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: gap, label: gap}]
@@ -102,6 +104,7 @@ steps:
       to the adapted one, and times both — the un-merged version is slower because
       every adapted layer does three matrix multiplications instead of one.
     script: steps/step4_merge.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: identical, label: match}]

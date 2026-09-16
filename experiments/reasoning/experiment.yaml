@@ -15,7 +15,7 @@ materials:
   - {key: model, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: Default solver.}
   - {key: model15, name: Qwen2.5-1.5B-Instruct, path: models/Qwen2.5-1.5B-Instruct, kind: model, description: Stronger solver.}
   - {key: gsm8k, name: GSM8K, path: datasets/rl/gsm8k, kind: dataset, format: jsonl, description: Grade-school word problems.}
-  - {key: math500, name: MATH-500, path: datasets/reasoning/math-500, kind: dataset, format: jsonl, description: 500 competition problems with difficulty levels (problem, solution, answer, level).}
+  - {key: math500, name: MATH-500, path: datasets/reasoning/math-500, kind: dataset, format: jsonl, description: "500 competition problems with difficulty levels (problem, solution, answer, level)."}
 
 steps:
   - id: tasks

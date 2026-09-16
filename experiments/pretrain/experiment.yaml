@@ -13,7 +13,7 @@ description: |
 materials:
   - {key: tinystories, name: TinyStories, path: datasets/pretrain/tinystories, kind: dataset, format: jsonl, description: 2M short children's stories (Eldan & Li 2023). Small models learn fluent English on it in minutes.}
   - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: 100M tokens of Wikipedia. Harder; use it to see the model's limits.}
-  - {key: gpt2tok, name: GPT-2 tokenizer, path: models/gpt2, kind: model, description: Only the tokenizer files are needed (tokenizer.json, vocab.json, merges.txt).}
+  - {key: gpt2tok, name: GPT-2 tokenizer, path: models/gpt2, kind: model, description: "Only the tokenizer files are needed (tokenizer.json, vocab.json, merges.txt)."}
 
 steps:
   - id: data

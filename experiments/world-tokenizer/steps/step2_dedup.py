@@ -55,7 +55,7 @@ R.chart("funnel", "What survived each pass", funnel, "stage", [{"key": "docs", "
 if res["lsh"]:
     R.chart("sims", "Candidate pair similarity", res["sim_hist"], "bin", [{"key": "count", "label": "Pairs", "color": "sky"}], "bar", ref_x=f"{float(P['threshold']):.2f}", ref_label="threshold", note="Pairs at or right of the line were merged into one cluster.")
     R.chart("clusters", "Cluster sizes", res["cluster_sizes"], "bin", [{"key": "count", "label": "Clusters", "color": "dup"}], "bar")
-R.chart("by_kind", "Removed by document kind", [{"kind": k, "count": c} for k, c in Counter(r.get("kind", "?") for r in removed).most_common()], "kind", [{"key": "count", "label": "Removed", "color": "dup"}], "bar")
+R.chart("by_kind", "Removed by document kind", [{"kind": k, "count": c} for k, c in Counter(r.get("kind", "?") for r in removed).most_common()], "kind", [{"key": "count", "label": "Removed"}], "donut", note="Which kind of document the duplicates came from.")
 R.table("removed", "What was removed", [{"key": "id", "label": "#"}, {"key": "removed_by", "label": "Pass"}, {"key": "similarity", "label": "Jaccard", "fmt": "num"}, {"key": "truth", "label": "Planted"}, {"key": "text", "label": "Removed text"}, {"key": "kept_text", "label": "Kept text"}], [{"id": r["id"], "removed_by": r["removed_by"], "similarity": r["similarity"], "truth": "" if r["truth"] == "unique" else r["truth"], "text": r["text"][:200], "kept_text": r["kept_text"][:200]} for r in removed[:60]], note="Side by side with the document that was kept.")
 R.artifact(kept_path, "kept.jsonl").artifact(removed_path, "removed.jsonl")
 R.output("corpus", str(kept_path)).output("removed", str(removed_path)).output("docs", st["after_near"])

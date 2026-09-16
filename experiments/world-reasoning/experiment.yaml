@@ -68,6 +68,7 @@ steps:
       correct attempt biases the data towards easy questions the model solves eight
       times out of eight.
     script: steps/step2_collect.py
+    own_code: true
     gpus: 1
     timeout_min: 240
     figures: [{key: kept, label: kept}, {key: coverage, label: coverage}]
@@ -78,7 +79,7 @@ steps:
       - {key: max_keep, label: Keep at most per question, type: int, min: 1, max: 8, default: 2}
       - {key: prefer, label: Which attempts to keep, type: select, default: shortest, options: [{value: shortest, label: the shortest}, {value: longest, label: the most detailed}, {value: first, label: the first found}]}
       - {key: max_new_tokens, label: Tokens to generate, type: int, min: 32, max: 512, step: 16, default: 192}
-      - {key: include_reference, label: Add the reference solutions for unsolved questions, type: bool, default: false, help: The generator's solution, or a prepared dataset's own answer. Turning this on is no longer self-improvement — it is distillation from the generator. Worth trying, worth labelling honestly.}
+      - {key: include_reference, label: Add the reference solutions for unsolved questions, type: bool, default: false, help: "The generator's solution, or a prepared dataset's own answer. Turning this on is no longer self-improvement — it is distillation from the generator. Worth trying, worth labelling honestly."}
   - id: train
     title: Train
     summary: Fine-tune on what it got right
@@ -86,6 +87,7 @@ steps:
       Ordinary supervised fine-tuning, on data the model wrote itself. Keep an eye
       on the validation loss: the set is small and a small model memorises it fast.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: eval_loss, label: val loss}]
@@ -103,6 +105,7 @@ steps:
       When training works, pass@1 climbs towards the old pass@k — the model keeps its
       reach and becomes reliable within it.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: pass1_after, label: pass@1}]

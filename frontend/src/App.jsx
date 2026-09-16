@@ -6,9 +6,9 @@ import Display from "./pages/Display";
 import Experiment from "./pages/Experiment";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
+import SignUp from "./pages/SignUp";
 import SubmissionReview from "./pages/SubmissionReview";
 import Teacher from "./pages/Teacher";
-import Workspace from "./pages/Workspace";
 
 function RequireAuth({ teacher = false }) {
   const { user, ready, isTeacher } = useAuth();
@@ -28,11 +28,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
       <Route path="/display/:n" element={<Display />} />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<Home />} />
         <Route path="/experiments/:slug" element={<Experiment />} />
-        <Route path="/experiments/:slug/workspace" element={<Workspace />} />
       </Route>
       <Route element={<RequireAuth teacher />}>
         <Route path="/teacher" element={<Teacher />} />

@@ -146,7 +146,16 @@ class Result:
     """Collects what the UI renders. Every method returns self so calls chain.
 
     metric(key, label, value, fmt="num"|"int"|"pct"|"ms"|"bytes"|"text", accent="raw"|"kept"|"dup"|"hold"|"sky", help=...)
-    chart(id, title, data, x, series=[{key,label,color?}], type="bar"|"line"|"area", ...)
+    chart(id, title, data, x, series=[{key,label,color?,form?}], type=..., ...)
+        type: "bar" (compare magnitude) · "stacked" (parts of a whole across a
+        dimension) · "line" (trend) · "area" · "scatter" (one number against
+        another) · "donut" (parts of one whole, up to 5 slices and the rest folded
+        into "other"; the first series is the value and x names each slice).
+        A series may carry form="line"|"scatter"|"bar"|"area" to draw itself
+        differently from the rest — measured points over a fitted line, say.
+        Leave colour off unless it means something: the chart assigns colours that
+        stay apart for colour-blind readers, and a donut uses one hue stepped
+        light to dark.
     table(id, title, columns=[{key,label,fmt?}], rows=[...])
     tokens(id, title, tokens=[{text,id,kind?}])
     artifact(path, label)   output(key, value)   note(markdown)

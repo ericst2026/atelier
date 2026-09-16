@@ -54,7 +54,7 @@ steps:
       - {key: data_source, label: Pairs, type: select, default: generated, options: [{value: generated, label: generated — sampled from the model on the world's questions}, {value: prepared_questions, label: sampled from the model on prepared questions}, {value: prepared, label: prepared — preference pairs under materials/datasets}]}
       - {key: questions_material, label: Prepared questions, type: material, kind: dataset, schemas: [qa], default: null, show_if: {data_source: prepared_questions}, help: "Questions with short, checkable answers (prompt / question + answer / output). Its training rows are sampled for pairs; its validation or test rows are graded in step 4"}
       - {key: data_material, label: Prepared pairs, type: material, kind: dataset, schemas: [pairs], default: null, show_if: {data_source: prepared}, help: "JSONL rows with prompt, chosen and rejected, used as they are. A validation or test file is held out, otherwise a slice. Step 4 grades held-out rows that also have an answer field; without answers it asks generated questions"}
-      - {key: n_questions, label: Questions to sample (pairs to use, at most, when prepared), type: int, min: 200, max: 20000, step: 200, default: 3000}
+      - {key: n_questions, label: "Questions to sample (pairs to use, at most, when prepared)", type: int, min: 200, max: 20000, step: 200, default: 3000}
       - {key: k, label: Answers per question, show_if: {data_source: [generated, prepared_questions]}, type: int, min: 2, max: 16, default: 6}
       - {key: temperature, label: Sampling temperature, show_if: {data_source: [generated, prepared_questions]}, type: float, min: 0.3, max: 1.5, step: 0.1, default: 1.0}
       - {key: pair_on, label: What makes one answer better, show_if: {data_source: [generated, prepared_questions]}, type: select, default: correct, options: [{value: correct, label: correct against wrong}, {value: correct_short, label: correct and short against correct and long}, {value: mixed, label: both}]}
@@ -69,6 +69,7 @@ steps:
       already prefers the chosen answer — because a pair the reference has already
       settled contributes almost nothing to the gradient.
     script: steps/step2_reference.py
+    own_code: true
     gpus: 1
     timeout_min: 60
     figures: [{key: already_right, label: settled}]
@@ -84,6 +85,7 @@ steps:
       growing margin usually means the model has started pushing the rejected answer
       to nothing, which costs it fluency.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 180
     figures: [{key: eval_accuracy, label: pair acc}]
@@ -103,6 +105,7 @@ steps:
       log-probability chart shows it — if both chosen and rejected fall, the policy
       is collapsing rather than choosing.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: accuracy, label: accuracy}]

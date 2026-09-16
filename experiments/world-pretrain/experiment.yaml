@@ -56,7 +56,7 @@ steps:
       - {key: lang, label: Language, type: select, default: auto, options: [{value: auto, label: "from the tokenizer (its run, or the model's meta.json)"}, {value: en, label: English}, {value: ja, label: 日本語}], help: The language of generated documents and of the questions step 4 asks}
       - {key: data_source, label: Documents, type: select, default: generated, options: [{value: generated, label: generated from the world}, {value: prepared, label: prepared — a dataset under materials/datasets}]}
       - {key: data_material, label: Prepared corpus, type: material, kind: dataset, schemas: [documents], default: null, show_if: {data_source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field"}
-      - {key: docs, label: Documents (to generate, or at most from a prepared corpus), type: int, min: 2000, max: 2000000, step: 1000, default: 200000}
+      - {key: docs, label: "Documents (to generate, or at most from a prepared corpus)", type: int, min: 2000, max: 2000000, step: 1000, default: 200000}
       - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55, show_if: {data_source: generated}}
       - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30, show_if: {data_source: generated}}
       - {key: max_tokens, label: Token budget, type: int, min: 100000, max: 2000000000, step: 100000, default: 60000000}
@@ -72,6 +72,7 @@ steps:
       estimates are closed-form, so you can try five shapes in a minute before
       spending an hour on one.
     script: steps/step2_size.py
+    own_code: true
     gpus: 0
     timeout_min: 10
     figures: [{key: params, label: params}]
@@ -91,6 +92,7 @@ steps:
       validation loss stream to the chart while it runs, and the best checkpoint is
       saved as you go — if you stop early you keep the best model, not the last one.
     script: steps/step3_train.py
+    own_code: true
     gpus: 1
     timeout_min: 360
     figures: [{key: val_loss, label: val loss}, {key: tokens_per_sec, label: tok/s}]
@@ -114,6 +116,7 @@ steps:
       contained worked problems, a well-trained base model gets some of them right —
       and the fine-tuning experiment starts from that number.
     script: steps/step4_eval.py
+    own_code: true
     gpus: 1
     timeout_min: 90
     figures: [{key: perplexity, label: ppl}, {key: base_accuracy, label: accuracy}]

@@ -19,7 +19,7 @@ materials:
   - {key: toxicity, name: RealToxicityPrompts, path: datasets/safety/toxicity-prompts, kind: dataset, format: jsonl, description: A standard set for measuring how often a model continues badly.}
   - {key: helpful, name: No Robots, path: datasets/sft/no-robots, kind: dataset, format: jsonl, description: Ordinary helpful requests — the control group that catches over-refusal.}
   - {key: model, name: SmolLM2-360M-Instruct, path: models/SmolLM2-360M-Instruct, kind: model, description: The model under test.}
-  - {key: model05, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: A second model, for comparison.}
+  - {key: model05, name: Qwen2.5-0.5B-Instruct, path: models/Qwen2.5-0.5B-Instruct, kind: model, description: "A second model, for comparison."}
 
 steps:
   - id: policy
@@ -73,7 +73,7 @@ steps:
     figures: [{key: eval_loss, label: val loss}]
     params:
       - {key: n_refusals, label: Refusal demonstrations, type: int, min: 100, max: 10000, step: 100, default: 1500}
-      - {key: helpful_ratio, label: Helpful demonstrations per refusal, type: float, min: 0, max: 5, step: 0.5, default: 2, help: Zero is the mistake worth making once, deliberately, to see what it does}
+      - {key: helpful_ratio, label: Helpful demonstrations per refusal, type: float, min: 0, max: 5, step: 0.5, default: 2, help: "Zero is the mistake worth making once, deliberately, to see what it does"}
       - {key: epochs, label: Epochs, type: float, min: 0.5, max: 5, step: 0.5, default: 2}
       - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.0005, step: 0.000001, default: 0.00002}
       - {key: batch_size, label: Examples per step, type: int, min: 2, max: 32, default: 8}

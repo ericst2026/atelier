@@ -15,9 +15,9 @@ description: |
   described.
 
 materials:
-  - {key: pythia, name: Pythia 70M–410M, path: models/pythia-160m, kind: model, description: A clean, well-documented architecture with intermediate training checkpoints published.}
-  - {key: pythia_steps, name: Pythia 160M at steps 1k, 16k and 64k, path: models/pythia-160m-step16000, kind: model, description: The same model part-way through training. Fetch the extended track to get these.}
-  - {key: smol, name: SmolLM2-135M, path: models/SmolLM2-135M, kind: model, description: A modern small model, for comparison with Pythia's older design.}
+  - {key: pythia, name: Pythia 70M–410M, path: models/pythia-160m, kind: model, description: "A clean, well-documented architecture with intermediate training checkpoints published."}
+  - {key: pythia_steps, name: "Pythia 160M at steps 1k, 16k and 64k", path: models/pythia-160m-step16000, kind: model, description: The same model part-way through training. Fetch the extended track to get these.}
+  - {key: smol, name: SmolLM2-135M, path: models/SmolLM2-135M, kind: model, description: "A modern small model, for comparison with Pythia's older design.}"}
   - {key: wikitext, name: WikiText-103, path: datasets/pretrain/wikitext-103, kind: dataset, format: jsonl, description: Ordinary text to probe and to run attention over.}
 
 steps:

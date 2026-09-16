@@ -51,7 +51,7 @@ steps:
       - {key: data_material, label: Prepared dataset, type: material, kind: dataset, schemas: [documents], default: null, show_if: {source: prepared}, help: ".txt / .md files (one document each), or JSONL rows with a text / content / body field"}
       - {key: pasted_text, label: Your text, type: textarea, default: "", show_if: {source: pasted}, help: One document per blank-line-separated block}
       - {key: lang, label: Language, type: select, default: en, options: [{value: en, label: English}, {value: ja, label: 日本語 (no spaces)}], help: "For your own text, the language it is in: later experiments ask questions in this language"}
-      - {key: docs, label: Documents (at most, for your own text), type: int, min: 200, max: 400000, step: 200, default: 20000}
+      - {key: docs, label: "Documents (at most, for your own text)", type: int, min: 200, max: 400000, step: 200, default: 20000}
       - {key: story_share, label: Share of stories, type: float, min: 0, max: 1, step: 0.05, default: 0.55, show_if: {source: generated}}
       - {key: record_share, label: Share of fact records, type: float, min: 0, max: 1, step: 0.05, default: 0.15, show_if: {source: generated}}
       - {key: task_share, label: Share of worked problems, type: float, min: 0, max: 1, step: 0.05, default: 0.30, show_if: {source: generated}}
@@ -66,6 +66,7 @@ steps:
       bucketed with LSH and verified with true Jaccard overlap. Watch what happens
       to the compression curve in step 3 when you dedupe hard versus not at all.
     script: steps/step2_dedup.py
+    own_code: true
     gpus: 0
     timeout_min: 60
     figures: [{key: kept, label: kept}, {key: removed, label: removed}]
@@ -84,6 +85,7 @@ steps:
       model. 4096 is a sensible starting point — try 1024 and 16384 and carry both
       into pretraining.
     script: steps/step3_train.py
+    own_code: true
     gpus: 0
     timeout_min: 120
     figures: [{key: vocab_size, label: vocab}, {key: chars_per_token, label: chars/token}]
@@ -103,6 +105,7 @@ steps:
       survive — a tokenizer that merges "42" into one piece and "43" into two makes
       arithmetic harder than it needs to be.
     script: steps/step4_coverage.py
+    own_code: true
     gpus: 0
     timeout_min: 60
     figures: [{key: chars_per_token, label: chars/token}, {key: digit_split, label: digits}]
