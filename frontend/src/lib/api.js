@@ -31,6 +31,12 @@ export async function api(path, { method = "GET", body, form, signal } = {}) {
   }
   if (!res.ok) {
     const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : res.statusText;
+    // a token the server no longer accepts (expired, or the account changed) would
+    // otherwise leave a signed-in looking app where every request quietly fails
+    if (res.status === 401 && token && !path.startsWith("/auth/login")) {
+      setToken(null);
+      if (!location.pathname.startsWith("/login")) location.assign("/login");
+    }
     throw new ApiError(detail, res.status);
   }
   return data;

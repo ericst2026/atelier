@@ -39,7 +39,9 @@ export default function SubmissionReview() {
       if (r.length && !selected) setSelected(r[0].id);
     });
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
   useEffect(() => {
     if (path) api(`/submissions/${id}/file?path=${encodeURIComponent(path)}`).then(setFile);
   }, [id, path]);

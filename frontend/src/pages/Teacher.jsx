@@ -138,7 +138,9 @@ function UsersPanel() {
   const csv = useRef(null);
   // without this, a refused or failed request left an empty table and no reason
   const load = useCallback(() => api("/users").then(setUsers).catch((e) => setMsg(`Could not load the accounts: ${e.message}`)), []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
   const create = async () => {
     try {
       await api("/users", { method: "POST", body: form });
@@ -244,7 +246,9 @@ function RunsPanel() {
   const [runs, setRuns] = useState([]);
   const [filter, setFilter] = useState("");
   const load = useCallback(() => api(`/runs?limit=200${filter ? `&status=${filter}` : ""}`).then(setRuns), [filter]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
   const cancel = async (r) => {
     await api(`/runs/${r.id}/cancel`, { method: "POST" });
     load();
