@@ -16,11 +16,7 @@ export default function TopBar() {
           Experiments
         </NavLink>
         {isTeacher && <NavLink to="/teacher">Class</NavLink>}
-        {isAdmin && (
-          <NavLink to="/teacher?section=users" className={({ isActive }) => (isActive ? "active" : "")}>
-            Accounts
-          </NavLink>
-        )}
+        {isAdmin && <NavLink to="/admin">Accounts</NavLink>}
         <NavLink to="/display/1" target="_blank">
           Displays
         </NavLink>

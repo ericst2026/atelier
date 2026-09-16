@@ -53,6 +53,14 @@ export default function ClassPanel() {
       setError(e.message);
     }
   };
+  const deny = async (userId) => {
+    setError(null);
+    try {
+      setState(await api(`/class/members/${userId}`, { method: "DELETE" }));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   const push = async (displayId, payload) => {
     await api(`/displays/${displayId}`, { method: "PUT", body: payload });
     load();
@@ -115,9 +123,14 @@ export default function ClassPanel() {
                 <span>
                   {m.name || m.username} <span className="faint small">{m.username}</span>
                 </span>
-                <button className="btn sm good" onClick={() => admit(m.user_id, true)}>
-                  Let in
-                </button>
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="btn sm good" onClick={() => admit(m.user_id, true)}>
+                    Accept
+                  </button>
+                  <button className="btn sm danger" onClick={() => deny(m.user_id)}>
+                    Deny
+                  </button>
+                </div>
               </div>
             ))}
           </div>

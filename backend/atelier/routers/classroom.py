@@ -112,11 +112,15 @@ def get_class(user: User = Depends(current_user), db: Session = Depends(get_db),
 
 
 @router.get("/history")
-def history(limit: int = 50, user: User = Depends(require_teacher), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
-    """The classes a teacher has held; an admin sees every teacher's."""
+def history(limit: int = 50, user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
+    """Classes that have been held: the ones a teacher ran, the ones a student took
+    part in, and for an admin, every class there has been."""
     q = select(ClassSession).order_by(ClassSession.id.desc()).limit(min(limit, 200))
-    if user.role != "admin":
+    if user.role == "teacher":
         q = q.where(ClassSession.started_by == user.id)
+    elif user.role != "admin":
+        attended = select(SessionMember.session_id).where(SessionMember.user_id == user.id, SessionMember.admitted.is_(True))
+        q = q.where(ClassSession.id.in_(attended))
     return {"sessions": [_session_dict(db, s, user, registry) for s in db.scalars(q).all()], "all_teachers": user.role == "admin"}
 
 
@@ -179,6 +183,22 @@ def ask_to_join(user: User = Depends(current_user), db: Session = Depends(get_db
         db.commit()
         bus.publish_event({"type": "class", "session": s.id, "asked": user.id})
     return _state(db, user, registry)
+
+
+@router.delete("/members/{user_id}")
+def deny(user_id: int, teacher: User = Depends(require_teacher), db: Session = Depends(get_db), registry: Registry = Depends(get_registry), bus: SyncBus = Depends(get_bus)):
+    """Turn a request down, or remove someone already in. They can ask again."""
+    s = active_session(db)
+    if s is None:
+        raise HTTPException(400, "No class is running")
+    if teacher.role != "admin" and s.started_by != teacher.id:
+        raise HTTPException(403, "That is another teacher's class")
+    m = membership(db, s.id, user_id)
+    if m is not None:
+        db.delete(m)
+        db.commit()
+        bus.publish_event({"type": "class", "session": s.id, "denied": user_id})
+    return _state(db, teacher, registry)
 
 
 @router.post("/members/{user_id}")

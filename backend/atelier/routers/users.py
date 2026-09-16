@@ -5,14 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import hash_password, require_admin, require_teacher
+from ..auth import hash_password, require_admin
 from ..db import get_db
 from ..deps import get_registry
 from ..models import SelfPermission, User
 from ..registry import Registry
 from ..schemas import SelfPermissionsIn, UserCreate, UserOut, UserPatch
 
-router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_teacher)])
+# accounts are the admin's: a teacher runs classes and admits students, nothing more
+router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_admin)])
 
 
 def _out(user: User, db: Session) -> UserOut:
@@ -88,7 +89,7 @@ async def import_users(file: UploadFile, db: Session = Depends(get_db)):
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def patch_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), me: User = Depends(require_teacher)):
+def patch_user(user_id: int, body: UserPatch, db: Session = Depends(get_db), me: User = Depends(require_admin)):
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(404, "User not found")
