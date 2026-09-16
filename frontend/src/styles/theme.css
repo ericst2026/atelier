@@ -300,3 +300,7 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .compare table.data td.best { color: var(--kept); font-weight: 700; }
 .display .compare table.data td.best::after { content: " ★"; font-size: 0.8em; }
 .display .stepwall .handed li::marker { color: var(--faint); font-size: 18px; }
+
+/* the standard code beside what it produced, both inside the screen */
+.display .stepwall .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); min-height: 0; }
+.display .stepwall .split .side { padding: 16px; overflow: hidden; border-left: 1px solid var(--line); }

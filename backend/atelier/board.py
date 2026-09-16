@@ -324,10 +324,51 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
         "summary": step.summary,
         "description": step.description,
         "own_code": step.own_code,
-        "figure": f"/api/experiments/{slug}/figure/{step_no}" if step.figure else None,
+        "figure": f"/api/experiments/{slug}/figure/{step_no}",
         "instructions": c,
         "handed_in": handed,
     }
+
+
+def standard_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
+    """The code the experiment ships with, and what it produced on this step — the
+    thing every student's own version is measured against."""
+    session_id = payload.get("session_id")
+    session = db.get(ClassSession, int(session_id)) if session_id else None
+    if session_id and (session is None or (session.ended_at is not None and not payload.get("pinned"))):
+        return {"no_class": True}
+    slug = (session.experiment if session else payload.get("experiment")) or ""
+    step_no = int(payload.get("step") or 1)
+    try:
+        spec = registry.get(slug)
+        step = spec.step(step_no)
+    except KeyError:
+        return {"error": "that experiment is not loaded"}
+    try:
+        code = (spec.dir / step.script).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        code = ""
+    out: dict[str, Any] = {
+        "experiment": slug,
+        "title": spec.title,
+        "step": step_no,
+        "step_title": step.title,
+        "code": code,
+        "handed_in": _handed_in(db, slug, step_no),
+    }
+    # what it produced: whatever this class last ran it for — a baseline queued by a
+    # submission, or the teacher's own run of the step
+    q = select(Run).where(Run.experiment == slug, Run.step == step_no, Run.status == "succeeded").order_by(Run.id.desc())
+    for run in db.scalars(q).all():
+        inputs = run.inputs or {}
+        if inputs.get("code_source") == "own":
+            continue
+        if session is not None and inputs.get("class_session") not in (None, session.id) and run.user_id != session.started_by:
+            continue
+        out["result"] = _result_of(run.id)
+        out["run"] = {"id": run.id, "by": (db.get(User, run.user_id).name or db.get(User, run.user_id).username) if db.get(User, run.user_id) else ""}
+        break
+    return out
 
 
 def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
@@ -401,5 +442,7 @@ def display_states(db: Session, registry: Registry, worker_state: Optional[dict[
             data = step_view(db, registry, d.payload or {})
         elif d.mode == "student":
             data = student_view(db, registry, d.payload)
+        elif d.mode == "standard":
+            data = standard_view(db, registry, d.payload)
         out[str(d.id)] = {"id": d.id, "name": d.name, "mode": d.mode, "payload": d.payload, "updated_at": d.updated_at.isoformat(), "data": data}
     return out

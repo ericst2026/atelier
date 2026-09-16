@@ -17,7 +17,7 @@ from ..schemas import DisplayIn, DisplayOut
 router = APIRouter(prefix="/displays", tags=["displays"])
 # step    the step's own code, and who has handed theirs in
 # student one student's work on a step: their code, or the results they got
-MODES = {"grafana", "live", "progress", "leaderboard", "run", "message", "step", "student"}
+MODES = {"grafana", "live", "progress", "leaderboard", "run", "message", "step", "student", "standard"}
 
 
 @router.get("", response_model=list[DisplayOut])

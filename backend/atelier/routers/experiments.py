@@ -1,10 +1,10 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from .. import materials, services, stepcode, storage
+from .. import materials, services, stepcode, stepfigure, storage
 from . import classroom
 from ..auth import current_user, is_staff
 from ..db import get_db
@@ -167,15 +167,15 @@ def reset_step_code(slug: str, step_no: int, user: User = Depends(current_user),
 
 @router.get("/{slug}/figure/{step_no}")
 def step_figure(slug: str, step_no: int, registry: Registry = Depends(get_registry)):
-    """The drawing that explains a step. Public, like the wall displays that show it."""
+    """The drawing that explains a step: the one the experiment ships, or one made
+    from what the step takes and produces. Public, like the wall that shows it."""
     spec = _spec(registry, slug)
     try:
         step = spec.step(step_no)
     except KeyError:
         raise HTTPException(404, "No such step")
-    if not step.figure:
-        raise HTTPException(404, "This step has no figure")
-    path = storage.safe_join(spec.dir, step.figure)
-    if not path.exists():
-        raise HTTPException(404, f"{step.figure} is not in the experiment folder")
-    return FileResponse(path)
+    got = stepfigure.svg_for(spec, step)
+    if "path" in got:
+        return FileResponse(got["path"])
+    # drawn from the step itself, so every step has one without anybody drawing it
+    return Response(got["svg"], media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})

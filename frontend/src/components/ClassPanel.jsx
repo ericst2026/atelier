@@ -223,11 +223,9 @@ export default function ClassPanel() {
 export function WallPanel() {
   const [state, setState] = useState(null);
   const [displays, setDisplays] = useState([]);
-  const [classes, setClasses] = useState([]);
   const load = useCallback(() => {
     api("/class").then(setState).catch(() => {});
     api("/displays").then(setDisplays).catch(() => {});
-    api("/class/history?limit=50").then((d) => setClasses(d.sessions || [])).catch(() => {});
   }, []);
   useEffect(() => {
     load();
@@ -250,7 +248,7 @@ export function WallPanel() {
         </div>
         <div className="grid2">
           {displays.map((d) => (
-            <DisplayControl key={d.id} display={d} session={session} classes={classes} onPush={push} />
+            <DisplayControl key={d.id} display={d} session={session} onPush={push} />
           ))}
         </div>
       </div>
@@ -258,37 +256,30 @@ export function WallPanel() {
   );
 }
 
-function DisplayControl({ display, session, classes, onPush }) {
+function DisplayControl({ display, session, onPush }) {
   const isStep = display.id <= 4;
   const payload = display.payload || {};
-  const [cls, setCls] = useState(payload.session_id || session?.id || "");
   const [step, setStep] = useState(payload.step || display.id);
-  const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : "explanation");
+  const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
-  const chosen = classes.find((c) => c.id === Number(cls)) || (Number(cls) === session?.id ? session : null);
-  // only people with something to show: the wall reads what was handed in, so a
-  // student who has not handed this step in would put an empty screen up
+  // the wall reads what was handed in, so only offer people who have
   const [handed, setHanded] = useState([]);
   useEffect(() => {
-    if (!chosen?.experiment) return setHanded([]);
-    api(`/submissions?experiment=${chosen.experiment}&step=${Number(step)}`)
+    if (!session?.experiment) return setHanded([]);
+    api(`/submissions?experiment=${session.experiment}&step=${Number(step)}`)
       .then((subs) => {
         const seen = new Set();
-        setHanded(
-          subs
-            .filter((x) => !seen.has(x.user_id) && seen.add(x.user_id))
-            .map((x) => ({ user_id: x.user_id, name: x.name || x.username }))
-        );
+        setHanded(subs.filter((x) => !seen.has(x.user_id) && seen.add(x.user_id)).map((x) => ({ user_id: x.user_id, name: x.name || x.username })));
       })
       .catch(() => setHanded([]));
-  }, [chosen?.experiment, step]);
-  // the teacher hands nothing in, so their own last run of the step stands in
-  const people = chosen ? [...handed, { user_id: chosen.teacher_id, name: `${chosen.teacher} (yours)` }].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i) : [];
+  }, [session?.experiment, step]);
   const apply = () => {
-    const base = { session_id: Number(cls) || undefined, experiment: chosen?.experiment, step: Number(step), pinned: Boolean(chosen?.ended_at) };
+    const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
+    if (show === "standard") return onPush(display.id, { mode: "standard", payload: base });
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
   };
+  const needsPerson = show === "results" || show === "code";
   return (
     <div className="inset stack" style={{ padding: 10, gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -298,51 +289,43 @@ function DisplayControl({ display, session, classes, onPush }) {
         </a>
       </div>
       <div className="small muted">
-        showing: {display.mode === "student" ? `${payload.show || "results"} of one student` : display.mode === "step" ? "the step" : display.mode}
+        showing:{" "}
+        {display.mode === "student"
+          ? `${payload.show || "results"} of one student`
+          : display.mode === "standard"
+            ? "the standard code"
+            : display.mode === "step"
+              ? "what the step is"
+              : display.mode}
       </div>
       {isStep ? (
         <>
-          <select value={cls} onChange={(e) => setCls(e.target.value)}>
-            <option value="">— a class —</option>
-            {session && (
-              <option value={session.id}>
-                {session.name || session.title || session.experiment} (running)
-              </option>
-            )}
-            {classes
-              .filter((c) => c.id !== session?.id)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name || c.title || c.experiment}
-                  {c.ended_at ? " (finished)" : c.paused ? " (paused)" : ""}
-                </option>
-              ))}
-          </select>
           <div className="row" style={{ gap: 6 }}>
-            <select value={step} onChange={(e) => setStep(e.target.value)} style={{ width: 100 }}>
+            <select value={step} onChange={(e) => setStep(e.target.value)} disabled={!session} style={{ width: 100 }}>
               {[1, 2, 3, 4].map((n) => (
                 <option key={n} value={n}>
                   step {n}
                 </option>
               ))}
             </select>
-            <select value={show} onChange={(e) => setShow(e.target.value)} style={{ flex: 1 }}>
+            <select value={show} onChange={(e) => setShow(e.target.value)} disabled={!session} style={{ flex: 1 }}>
               <option value="explanation">what the step is</option>
+              <option value="standard">the standard code</option>
               <option value="results">a student's results</option>
               <option value="code">a student's code</option>
             </select>
           </div>
-          {show !== "explanation" && (
-            <select value={who} onChange={(e) => setWho(e.target.value)}>
+          {needsPerson && (
+            <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!session}>
               <option value="">{handed.length ? "— who —" : "— nobody has handed this in —"}</option>
-              {people.map((m) => (
+              {handed.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
-                  {m.name || m.username}
+                  {m.name}
                 </option>
               ))}
             </select>
           )}
-          <button className="btn sm primary" onClick={apply} disabled={!cls || (show !== "explanation" && !who)}>
+          <button className="btn sm primary" onClick={apply} disabled={!session || (needsPerson && !who)}>
             Put it up
           </button>
         </>
@@ -360,8 +343,6 @@ function DisplayControl({ display, session, classes, onPush }) {
   );
 }
 
-/** The first step's run and material params: what an experiment needs before a
- *  student can start it, which in class the teacher settles once. */
 /** What an experiment needs from outside itself, which a student cannot supply:
  *  another experiment's run, and the prepared models or datasets that stand in for
  *  one. A step that builds on the step before it is not here — that is the

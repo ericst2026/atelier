@@ -292,6 +292,38 @@ function StudentView({ data }) {
   );
 }
 
+/** The code the experiment ships with, and what it produced — what every student's
+ *  own version is measured against. */
+function StandardView({ data }) {
+  if (!data) return null;
+  if (data.no_class)
+    return (
+      <div className="msg">
+        <div>
+          <h1>No running class</h1>
+          <p>This screen follows the class once a teacher starts one.</p>
+        </div>
+      </div>
+    );
+  if (data.error) return <div className="msg"><p>{data.error}</p></div>;
+  return (
+    <div className="stepwall">
+      <div className="panel code">
+        <div className="bar">
+          The standard code · {data.title} · step {data.step}: {data.step_title}
+        </div>
+        <div className="split">
+          <pre>{data.code}</pre>
+          <div className="side">
+            {data.result?.metrics?.length ? <Kpis metrics={data.result.metrics} /> : <p className="muted">It has not been run on this class yet.</p>}
+          </div>
+        </div>
+      </div>
+      <HandedIn list={data.handed_in} />
+    </div>
+  );
+}
+
 export default function Display() {
   const { n } = useParams();
   const [state, setState] = useState(null);
@@ -317,6 +349,7 @@ export default function Display() {
       {mode === "run" && <RunView data={state.data} />}
       {mode === "step" && <StepView data={state.data} />}
       {mode === "student" && <StudentView data={state.data} />}
+      {mode === "standard" && <StandardView data={state.data} />}
       {mode === "message" && (
         <div className="msg">
           <div>
