@@ -15,6 +15,7 @@ export default function ClassPanel() {
   const [experiments, setExperiments] = useState([]);
   const [displays, setDisplays] = useState([]);
   const [pick, setPick] = useState("");
+  const [name, setName] = useState("");
   const [spec, setSpec] = useState(null); // the chosen experiment, to ask what it starts from
   const [startParams, setStartParams] = useState({});
   const [error, setError] = useState(null);
@@ -36,7 +37,8 @@ export default function ClassPanel() {
   const start = async () => {
     setError(null);
     try {
-      setState(await api("/class", { method: "POST", body: { experiment: pick, params: startParams } }));
+      setState(await api("/class", { method: "POST", body: { experiment: pick, name, params: startParams } }));
+      setName("");
       load();
     } catch (e) {
       setError(e.message);
@@ -101,42 +103,39 @@ export default function ClassPanel() {
   return (
     <div className="stack">
       <div className="panel stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h3>{running ? `Running: ${s.title || s.experiment}` : "No class is running"}</h3>
-          {running && ours ? (
-            <div className="row" style={{ gap: 6 }}>
-              <button className="btn sm" onClick={pause} title="Free the room without ending the class">
-                <Pause size={13} /> Pause
-              </button>
-              <button className="btn sm danger" onClick={stop}>
-                <Square size={13} /> End the class
-              </button>
-            </div>
-          ) : null}
-        </div>
-        {running && !ours && (
+        <h3>Start an experiment</h3>
+        {running && (
           <div className="help">
-            {s.teacher} is running this class, since {fmtTime(s.started_at)}. It has to end before yours can start.
+            {ours ? "Your class" : `${s.teacher}'s class`} is running. Pause or end it before starting another.
           </div>
         )}
         {teachable.length === 0 ? (
           <div className="help">An admin has not given you an experiment to teach yet.</div>
         ) : (
-          <div className="row">
-            <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ maxWidth: 380 }}>
-              <option value="">— choose an experiment —</option>
-              {teachable.map((e) => (
-                <option key={e.slug} value={e.slug}>
-                  {e.title}
-                </option>
-              ))}
-            </select>
-            <button className="btn primary" onClick={start} disabled={!pick || (running && !ours)}>
-              <Play size={14} /> {running ? "Switch the class to this" : "Start it for the class"}
-            </button>
-          </div>
-        )}
-        {pick && spec && startFields(spec).length > 0 && (
+          <div className="stack" style={{ gap: 10 }}>
+            <label className="field">
+              <span>Name it</span>
+              <input
+                type="text"
+                value={name}
+                placeholder="Tuesday 2pm, group B — anything that tells it from the others"
+                onChange={(e) => setName(e.target.value)}
+                disabled={running}
+              />
+              <span className="help">The experiment says what kind of class it is; this says which one.</span>
+            </label>
+            <label className="field">
+              <span>Experiment</span>
+              <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={running} style={{ maxWidth: 420 }}>
+                <option value="">— choose an experiment —</option>
+                {teachable.map((e) => (
+                  <option key={e.slug} value={e.slug}>
+                    {e.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pick && spec && startFields(spec).length > 0 && (
           <div className="inset stack" style={{ padding: 12, gap: 8 }}>
             <b className="small">What the class starts from</b>
             <div className="help">
@@ -145,16 +144,40 @@ export default function ClassPanel() {
             <ParamsForm params={startFields(spec)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
           </div>
         )}
+            <button className="btn primary" onClick={start} disabled={!pick || !name.trim() || running}>
+              <Play size={14} /> Start the experiment
+            </button>
+          </div>
+        )}
         {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
         <div className="help">
-          While a class runs, that is the only experiment students can work on, and only after you admit them. Displays 1–4 follow its four steps; the last display goes back to the hardware dashboard.
+          While a class runs, that is the only experiment students can work on, and only after you let them in.
         </div>
       </div>
 
-      {running && ours && (
+      {running && (
+        <div className="panel stack" style={{ borderColor: ours ? "var(--kept)" : "var(--line)" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3>
+              Running: {s.name || s.title || s.experiment}
+              <span className="faint small"> · {s.title || s.experiment} · {s.teacher} · since {fmtTime(s.started_at)}</span>
+            </h3>
+            {ours && (
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn sm" onClick={pause} title="Free the room without ending the class">
+                  <Pause size={13} /> Pause
+                </button>
+                <button className="btn sm danger" onClick={stop}>
+                  <Square size={13} /> End it
+                </button>
+              </div>
+            )}
+          </div>
+
+          {ours && (
         <div className="grid2">
-          <div className="panel stack" style={{ gap: 8 }}>
-            <h3>Asking to join ({waiting.length})</h3>
+          <div className="inset stack" style={{ padding: 12, gap: 8 }}>
+            <b>Asking to join ({waiting.length})</b>
             {waiting.length === 0 && <div className="help">Nobody is waiting.</div>}
             {waiting.map((m) => (
               <div key={m.user_id} className="row" style={{ justifyContent: "space-between" }}>
@@ -172,8 +195,8 @@ export default function ClassPanel() {
               </div>
             ))}
           </div>
-          <div className="panel stack" style={{ gap: 8 }}>
-            <h3>In the class ({inClass.length})</h3>
+          <div className="inset stack" style={{ padding: 12, gap: 8 }}>
+            <b>In the class ({inClass.length})</b>
             {inClass.length === 0 && <div className="help">Nobody yet.</div>}
             {inClass.map((m) => (
               <div key={m.user_id} className="row" style={{ justifyContent: "space-between" }}>
@@ -187,6 +210,8 @@ export default function ClassPanel() {
             ))}
           </div>
         </div>
+          )}
+        </div>
       )}
 
     </div>
@@ -198,9 +223,11 @@ export default function ClassPanel() {
 export function WallPanel() {
   const [state, setState] = useState(null);
   const [displays, setDisplays] = useState([]);
+  const [classes, setClasses] = useState([]);
   const load = useCallback(() => {
     api("/class").then(setState).catch(() => {});
     api("/displays").then(setDisplays).catch(() => {});
+    api("/class/history?limit=50").then((d) => setClasses(d.sessions || [])).catch(() => {});
   }, []);
   useEffect(() => {
     load();
@@ -223,7 +250,7 @@ export function WallPanel() {
         </div>
         <div className="grid2">
           {displays.map((d) => (
-            <DisplayControl key={d.id} display={d} session={session} onPush={push} />
+            <DisplayControl key={d.id} display={d} session={session} classes={classes} onPush={push} />
           ))}
         </div>
       </div>
@@ -231,30 +258,65 @@ export function WallPanel() {
   );
 }
 
-function DisplayControl({ display, session, onPush }) {
+function DisplayControl({ display, session, classes, onPush }) {
   const isStep = display.id <= 4;
-  const step = display.payload?.step || display.id;
-  const [who, setWho] = useState(display.payload?.user_id || "");
-  const [show, setShow] = useState(display.payload?.show || "results");
-  const people = (session?.members || []).filter((m) => m.admitted);
+  const payload = display.payload || {};
+  const [cls, setCls] = useState(payload.session_id || session?.id || "");
+  const [step, setStep] = useState(payload.step || display.id);
+  const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : "explanation");
+  const [who, setWho] = useState(payload.user_id || "");
+  const chosen = classes.find((c) => c.id === Number(cls)) || (Number(cls) === session?.id ? session : null);
+  const people = (chosen?.members || []).filter((m) => m.admitted);
+  const apply = () => {
+    const base = { session_id: Number(cls) || undefined, experiment: chosen?.experiment, step: Number(step), pinned: Boolean(chosen?.ended_at) };
+    if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
+    onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
+  };
   return (
     <div className="inset stack" style={{ padding: 10, gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <b>
-          Display {display.id} {isStep ? `· step ${step}` : ""}
-        </b>
+        <b>{isStep ? `Step ${payload.step || display.id} screen` : `Screen ${display.id}`}</b>
         <a className="small" href={`/display/${display.id}`} target="_blank" rel="noreferrer">
           open
         </a>
       </div>
       <div className="small muted">
-        showing: {display.mode}
-        {display.mode === "student" ? ` · ${display.payload?.show || "results"}` : ""}
+        showing: {display.mode === "student" ? `${payload.show || "results"} of one student` : display.mode === "step" ? "the step" : display.mode}
       </div>
       {isStep ? (
         <>
+          <select value={cls} onChange={(e) => setCls(e.target.value)}>
+            <option value="">— a class —</option>
+            {session && (
+              <option value={session.id}>
+                {session.name || session.title || session.experiment} (running)
+              </option>
+            )}
+            {classes
+              .filter((c) => c.id !== session?.id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.title || c.experiment}
+                  {c.ended_at ? " (finished)" : c.paused ? " (paused)" : ""}
+                </option>
+              ))}
+          </select>
           <div className="row" style={{ gap: 6 }}>
-            <select value={who} onChange={(e) => setWho(e.target.value)} style={{ flex: 1 }}>
+            <select value={step} onChange={(e) => setStep(e.target.value)} style={{ width: 100 }}>
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  step {n}
+                </option>
+              ))}
+            </select>
+            <select value={show} onChange={(e) => setShow(e.target.value)} style={{ flex: 1 }}>
+              <option value="explanation">what the step is</option>
+              <option value="results">a student's results</option>
+              <option value="code">a student's code</option>
+            </select>
+          </div>
+          {show !== "explanation" && (
+            <select value={who} onChange={(e) => setWho(e.target.value)}>
               <option value="">— a student —</option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
@@ -262,26 +324,17 @@ function DisplayControl({ display, session, onPush }) {
                 </option>
               ))}
             </select>
-            <select value={show} onChange={(e) => setShow(e.target.value)}>
-              <option value="results">results</option>
-              <option value="code">their code</option>
-            </select>
-          </div>
-          <div className="row" style={{ gap: 6 }}>
-            <button className="btn sm primary" disabled={!who} onClick={() => onPush(display.id, { mode: "student", payload: { session_id: session.id, experiment: session.experiment, step, user_id: Number(who), show } })}>
-              Put it up
-            </button>
-            <button className="btn sm ghost" onClick={() => onPush(display.id, { mode: "step", payload: { session_id: session.id, experiment: session.experiment, step } })}>
-              Back to the step
-            </button>
-          </div>
+          )}
+          <button className="btn sm primary" onClick={apply} disabled={!cls || (show !== "explanation" && !who)}>
+            Put it up
+          </button>
         </>
       ) : (
         <div className="row" style={{ gap: 6 }}>
           <button className={`btn sm ${display.mode === "grafana" ? "primary" : "ghost"}`} onClick={() => onPush(display.id, { mode: "grafana", payload: {} })}>
             Hardware
           </button>
-          <button className={`btn sm ${display.mode === "leaderboard" ? "primary" : "ghost"}`} onClick={() => onPush(display.id, { mode: "leaderboard", payload: { experiment: session.experiment } })}>
+          <button className={`btn sm ${display.mode === "leaderboard" ? "primary" : "ghost"}`} onClick={() => onPush(display.id, { mode: "leaderboard", payload: { experiment: session?.experiment } })}>
             Leaderboard
           </button>
         </div>

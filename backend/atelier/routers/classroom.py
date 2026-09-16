@@ -96,6 +96,7 @@ def _session_dict(db: Session, s: ClassSession, user: Optional[User], registry: 
     return {
         "id": s.id,
         "experiment": s.experiment,
+        "name": s.name or "",
         "paused": s.paused_at is not None,
         "paused_at": s.paused_at.isoformat() if s.paused_at else None,
         "params": s.params or {},
@@ -153,12 +154,14 @@ def start_class(body: dict, teacher: User = Depends(require_teacher), db: Sessio
     if teacher.role != "admin" and slug not in self_allowed(db, teacher.id):
         raise HTTPException(403, "An admin has not given you this experiment to teach")
     current = active_session(db)
-    if current is not None and current.started_by != teacher.id and teacher.role != "admin":
-        who = db.get(User, current.started_by)
-        raise HTTPException(409, f"{(who.name or who.username) if who else 'Another teacher'} is running a class ({current.experiment}). It has to end before yours can start.")
     if current is not None:
-        current.ended_at = datetime.utcnow()  # your own class, or an admin taking the room
-    s = ClassSession(experiment=slug, started_by=teacher.id, params=dict(body.get("params") or {}))
+        # no switching: a class is stopped or paused deliberately, never replaced by
+        # starting the next one
+        who = db.get(User, current.started_by)
+        whose = "Your class" if current.started_by == teacher.id else f"{(who.name or who.username) if who else 'Another teacher'}'s class"
+        raise HTTPException(409, f"{whose} ({current.name or current.experiment}) is running. Pause or end it first.")
+    name = str(body.get("name") or "").strip()[:120]
+    s = ClassSession(experiment=slug, name=name, started_by=teacher.id, params=dict(body.get("params") or {}))
     db.add(s)
     db.commit()
     # the wall follows the class: one display per step, and any display showing a

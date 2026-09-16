@@ -261,7 +261,9 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
     student's own version of it has to do, and who has handed theirs in."""
     session_id = payload.get("session_id")
     session = db.get(ClassSession, int(session_id)) if session_id else None
-    if session is not None and session.ended_at is not None:
+    # a class that has ended still shows if the teacher pointed a screen at it on
+    # purpose; one a screen merely followed goes blank when the class is over
+    if session is not None and session.ended_at is not None and not payload.get("pinned"):
         session = None
     slug = (session.experiment if session else payload.get("experiment")) or ""
     step_no = int(payload.get("step") or 1)
@@ -286,6 +288,8 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
     return {
         "experiment": slug,
         "title": spec.title,
+        "class_name": session.name or "",
+        "over": session.ended_at is not None,
         "step": step_no,
         "step_title": step.title,
         "summary": step.summary,
@@ -301,7 +305,7 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
     the standard code produced for the same step."""
     session_id = payload.get("session_id")
     session = db.get(ClassSession, int(session_id)) if session_id else None
-    if session_id and (session is None or session.ended_at is not None):
+    if session_id and (session is None or (session.ended_at is not None and not payload.get("pinned"))):
         return {"no_class": True}  # the class it belonged to is over
     slug = (session.experiment if session else payload.get("experiment")) or ""
     step_no = int(payload.get("step") or 1)

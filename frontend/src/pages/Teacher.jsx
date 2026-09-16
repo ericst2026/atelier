@@ -113,6 +113,8 @@ function RunsPanel() {
               <th>#</th>
               <th>User</th>
               <th>Experiment</th>
+              <th>Class</th>
+              <th>Whose class</th>
               <th>Kind</th>
               <th>Label</th>
               <th>Status</th>
@@ -127,6 +129,8 @@ function RunsPanel() {
                 <td>{r.id}</td>
                 <td>{r.username}</td>
                 <td>{r.experiment}</td>
+                <td>{r.class_name || <span className="faint">on their own</span>}</td>
+                <td>{r.class_teacher || <span className="faint">–</span>}</td>
                 <td>
                   {r.kind}
                   {r.step ? ` ${r.step}` : ""}
@@ -157,69 +161,6 @@ function RunsPanel() {
     </div>
   );
 }
-
-function DisplaysPanel() {
-  const [displays, setDisplays] = useState([]);
-  const [experiments, setExperiments] = useState([]);
-  const load = useCallback(() => api("/displays").then(setDisplays), []);
-  useEffect(() => {
-    load();
-    api("/experiments").then((d) => setExperiments(d.experiments));
-  }, [load]);
-  const save = async (d) => {
-    try {
-      await api(`/displays/${d.id}`, { method: "PUT", body: { mode: d.mode, payload: d.payload, name: d.name } });
-      load();
-    } catch (e) {
-      window.alert(e.message);
-    }
-  };
-  const edit = (i, patch) => setDisplays(displays.map((d, j) => (j === i ? { ...d, ...patch } : d)));
-  return (
-    <div className="grid3">
-      {displays.map((d, i) => (
-        <div key={d.id} className="panel stack" style={{ gap: 8 }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3>Display {d.id}</h3>
-            <a href={`/display/${d.id}`} target="_blank" rel="noreferrer" className="small">
-              open /display/{d.id}
-            </a>
-          </div>
-          <input type="text" value={d.name} onChange={(e) => edit(i, { name: e.target.value })} />
-          <select value={d.mode} onChange={(e) => edit(i, { mode: e.target.value, payload: {} })}>
-            {MODES.map(([k, l]) => (
-              <option key={k} value={k}>
-                {l}
-              </option>
-            ))}
-          </select>
-          {d.mode === "leaderboard" && (
-            <select value={d.payload.experiment || ""} onChange={(e) => edit(i, { payload: { ...d.payload, experiment: e.target.value || undefined } })}>
-              <option value="">all experiments</option>
-              {experiments.map((x) => (
-                <option key={x.slug} value={x.slug}>
-                  {x.title}
-                </option>
-              ))}
-            </select>
-          )}
-          {d.mode === "run" && <input type="number" placeholder="run id" value={d.payload.run_id || ""} onChange={(e) => edit(i, { payload: { run_id: Number(e.target.value) } })} />}
-          {d.mode === "grafana" && <input type="text" placeholder="dashboard URL (blank = default hardware dashboard)" value={d.payload.url || ""} onChange={(e) => edit(i, { payload: { url: e.target.value || undefined } })} />}
-          {d.mode === "message" && (
-            <>
-              <input type="text" placeholder="title" value={d.payload.title || ""} onChange={(e) => edit(i, { payload: { ...d.payload, title: e.target.value } })} />
-              <textarea placeholder="text" value={d.payload.text || ""} onChange={(e) => edit(i, { payload: { ...d.payload, text: e.target.value } })} />
-            </>
-          )}
-          <button className="btn primary sm" onClick={() => save(d)}>
-            Push to display {d.id}
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 
 export default function Teacher() {
   const [sp, setSp] = useSearchParams();
@@ -252,12 +193,7 @@ export default function Teacher() {
       {section === "history" && <ClassHistory onResumed={() => setSection("class")} />}
       {section === "live" && <LivePanel live={live} />}
       {section === "runs" && <RunsPanel />}
-      {section === "displays" && (
-        <div className="stack">
-          <WallPanel />
-          <DisplaysPanel />
-        </div>
-      )}
+      {section === "displays" && <WallPanel />}
     </main>
   );
 }

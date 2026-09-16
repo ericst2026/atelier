@@ -72,6 +72,8 @@ class RunOut(BaseModel):
     gpus: int
     gpu_ids: list[int]
     node: Optional[str] = None   # which GPU node ran it, when there is more than one
+    class_name: str = ""         # the class it was run in, and whose class that is
+    class_teacher: str = ""
     status: str
     progress_pct: float
     progress_msg: str

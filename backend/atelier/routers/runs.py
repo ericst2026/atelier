@@ -10,18 +10,35 @@ from ..auth import current_user, is_staff, require_teacher
 from ..bus import SyncBus
 from ..db import get_db
 from ..deps import get_bus, get_registry
-from ..models import Run, User
+from ..models import ClassSession, Run, User
 from ..registry import Registry
 from ..schemas import RunOut, StepRunCreate
 
 router = APIRouter(tags=["runs"])
 
 
-def _out(run: Run, users: dict[int, User]) -> RunOut:
+def _out(run: Run, users: dict[int, User], classes: Optional[dict[int, ClassSession]] = None) -> RunOut:
     o = RunOut.model_validate(run)
     u = users.get(run.user_id)
     o.username = u.username if u else ""
+    c = (classes or {}).get((run.inputs or {}).get("class_session"))
+    if c is not None:
+        o.class_name = c.name or c.experiment
+        o.class_teacher = getattr(c, "teacher_name", "") or ""
     return o
+
+
+def _classes(db: Session, runs: list[Run]) -> dict[int, ClassSession]:
+    """The classes these runs belong to, each carrying its teacher's name."""
+    ids = {cid for r in runs if (cid := (r.inputs or {}).get("class_session"))}
+    if not ids:
+        return {}
+    sessions = list(db.scalars(select(ClassSession).where(ClassSession.id.in_(ids))).all())
+    teachers = {u.id: u for u in db.scalars(select(User).where(User.id.in_([c.started_by for c in sessions]))).all()}
+    for c in sessions:
+        t = teachers.get(c.started_by)
+        c.teacher_name = (t.name or t.username) if t else ""
+    return {c.id: c for c in sessions}
 
 
 @router.post("/experiments/{slug}/steps/{step_no}/runs", response_model=RunOut, status_code=201)
@@ -62,7 +79,7 @@ def list_runs(
         q = q.where(Run.status.in_(status.split(",")))
     runs = db.scalars(q).all()
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.user_id for r in runs}))).all()} if runs else {}
-    return [_out(r, users) for r in runs]
+    return [_out(r, users, _classes(db, runs)) for r in runs]
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)

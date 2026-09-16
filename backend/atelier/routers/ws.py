@@ -9,7 +9,7 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import board, storage
-from ..auth import user_from_token
+from ..auth import is_staff, user_from_token
 from ..bus import run_channel
 from ..config import settings
 from ..db import SessionLocal
@@ -31,7 +31,7 @@ async def ws_run(ws: WebSocket, run_id: int, token: str = ""):
     with SessionLocal() as db:
         user = user_from_token(db, token)
         run = db.get(Run, run_id)
-        if user is None or run is None or (user.role != "teacher" and run.user_id != user.id):
+        if user is None or run is None or (not is_staff(user) and run.user_id != user.id):
             await ws.close(code=4403)
             return
         snapshot = {"type": "snapshot", "status": run.status, "progress_pct": run.progress_pct, "progress_msg": run.progress_msg, "lines": storage.last_lines(storage.run_dir(run.id) / "run.log", settings.log_tail_lines), "live": storage.read_json(storage.run_dir(run.id) / "live.json", {"series": {}})}
@@ -74,7 +74,7 @@ async def ws_teacher(ws: WebSocket, token: str = ""):
     hub = get_hub()
     with SessionLocal() as db:
         user = user_from_token(db, token)
-        if user is None or user.role != "teacher":
+        if not is_staff(user):  # an admin watches the node too
             await ws.close(code=4403)
             return
         live = board.live(db, get_bus().worker_state())

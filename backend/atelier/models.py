@@ -102,6 +102,9 @@ class ClassSession(Base):
     __tablename__ = "class_sessions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     experiment: Mapped[str] = mapped_column(String(64), index=True)
+    # what this class is called: the experiment says what kind it is, the name says
+    # which one, so two classes on the same experiment stay apart
+    name: Mapped[str] = mapped_column(String(120), default="")
     started_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     started_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     # a paused class keeps its roster and its settings, and frees the room for

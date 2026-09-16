@@ -38,7 +38,7 @@ def _add_missing_columns(engine) -> None:
 
     wanted = {
         "submissions": {"step": "INTEGER DEFAULT 0"},
-        "class_sessions": {"paused_at": "TIMESTAMP", "params": "JSON"},
+        "class_sessions": {"paused_at": "TIMESTAMP", "params": "JSON", "name": "VARCHAR(120) DEFAULT ''"},
     }
     insp = inspect(engine)
     for table, cols in wanted.items():
