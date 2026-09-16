@@ -46,31 +46,44 @@ export default function ClassBanner() {
   const admitted = s.me?.admitted;
   const asked = s.me?.asked;
   const teaching = s.me?.mine;
+  const isAdmin = user?.role === "admin";
   const waiting = s.members.filter((m) => !m.admitted).length;
+  // the class is the teacher's to let people into — another teacher sitting in asks
+  // like anyone else. Only the teacher running it, and an admin, are in already.
+  const canOpen = admitted || teaching || isAdmin;
+  const mayAsk = !teaching && !isAdmin && !admitted;
   return (
-    <div className="panel" style={{ marginBottom: 14, borderColor: admitted || staff ? "var(--kept)" : "var(--raw)" }}>
+    <div className="panel" style={{ marginBottom: 14, borderColor: canOpen ? "var(--kept)" : "var(--raw)" }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div>
           <b>In class now: {s.title || s.experiment}</b>
           <div className="muted small">
-            {staff
-              ? `${teaching ? "Yours" : `${s.teacher} is teaching it`} — ${s.members.filter((m) => m.admitted).length} in the class, ${waiting} waiting`
+            {teaching
+              ? `Yours — ${s.members.filter((m) => m.admitted).length} in the class, ${waiting} waiting`
               : admitted
                 ? `You are in ${s.teacher}'s class. Open the experiment and work through the steps.`
                 : asked
                   ? `${s.teacher} has your request — wait to be let in.`
-                  : `Ask ${s.teacher} to let you in.`}
+                  : isAdmin
+                    ? `${s.teacher} is teaching it.`
+                    : `Ask ${s.teacher} to let you in.`}
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          {!staff && !admitted && (
+          {mayAsk && (
             <button className="btn primary" onClick={ask} disabled={busy || asked}>
               {asked ? "Waiting…" : "Ask to join"}
             </button>
           )}
-          <Link className="btn" to={`/experiments/${s.experiment}`}>
-            Open it
-          </Link>
+          {canOpen ? (
+            <Link className="btn" to={`/experiments/${s.experiment}`}>
+              Open it
+            </Link>
+          ) : (
+            <button className="btn" disabled title="Your teacher has to let you in first">
+              Open it
+            </button>
+          )}
         </div>
       </div>
       {!staff && mine.length > 0 && <div className="help" style={{ marginTop: 6 }}>On your own you may also run: {mine.join(", ")}.</div>}
