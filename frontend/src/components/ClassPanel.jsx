@@ -266,7 +266,24 @@ function DisplayControl({ display, session, classes, onPush }) {
   const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
   const chosen = classes.find((c) => c.id === Number(cls)) || (Number(cls) === session?.id ? session : null);
-  const people = (chosen?.members || []).filter((m) => m.admitted);
+  // only people with something to show: the wall reads what was handed in, so a
+  // student who has not handed this step in would put an empty screen up
+  const [handed, setHanded] = useState([]);
+  useEffect(() => {
+    if (!chosen?.experiment) return setHanded([]);
+    api(`/submissions?experiment=${chosen.experiment}&step=${Number(step)}`)
+      .then((subs) => {
+        const seen = new Set();
+        setHanded(
+          subs
+            .filter((x) => !seen.has(x.user_id) && seen.add(x.user_id))
+            .map((x) => ({ user_id: x.user_id, name: x.name || x.username }))
+        );
+      })
+      .catch(() => setHanded([]));
+  }, [chosen?.experiment, step]);
+  // the teacher hands nothing in, so their own last run of the step stands in
+  const people = chosen ? [...handed, { user_id: chosen.teacher_id, name: `${chosen.teacher} (yours)` }].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i) : [];
   const apply = () => {
     const base = { session_id: Number(cls) || undefined, experiment: chosen?.experiment, step: Number(step), pinned: Boolean(chosen?.ended_at) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
@@ -317,7 +334,7 @@ function DisplayControl({ display, session, classes, onPush }) {
           </div>
           {show !== "explanation" && (
             <select value={who} onChange={(e) => setWho(e.target.value)}>
-              <option value="">— a student —</option>
+              <option value="">{handed.length ? "— who —" : "— nobody has handed this in —"}</option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.name || m.username}
