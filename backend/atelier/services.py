@@ -112,9 +112,14 @@ def coerce_params(spec_params: list[dict[str, Any]], given: dict[str, Any], spec
     return out
 
 
-def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]], params: dict[str, Any]) -> dict[str, Any]:
+def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]], params: dict[str, Any], shared: frozenset[str] = frozenset()) -> dict[str, Any]:
     """Params of type `run` point at another run (possibly in another experiment);
-    hand its outputs to the script under inputs[<key>_run]."""
+    hand its outputs to the script under inputs[<key>_run].
+
+    `shared` names the params the teacher fixed for the class. Those point at the
+    teacher's own runs — a student has never done the experiment this one builds on,
+    which is the whole reason the teacher chose it — so ownership is not checked for
+    them. Everything else still has to be the student's own."""
     refs: dict[str, Any] = {}
     for p in spec_params:
         if p.get("type") != "run":
@@ -122,7 +127,12 @@ def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]],
         rid = params.get(p["key"])
         if not rid:
             continue
-        ref = visible_run(db, int(rid), user)
+        if p["key"] in shared:
+            ref = db.get(Run, int(rid))
+            if ref is None:
+                raise HTTPException(400, f"The run your teacher set for {p['key']!r} no longer exists")
+        else:
+            ref = visible_run(db, int(rid), user)
         if ref.status != "succeeded":
             raise HTTPException(400, f"Run {rid} has not finished successfully")
         want_exp, want_step = p.get("experiment"), p.get("step")
@@ -149,7 +159,9 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
     # has not done the experiment this one builds on, so they cannot pick its run
     session = classroom.active_session(db)
     in_class = session is not None and session.experiment == spec.slug and (user.id == session.started_by or (classroom.membership(db, session.id, user.id) or None) is not None)
+    fixed: dict[str, Any] = {}
     if session is not None and session.experiment == spec.slug and user.id != session.started_by and session.params:
+        # the class works from what the teacher chose, whatever the form was sent with
         fixed = {k: v for k, v in session.params.items() if k in {p["key"] for p in step.params}}
         params = {**params, **fixed}
     params = coerce_params(step.params, params, spec)
@@ -173,7 +185,7 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
         inputs.update(parent.outputs or {})
         inputs["parent_run_id"] = parent.id
         inputs["parent_run_dir"] = str(storage.run_dir(parent.id))
-    inputs.update(resolve_run_refs(db, user, step.params, params))
+    inputs.update(resolve_run_refs(db, user, step.params, params, shared=frozenset(fixed)))
     want_gpus = step.gpus if gpus is None else int(gpus)
     if want_gpus > step.gpus and not is_staff(user):
         want_gpus = step.gpus

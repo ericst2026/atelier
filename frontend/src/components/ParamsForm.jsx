@@ -74,13 +74,23 @@ const visible = (p, values, params) =>
   });
 
 /** Schema-driven form. params: [{key,label,type,min,max,step,default,options,help,show_if}] */
-export default function ParamsForm({ params, values, onChange, disabled, experiment, step }) {
+/** `locked` holds what a teacher fixed for the class: those fields are shown as
+ *  they will run, and cannot be changed. */
+export default function ParamsForm({ params, values, onChange, disabled, experiment, step, locked }) {
   const set = (k, v) => onChange({ ...values, [k]: v });
   return (
     <div className="stack" style={{ gap: 10 }}>
       {params.filter((p) => visible(p, values, params)).map((p) => {
         const v = values[p.key] ?? p.default;
         const t = p.type || "text";
+        if (locked && p.key in locked)
+          return (
+            <label key={p.key} className="field">
+              <span>{p.label}</span>
+              <input type="text" value={describe(p, locked[p.key])} readOnly disabled />
+              <span className="help">Your teacher set this for the class.</span>
+            </label>
+          );
         if (t === "material")
           return (
             <label key={p.key} className="field">
@@ -170,4 +180,13 @@ export default function ParamsForm({ params, values, onChange, disabled, experim
       })}
     </div>
   );
+}
+
+/** A fixed value, in words rather than as an id where we can manage it. */
+function describe(p, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (p.type === "material") return String(value).split("/").slice(-1)[0];
+  if (p.type === "run") return `run #${value}`;
+  const opt = (p.options || []).find((o) => (typeof o === "object" ? o.value : o) === value);
+  return opt ? (typeof opt === "object" ? opt.label : opt) : String(value);
 }

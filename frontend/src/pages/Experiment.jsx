@@ -15,9 +15,9 @@ import { fmtTime } from "../lib/format";
 import { liveCharts, useRunStream } from "../lib/runs";
 
 
-function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
+function StepPanel({ spec, step, runs, prevRuns, onStarted, locked }) {
   const { isTeacher } = useAuth();
-  const defaults = useMemo(() => Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), [step]);
+  const defaults = useMemo(() => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(locked || {}) }), [step, locked]);
   const [params, setParams] = useState(defaults);
   const [parentId, setParentId] = useState(prevRuns[0]?.id || null);
   const [gpus, setGpus] = useState(step.gpus);
@@ -138,7 +138,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
               <span className="help">{codeSource === "own" ? "Your file runs with the same params and inputs as the standard one." : "The implementation this experiment ships with."}</span>
             </label>
           )}
-          <ParamsForm params={step.params || []} values={params} onChange={setParams} disabled={busy} experiment={spec.slug} step={step.index} />
+          <ParamsForm params={step.params || []} values={params} onChange={setParams} disabled={busy} experiment={spec.slug} step={step.index} locked={locked} />
           {isTeacher && step.gpus > 0 && (
             <label className="field">
               <span>GPUs for this run</span>
@@ -275,6 +275,13 @@ export default function Experiment() {
     }
     return st;
   }, [shownRuns]);
+  // in someone else's class, what the teacher chose is what runs
+  const lockedFor = (st) => {
+    if (!inClass || session.me?.mine) return null;
+    const keys = new Set((st.params || []).map((p) => p.key));
+    const fixed = Object.entries(session.params || {}).filter(([k]) => keys.has(k));
+    return fixed.length ? Object.fromEntries(fixed) : null;
+  };
   if (error) return <main className="page empty">{error}</main>;
   if (!spec) return <main className="page muted">Loading…</main>;
   const step = spec.steps[stepNo - 1] || spec.steps[0];
@@ -311,7 +318,15 @@ export default function Experiment() {
         </div>
       )}
       <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp(classId ? { step: String(n), class: String(classId) } : { step: String(n) })} />
-      <StepPanel key={step.index} spec={spec} step={step} runs={shownRuns.filter((r) => r.step === step.index)} prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")} onStarted={loadRuns} />
+      <StepPanel
+        key={step.index}
+        spec={spec}
+        step={step}
+        runs={shownRuns.filter((r) => r.step === step.index)}
+        prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")}
+        onStarted={loadRuns}
+        locked={lockedFor(step)}
+      />
       {spec.description && (
         <div className="panel" style={{ marginTop: 20 }}>
           <Markdown text={spec.description} />

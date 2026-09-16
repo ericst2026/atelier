@@ -345,7 +345,21 @@ function DisplayControl({ display, session, classes, onPush }) {
 
 /** The first step's run and material params: what an experiment needs before a
  *  student can start it, which in class the teacher settles once. */
+/** What an experiment needs from outside itself, which a student cannot supply:
+ *  another experiment's run, and the prepared models or datasets that stand in for
+ *  one. A step that builds on the step before it is not here — that is the
+ *  student's own work, and they pick their own. */
 function startFields(spec) {
-  const first = (spec?.steps || [])[0];
-  return (first?.params || []).filter((p) => p.type === "run" || p.type === "material" || (p.type === "select" && /source/.test(p.key)));
+  const out = [];
+  for (const st of spec?.steps || []) {
+    for (const p of st.params || []) {
+      const fromElsewhere =
+        (p.type === "run" && p.experiment && p.experiment !== spec.slug) ||
+        p.type === "material" ||
+        (p.type === "select" && /source/.test(p.key));
+      if (!fromElsewhere || out.some((x) => x.key === p.key)) continue;
+      out.push(st.index === 1 ? p : { ...p, label: `${p.label} (step ${st.index})` });
+    }
+  }
+  return out;
 }

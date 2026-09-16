@@ -16,9 +16,42 @@ const MODES = [
   ["message", "Message"],
 ];
 
+/** The GPUs of one machine, labelled by that machine's own indices. */
+function NodeCard({ name, gpus, worker, single }) {
+  const free = (worker?.free_gpus || []).filter((g) => (single ? true : String(g).startsWith(`${name}:`))).length;
+  const stale = worker?.at ? Date.now() - new Date(`${worker.at}Z`).getTime() > 30000 : true;
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <b>{name}</b>
+        <span className="small muted">
+          {gpus.length ? `${gpus.length} GPU${gpus.length === 1 ? "" : "s"} · ${free} free` : "no GPUs"}
+          {worker ? (stale ? " · heartbeat late" : " · reporting") : " · not checked in"}
+        </span>
+      </div>
+      <div className="kpis">
+        {gpus.length === 0 && <div className="kpi"><div className="v">CPU</div><div className="l">runs on processor</div></div>}
+        {gpus.map((g) => (
+          <div key={g.uid || `${name}:${g.index}`} className={`kpi ${g.job ? "raw" : "kept"}`}>
+            <div className="v">{g.util}%</div>
+            <div className="l">
+              GPU {g.index} · {(g.mem_used / 1e9).toFixed(0)}/{(g.mem_total / 1e9).toFixed(0)} GB · {g.temp}°
+            </div>
+            <div className="h">{g.job ? `${g.job.user} · ${g.job.experiment} · run ${g.job.run_id}` : "free"}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LivePanel({ live }) {
   if (!live) return <div className="empty">Waiting for the worker…</div>;
   const gpus = live.gpus?.gpus || [];
+  // a GPU belongs to a machine; index 0 on one node is not index 0 on another
+  const nodeNames = live.nodes?.length ? live.nodes : [...new Set(gpus.map((g) => g.node).filter(Boolean))];
+  const workers = live.worker?.nodes || (live.worker ? [live.worker] : []);
+  const single = nodeNames.length <= 1;
   return (
     <div className="stack">
       <div className="row">
@@ -26,15 +59,20 @@ function LivePanel({ live }) {
           <i className="dot" /> {live.running.length} running
         </span>
         <span className="pill queued">{live.queued.length} queued</span>
-        <span className="pill">{live.worker ? `${live.worker.nodes?.length > 1 ? `${live.worker.nodes.length} nodes` : "worker ok"} · free GPUs ${live.worker.free_gpus.join(",") || "none"}` : "worker offline"}</span>
-        {live.nodes?.length > 1 && <span className="pill">{live.nodes.join(" · ")}</span>}
+        <span className="pill">
+          {live.worker ? `${nodeNames.length > 1 ? `${nodeNames.length} nodes` : "worker ok"} · ${gpus.length} GPU${gpus.length === 1 ? "" : "s"} · ${(live.worker.free_gpus || []).length} free` : "worker offline"}
+        </span>
       </div>
-      <div className="kpis">
-        {Array.from({ length: live.gpu_count }, (_, i) => gpus[i]).map((g, i) => (
-          <div key={i} className={`kpi ${g?.job ? "raw" : g ? "kept" : ""}`}>
-            <div className="v">{g ? `${g.util}%` : "–"}</div>
-            <div className="l">GPU {i}{g ? ` · ${(g.mem_used / 1e9).toFixed(0)}/${(g.mem_total / 1e9).toFixed(0)} GB · ${g.temp}°` : ""}</div>
-            <div className="h">{g?.job ? `${g.job.user} · ${g.job.experiment} · run ${g.job.run_id}` : "free"}</div>
+      {nodeNames.length === 0 && <div className="help">No worker has checked in.</div>}
+      <div className={nodeNames.length > 1 ? "grid2" : "stack"}>
+        {nodeNames.map((name) => (
+          <div key={name} className={nodeNames.length > 1 ? "panel" : ""}>
+            <NodeCard
+              name={name}
+              single={single}
+              gpus={gpus.filter((g) => (g.node || name) === name)}
+              worker={workers.find((w) => (w.node || "") === name) || (single ? live.worker : null)}
+            />
           </div>
         ))}
       </div>
