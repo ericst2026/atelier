@@ -18,7 +18,7 @@ export default function Home() {
           <h1>Experiments</h1>
           <p className="muted">Four steps each. Run them on the server with the standard code, or write your own for the steps that allow it.</p>
         </div>
-        <div className="muted small">signed in as {user.name || user.username}</div>
+        <div className="muted small">signed in as {user?.name || user?.username}</div>
       </div>
       <ClassBanner />
       {error && <div className="empty">{error}</div>}

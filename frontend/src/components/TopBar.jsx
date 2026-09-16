@@ -29,7 +29,9 @@ export default function TopBar() {
       <GpuStrip />
       {user && (
         <div className="userchip">
-          <span>{user.name || user.username}</span>
+          <Link to="/account" title="Your account and password">
+            {user.name || user.username}
+          </Link>
           <span className={`role ${user.role}`}>{user.role}</span>
           <button className="btn sm ghost" onClick={logout} title="Sign out">
             <LogOut size={14} />

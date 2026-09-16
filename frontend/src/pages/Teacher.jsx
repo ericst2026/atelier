@@ -136,7 +136,8 @@ function UsersPanel() {
   const [form, setForm] = useState({ username: "", name: "", role: "student", password: "" });
   const [msg, setMsg] = useState(null);
   const csv = useRef(null);
-  const load = useCallback(() => api("/users").then(setUsers), []);
+  // without this, a refused or failed request left an empty table and no reason
+  const load = useCallback(() => api("/users").then(setUsers).catch((e) => setMsg(`Could not load the accounts: ${e.message}`)), []);
   useEffect(load, [load]);
   const create = async () => {
     try {
@@ -183,6 +184,7 @@ function UsersPanel() {
         <span className="help">CSV columns: username,name,role,password</span>
         {msg && <span className="small" style={{ color: "var(--sky)" }}>{msg}</span>}
       </div>
+      {users.length === 0 && <div className="help">No accounts loaded.</div>}
       <div className="tablewrap">
         <table className="data">
           <thead>

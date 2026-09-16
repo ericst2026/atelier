@@ -1,7 +1,9 @@
 import React from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
 import TopBar from "./components/TopBar";
 import { useAuth } from "./lib/auth";
+import Account from "./pages/Account";
 import Display from "./pages/Display";
 import Experiment from "./pages/Experiment";
 import Home from "./pages/Home";
@@ -19,7 +21,9 @@ function RequireAuth({ teacher = false }) {
   return (
     <div className="app">
       <TopBar />
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </div>
   );
 }
@@ -32,6 +36,7 @@ export default function App() {
       <Route path="/display/:n" element={<Display />} />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<Home />} />
+        <Route path="/account" element={<Account />} />
         <Route path="/experiments/:slug" element={<Experiment />} />
       </Route>
       <Route element={<RequireAuth teacher />}>
