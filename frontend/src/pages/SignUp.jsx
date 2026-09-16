@@ -18,15 +18,23 @@ export default function SignUp() {
   if (ready && user) return <Navigate to="/" replace />;
   const submit = async (e) => {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+    // say what is missing instead of sitting there doing nothing
+    if (!username.trim()) return setError("Choose a username.");
+    if (password.length < 4) return setError("The password needs at least four characters.");
+    setBusy(true);
     try {
       await api("/auth/signup", { method: "POST", body: { username: username.trim(), name: name.trim(), password, role } });
       if (role === "teacher") {
         setPending(true); // nothing to sign in to yet
       } else {
-        await login(username.trim(), password);
-        nav("/", { replace: true });
+        // the account exists now; if signing in fails, say so rather than looking stuck
+        try {
+          await login(username.trim(), password);
+          nav("/", { replace: true });
+        } catch (err) {
+          setError(`Your account was created, but signing in failed: ${err.message}. Try the sign-in page.`);
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -79,7 +87,7 @@ export default function SignUp() {
               </span>
             </label>
             {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
-            <button className="btn primary" type="submit" disabled={busy || !username || password.length < 4}>
+            <button className="btn primary" type="submit" disabled={busy}>
               {busy ? "Creating…" : "Create the account"}
             </button>
             <div className="help">
