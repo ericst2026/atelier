@@ -48,7 +48,7 @@ def start_step(slug: str, step_no: int, body: StepRunCreate, user: User = Depend
         spec.step(step_no)
     except KeyError:
         raise HTTPException(404, "Unknown experiment or step")
-    run = services.create_step_run(db, bus, user, spec, step_no, body.params, body.parent_run_id, body.gpus, body.label, body.code_source)
+    run = services.create_step_run(db, bus, user, spec, step_no, body.params, body.parent_run_id, body.gpus, body.label, body.code_source, body.class_session)
     return _out(run, {user.id: user})
 
 

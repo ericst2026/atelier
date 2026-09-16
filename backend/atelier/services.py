@@ -144,7 +144,7 @@ def resolve_run_refs(db: Session, user: User, spec_params: list[dict[str, Any]],
     return refs
 
 
-def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, params: dict[str, Any], parent_run_id: Optional[int], gpus: Optional[int], label: str, code_source: str = "standard") -> Run:
+def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec, step_no: int, params: dict[str, Any], parent_run_id: Optional[int], gpus: Optional[int], label: str, code_source: str = "standard", class_session: Optional[int] = None) -> Run:
     step = spec.step(step_no)
     own = code_source == "own"
     if own and not step.own_code:
@@ -152,23 +152,30 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
     script = stepcode.code_path(user.id, spec.slug, step_no) if own else spec.dir / step.script
     if own and not script.exists():
         raise HTTPException(400, "Write and save your own code for this step first")
-    allowed, why = classroom.may_run(db, user, spec.slug)
-    if not allowed:
-        raise HTTPException(403, why)
-    # in class, whatever the teacher set the experiment to begin from wins: a student
-    # has not done the experiment this one builds on, so they cannot pick its run
-    session = classroom.active_session(db)
-    in_class = session is not None and session.experiment == spec.slug and (user.id == session.started_by or (classroom.membership(db, session.id, user.id) or None) is not None)
+    # a run is either part of a class or a person's own work, and the caller says
+    # which: the same experiment can be both at once, so this is never guessed
+    session = None
     fixed: dict[str, Any] = {}
-    if session is not None and session.experiment == spec.slug and user.id != session.started_by and session.params:
-        # the class works from what the teacher chose, whatever the form was sent with
-        fixed = {k: v for k, v in session.params.items() if k in {p["key"] for p in step.params}}
-        params = {**params, **fixed}
+    if class_session:
+        allowed, why = classroom.may_run_in_class(db, user, spec.slug, int(class_session))
+        if not allowed:
+            raise HTTPException(403, why)
+        session = classroom.active_session(db)
+        if session.params:
+            keys = {p["key"] for p in step.params}
+            # a student has not done the experiment this one builds on, so what the
+            # teacher chose is what runs; for the teacher it is a starting point
+            fixed = {k: v for k, v in session.params.items() if k in keys}
+            params = {**params, **fixed} if user.id != session.started_by else {**fixed, **{k: v for k, v in params.items() if v not in (None, "")}}
+    else:
+        allowed, why = classroom.may_run_alone(db, user, spec.slug)
+        if not allowed:
+            raise HTTPException(403, why)
     params = coerce_params(step.params, params, spec)
     inputs: dict[str, Any] = {
         # which class this run belongs to, so class work and a student's own work on
         # the same experiment stay apart even though they share a page
-        "class_session": session.id if in_class else None,
+        "class_session": session.id if session is not None else None,
         "code_source": "own" if own else "standard",
         "materials_dir": str(settings.materials_dir),
         "workspace_dir": str(storage.workspace_dir(user.id, spec.slug)),

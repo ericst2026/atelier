@@ -61,6 +61,30 @@ def visible_experiments(db: Session, user: User) -> set[str]:
     return out
 
 
+def may_run_alone(db: Session, user: User, experiment: str) -> tuple[bool, str]:
+    """Working on your own: an admin may, and anyone an admin granted this
+    experiment to. Being in a class does not let you run it outside the class."""
+    if user.role == "admin" or experiment in self_allowed(db, user.id):
+        return True, ""
+    return False, "You have not been allowed to run this experiment on your own. Your teacher's class is where you work on it."
+
+
+def may_run_in_class(db: Session, user: User, experiment: str, session_id: int) -> tuple[bool, str]:
+    """Working in a class: it has to be the class that is running, on this
+    experiment, and you have to be in it."""
+    s = active_session(db)
+    if s is None or s.id != session_id:
+        return False, "That class is not running now."
+    if s.experiment != experiment:
+        return False, f"That class is running {s.experiment}."
+    if user.role == "admin" or s.started_by == user.id:
+        return True, ""
+    m = membership(db, s.id, user.id)
+    if m is not None and m.admitted:
+        return True, ""
+    return False, "Ask your teacher to let you into the class first."
+
+
 def may_run(db: Session, user: User, experiment: str) -> tuple[bool, str]:
     """Whether this person may run a step of this experiment right now."""
     if user.role == "admin":

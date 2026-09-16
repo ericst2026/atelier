@@ -15,9 +15,12 @@ import { fmtTime } from "../lib/format";
 import { liveCharts, useRunStream } from "../lib/runs";
 
 
-function StepPanel({ spec, step, runs, prevRuns, onStarted, locked }) {
+function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession, prefill }) {
   const { isTeacher } = useAuth();
-  const defaults = useMemo(() => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(locked || {}) }), [step, locked]);
+  const defaults = useMemo(
+    () => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(prefill || {}), ...(locked || {}) }),
+    [step, locked, prefill]
+  );
   const [params, setParams] = useState(defaults);
   const [parentId, setParentId] = useState(prevRuns[0]?.id || null);
   const [gpus, setGpus] = useState(step.gpus);
@@ -89,7 +92,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted, locked }) {
     setBusy(true);
     setError(null);
     try {
-      const run = await api(`/experiments/${spec.slug}/steps/${step.index}/runs`, { method: "POST", body: { params, parent_run_id: step.needs_previous ? parentId : null, gpus: isTeacher ? gpus : null, code_source: codeSource } });
+      const run = await api(`/experiments/${spec.slug}/steps/${step.index}/runs`, { method: "POST", body: { params, parent_run_id: step.needs_previous ? parentId : null, gpus: isTeacher ? gpus : null, code_source: codeSource, class_session: classSession } });
       setSelected(run.id);
       setShowLog(true);
       onStarted(run);
@@ -275,6 +278,13 @@ export default function Experiment() {
     }
     return st;
   }, [shownRuns]);
+  // the teacher's own form opens on what their class is set to, and can be changed
+  const prefillFor = (st) => {
+    if (!inClass || !session.me?.mine) return null;
+    const keys = new Set((st.params || []).map((p) => p.key));
+    const fixed = Object.entries(session.params || {}).filter(([k]) => keys.has(k));
+    return fixed.length ? Object.fromEntries(fixed) : null;
+  };
   // in someone else's class, what the teacher chose is what runs
   const lockedFor = (st) => {
     if (!inClass || session.me?.mine) return null;
@@ -326,6 +336,8 @@ export default function Experiment() {
         prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")}
         onStarted={loadRuns}
         locked={lockedFor(step)}
+        prefill={prefillFor(step)}
+        classSession={inClass ? session.id : null}
       />
       {spec.description && (
         <div className="panel" style={{ marginTop: 20 }}>

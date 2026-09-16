@@ -90,6 +90,8 @@ class RunOut(BaseModel):
 class StepRunCreate(BaseModel):
     params: dict[str, Any] = {}
     code_source: str = "standard"  # "own" runs the student's file for this step
+    # the class this run is part of; absent means the person is working on their own
+    class_session: Optional[int] = None
     parent_run_id: Optional[int] = None
     gpus: Optional[int] = None
     label: str = ""
