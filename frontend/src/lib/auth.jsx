@@ -26,7 +26,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
   }, []);
-  return <Ctx.Provider value={{ user, ready, login, logout, isTeacher: user?.role === "teacher" }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, ready, login, logout, isTeacher: user?.role === "teacher" || user?.role === "admin", isAdmin: user?.role === "admin" }}>{children}</Ctx.Provider>;
 }
 
 export const useAuth = () => useContext(Ctx);

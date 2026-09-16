@@ -130,6 +130,12 @@ label.field > span:first-child { color: var(--text); }
 .tabs button.active { color: var(--text); border-bottom-color: var(--raw); }
 
 .steplayout { display: grid; grid-template-columns: clamp(320px, 22vw, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
+/* with the editor open the page grows a column rather than pushing the results
+   down the page: the form, the code, and what came out of running it */
+.steplayout.withcode { grid-template-columns: clamp(300px, 18vw, 380px) minmax(0, 1.1fr) minmax(0, 1fr); }
+/* too narrow for three columns: stack form, code and results down the page so the
+   editor never lands in a column of its own half the width of the code in it */
+@media (max-width: 1500px) { .steplayout.withcode { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1000px) { .steplayout { grid-template-columns: 1fr; } .rail { grid-template-columns: 1fr 1fr; } }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 165px), 1fr)); gap: 10px; }
@@ -272,6 +278,16 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .stepwall .panel { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
 .display .stepwall .bar { padding: 12px 18px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 18px; }
 .display .stepwall pre { margin: 0; padding: 16px 18px; overflow: auto; font-family: var(--mono); font-size: 15px; line-height: 1.5; color: #c7d3ea; white-space: pre; }
+.display .steptext { padding: 18px 22px; overflow: auto; font-size: 21px; line-height: 1.5; }
+.display .steptext .md p { max-width: none; margin-bottom: 12px; }
+.display .steptext .brief { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.display .steptext .brief h3 { font-size: 20px; color: var(--raw); margin-bottom: 8px; }
+.display .steptext .brief ul { margin: 0; padding-left: 26px; }
+.display .steptext .brief li { margin-bottom: 8px; }
+.display .compare { padding: 18px 22px; overflow: auto; }
+.display .compare table.data { font-size: 24px; }
+.display .compare table.data th, .display .compare table.data td { padding: 12px 16px; }
+.display .compare .charts { margin-top: 18px; }
 .display .stepwall .handed { padding: 18px; }
 .display .stepwall .handed h2 { font-size: 24px; margin-bottom: 10px; }
 .display .stepwall .handed ol { margin: 0; padding-left: 28px; font-size: 24px; line-height: 1.6; }

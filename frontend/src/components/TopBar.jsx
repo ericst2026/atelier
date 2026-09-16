@@ -5,7 +5,7 @@ import { useAuth } from "../lib/auth";
 import GpuStrip from "./GpuStrip";
 
 export default function TopBar() {
-  const { user, logout, isTeacher } = useAuth();
+  const { user, logout, isTeacher, isAdmin } = useAuth();
   return (
     <header className="topbar">
       <Link to="/" className="brand">
@@ -15,7 +15,12 @@ export default function TopBar() {
         <NavLink to="/" end>
           Experiments
         </NavLink>
-        {isTeacher && <NavLink to="/teacher">Teacher</NavLink>}
+        {isTeacher && <NavLink to="/teacher">Class</NavLink>}
+        {isAdmin && (
+          <NavLink to="/teacher?section=users" className={({ isActive }) => (isActive ? "active" : "")}>
+            Accounts
+          </NavLink>
+        )}
         <NavLink to="/display/1" target="_blank">
           Displays
         </NavLink>

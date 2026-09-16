@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { StatusPill } from "../components/RunStatus";
 import ClassPanel from "../components/ClassPanel";
 import { api, wsUrl } from "../lib/api";
@@ -423,7 +423,10 @@ function SubmissionsPanel() {
 }
 
 export default function Teacher() {
-  const [section, setSection] = useState("class");
+  const { isAdmin } = useAuth();
+  const [sp, setSp] = useSearchParams();
+  const section = sp.get("section") || "class";
+  const setSection = (k) => setSp({ section: k });
   const [live, setLive] = useState(null);
   useSocket(wsUrl("/ws/teacher"), (m) => m.type === "live" && setLive(m.live));
   return (
@@ -437,11 +440,11 @@ export default function Teacher() {
       <div className="tabs">
         {[
           ["class", "Class"],
-          ["live", "Live"],
-          ["submissions", "Submissions"],
-          ["users", "Users"],
+          ["submissions", "Handed in"],
           ["runs", "Runs"],
+          ["live", "Now running"],
           ["displays", "Displays"],
+          ["users", isAdmin ? "Accounts & permissions" : "Accounts"],
         ].map(([k, l]) => (
           <button key={k} className={section === k ? "active" : ""} onClick={() => setSection(k)}>
             {l}

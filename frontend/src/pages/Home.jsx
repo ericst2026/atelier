@@ -32,6 +32,11 @@ export default function Home() {
           ))}
         </div>
       )}
+      {data && sections(data).length === 0 && (
+        <div className="empty">
+          Nothing to work on yet. You will see the experiment here when your teacher starts the class, and any an admin lets you run on your own.
+        </div>
+      )}
       {data &&
         sections(data).map((sec) => (
           <section key={sec.id} className="expsection">

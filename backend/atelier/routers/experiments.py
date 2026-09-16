@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from .. import materials, services, stepcode, storage
+from . import classroom
 from ..auth import current_user, is_staff
 from ..db import get_db
 from ..deps import get_bus, get_registry
@@ -24,13 +25,29 @@ def _spec(registry: Registry, slug: str):
 
 @router.get("")
 def list_experiments(user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
+    """A student sees what they may actually work on: the experiment the class is
+    running, and the ones an admin has let them do on their own. Staff see all."""
     progress = services.user_progress(db, user, registry)
-    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in registry.list()], "categories": registry.categories(), "errors": registry.errors if is_staff(user) else {}}
+    specs = registry.list()
+    if not is_staff(user):
+        allowed = classroom.visible_experiments(db, user)
+        specs = [s for s in specs if s.slug in allowed]
+    return {"experiments": [dict(s.to_dict(), progress=progress.get(s.slug)) for s in specs], "categories": registry.categories(), "errors": registry.errors if is_staff(user) else {}}
+
+
+def _may_open(db: Session, user: User, slug: str) -> bool:
+    """A student may read an experiment they could work on: the class one (even
+    before being admitted, so they know what they are joining) and their own."""
+    if is_staff(user):
+        return True
+    return slug in classroom.visible_experiments(db, user)
 
 
 @router.get("/{slug}")
 def get_experiment(slug: str, user: User = Depends(current_user), db: Session = Depends(get_db), registry: Registry = Depends(get_registry)):
     spec = _spec(registry, slug)
+    if not _may_open(db, user, slug):
+        raise HTTPException(403, "This is not what the class is running, and you have not been allowed to work on it on your own.")
     d = spec.to_dict(full=True)
     bus = get_bus()
     for m in d["materials"]:

@@ -78,6 +78,12 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
   useEffect(() => {
     if (!parentId && prevRuns[0]) setParentId(prevRuns[0].id);
   }, [prevRuns, parentId]);
+  useEffect(() => {
+    // the list reloads every few seconds: keep showing what the student picked,
+    // and fall back to the newest run only when theirs is no longer there
+    if (runs.length === 0) return;
+    if (!selected || !runs.some((r) => r.id === selected)) setSelected(runs[0].id);
+  }, [runs, selected]);
   const stream = useRunStream(selected);
   const start = async () => {
     setBusy(true);
@@ -93,10 +99,13 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
       setBusy(false);
     }
   };
+  const editing = step.own_code && codeSource === "own";
+  const ownRun = (r) => (r.inputs || {}).code_source === "own";
+  const shown = runs.find((r) => r.id === selected);
   const finished = stream.status === "succeeded" || stream.status === "failed" || stream.status === "cancelled";
   const live = liveCharts(stream.live);
   return (
-    <div className="steplayout">
+    <div className={`steplayout ${editing ? "withcode" : ""}`}>
       <div className="stack">
         <div className="panel">
           <h2 style={{ marginBottom: 6 }}>
@@ -154,14 +163,15 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
               {runs.slice(0, 12).map((r) => (
                 <button key={r.id} className={`btn sm ${selected === r.id ? "" : "ghost"}`} style={{ justifyContent: "flex-start" }} onClick={() => setSelected(r.id)}>
                   <StatusPill status={r.id === stream.run?.id && stream.status ? stream.status : r.status} /> #{r.id} <span className="faint">{fmtTime(r.created_at)}</span>
+                  {ownRun(r) && <span className="tag">own</span>}
                 </button>
               ))}
             </div>
           </div>
         )}
       </div>
-      <div className="stack">
-        {step.own_code && codeSource === "own" && (
+      {editing && (
+        <div className="stack">
           <div className="panel stack" style={{ gap: 8 }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h3>Your code · step {step.index}</h3>
@@ -189,6 +199,14 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted }) {
               />
             </div>
             {codeNote && <div className="help">{codeNote}</div>}
+          </div>
+        </div>
+      )}
+      <div className="stack">
+        {shown && (
+          <div className="row small muted" style={{ gap: 8 }}>
+            Showing run #{shown.id} · {ownRun(shown) ? "your own code" : "the standard code"} · {fmtTime(shown.created_at)}
+            {editing && !ownRun(shown) && <span className="faint">— your own code has not run yet, so this is the standard one</span>}
           </div>
         )}
         {!selected && <div className="empty">Set the parameters and run the step. Output streams here while it runs.</div>}

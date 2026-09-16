@@ -38,7 +38,7 @@ def _standard_source(spec: ExperimentSpec, step: StepSpec) -> str:
         return ""
 
 
-def _contract(spec: ExperimentSpec, step: StepSpec) -> dict[str, Any]:
+def contract(spec: ExperimentSpec, step: StepSpec) -> dict[str, Any]:
     """What the step is handed and what the rest of the experiment expects back."""
     src = _standard_source(spec, step)
     seen: dict[str, str] = {}
@@ -54,7 +54,7 @@ def _contract(spec: ExperimentSpec, step: StepSpec) -> dict[str, Any]:
 
 def prototype(spec: ExperimentSpec, step: StepSpec) -> str:
     """A file to start from: the interface filled in, the work left to do."""
-    c = _contract(spec, step)
+    c = contract(spec, step)
     defaults = ", ".join(f'"{p["key"]}": {p["default"]!r}' for p in c["params"]) or ""
     lines = [
         '"""' + f"{spec.title} · step {step.index} — {step.title}",

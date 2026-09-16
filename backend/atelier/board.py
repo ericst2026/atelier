@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from . import metrics, storage
 from .bus import SyncBus
 from .config import settings
-from .models import Display, Run, Submission, User
+from . import stepcode
+from .models import ClassSession, Display, Run, Submission, User
 from .registry import Registry
 
 DEFAULT_DISPLAYS = [
@@ -232,18 +233,48 @@ def run_view(db: Session, run_id: int) -> Optional[dict[str, Any]]:
     }
 
 
-def step_view(db: Session, registry: Registry, slug: str, step_no: int) -> dict[str, Any]:
-    """Display 1-4 during a class: the code of one step, and who has handed in
-    their own version of it."""
+def _standard_run(db: Session, slug: str, step_no: int, teacher_id: Optional[int] = None) -> Optional[Run]:
+    """What the step produces when the code that ships with it is run: the teacher's
+    latest such run, or anyone's if the teacher has not run it."""
+    base = select(Run).where(Run.experiment == slug, Run.step == step_no, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc())
+    for q in ([base.where(Run.user_id == teacher_id)] if teacher_id else []) + [base]:
+        for run in db.scalars(q).all():
+            if (run.inputs or {}).get("code_source") != "own":
+                return run
+    return None
+
+
+def _metric_pairs(mine: list[dict], standard: list[dict]) -> list[dict[str, Any]]:
+    """The same figures side by side, in the order the step reports them."""
+    by_key = {m.get("key"): m for m in standard or []}
+    rows = []
+    for m in mine or []:
+        other = by_key.pop(m.get("key"), None)
+        rows.append({"key": m.get("key"), "label": m.get("label"), "fmt": m.get("fmt"), "mine": m.get("value"), "standard": other.get("value") if other else None})
+    for key, m in by_key.items():
+        rows.append({"key": key, "label": m.get("label"), "fmt": m.get("fmt"), "mine": None, "standard": m.get("value")})
+    return rows
+
+
+def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
+    """What displays 1-4 show while a class runs: what the step is for, what a
+    student's own version of it has to do, and who has handed theirs in."""
+    session_id = payload.get("session_id")
+    session = db.get(ClassSession, int(session_id)) if session_id else None
+    if session is not None and session.ended_at is not None:
+        session = None
+    slug = (session.experiment if session else payload.get("experiment")) or ""
+    step_no = int(payload.get("step") or 1)
+    if session is None and not slug:
+        return {"no_class": True}
     try:
         spec = registry.get(slug)
         step = spec.step(step_no)
     except KeyError:
-        return {"error": "no experiment on this display"}
-    try:
-        code = (spec.dir / step.script).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        code = ""
+        return {"error": "that experiment is not loaded"}
+    if session is None:
+        return {"no_class": True, "title": spec.title, "step": step_no, "step_title": step.title}
+    c = stepcode.contract(spec, step)
     seen: set[int] = set()
     handed = []
     for sub in db.scalars(select(Submission).where(Submission.experiment == slug, Submission.step == step_no).order_by(Submission.id.desc())).all():
@@ -252,13 +283,28 @@ def step_view(db: Session, registry: Registry, slug: str, step_no: int) -> dict[
         seen.add(sub.user_id)
         u = db.get(User, sub.user_id)
         handed.append({"user_id": sub.user_id, "name": (u.name or u.username) if u else "?", "submission_id": sub.id, "at": sub.created_at.isoformat()})
-    return {"experiment": slug, "title": spec.title, "step": step_no, "step_title": step.title, "summary": step.summary, "code": code, "handed_in": handed}
+    return {
+        "experiment": slug,
+        "title": spec.title,
+        "step": step_no,
+        "step_title": step.title,
+        "summary": step.summary,
+        "description": step.description,
+        "own_code": step.own_code,
+        "instructions": c,
+        "handed_in": handed,
+    }
 
 
 def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
-    """What the teacher pushed to a display: one student's code for a step, or the
-    results of their last run of it."""
-    slug, step_no = payload.get("experiment") or "", int(payload.get("step") or 1)
+    """One student put up by the teacher: their code, or their results against what
+    the standard code produced for the same step."""
+    session_id = payload.get("session_id")
+    session = db.get(ClassSession, int(session_id)) if session_id else None
+    if session_id and (session is None or session.ended_at is not None):
+        return {"no_class": True}  # the class it belonged to is over
+    slug = (session.experiment if session else payload.get("experiment")) or ""
+    step_no = int(payload.get("step") or 1)
     user_id, show = int(payload.get("user_id") or 0), (payload.get("show") or "results")
     u = db.get(User, user_id)
     out: dict[str, Any] = {"experiment": slug, "step": step_no, "show": show, "name": (u.name or u.username) if u else "?"}
@@ -266,7 +312,7 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
         spec = registry.get(slug)
         out["title"], out["step_title"] = spec.title, spec.step(step_no).title
     except KeyError:
-        pass
+        return {"error": "that experiment is not loaded"}
     if show == "code":
         sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
         if sub is None:
@@ -280,8 +326,14 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
     if run is None:
         out["error"] = "no finished run of this step yet"
         return out
+    result = storage.read_json(storage.run_dir(run.id) / "result.json", {})
     out["run"] = {"id": run.id, "label": run.label, "metrics": run.metrics, "own_code": (run.inputs or {}).get("code_source") == "own"}
-    out["result"] = storage.read_json(storage.run_dir(run.id) / "result.json", {})
+    out["result"] = result
+    standard = _standard_run(db, slug, step_no, session.started_by if session else None)
+    if standard is not None and standard.id != run.id:
+        base = storage.read_json(storage.run_dir(standard.id) / "result.json", {})
+        out["standard"] = {"run_id": standard.id, "result": base}
+        out["compare"] = _metric_pairs(result.get("metrics") or [], base.get("metrics") or [])
     return out
 
 
@@ -306,7 +358,7 @@ def display_states(db: Session, registry: Registry, worker_state: Optional[dict[
         elif d.mode == "grafana":
             data = {"url": d.payload.get("url") or settings.grafana_url}
         elif d.mode == "step":
-            data = step_view(db, registry, d.payload.get("experiment") or "", int(d.payload.get("step") or 1))
+            data = step_view(db, registry, d.payload or {})
         elif d.mode == "student":
             data = student_view(db, registry, d.payload)
         out[str(d.id)] = {"id": d.id, "name": d.name, "mode": d.mode, "payload": d.payload, "updated_at": d.updated_at.isoformat(), "data": data}

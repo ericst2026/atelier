@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ChartCard from "../components/ChartCard";
 import Kpis from "../components/Kpi";
+import Markdown from "../components/Markdown";
 import { wsUrl } from "../lib/api";
 import { fmtDuration, fmtNum, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
@@ -156,17 +157,50 @@ function RunView({ data }) {
   );
 }
 
-/** Displays 1-4 during a class: the code of one step, and who has handed in their
- *  own version of it. The names are the point — the room can see who is done. */
+/** Displays 1-4 while a class runs: what the step is for, what your own version of
+ *  it has to do, and who has handed theirs in. No code — the room reads the task. */
 function StepView({ data }) {
-  if (!data || data.error) return <div className="msg"><p>{data?.error || "Nothing on this display yet."}</p></div>;
+  if (!data || data.no_class)
+    return (
+      <div className="msg">
+        <div>
+          <h1>No running class</h1>
+          <p>{data?.title ? `${data.title} · step ${data.step}` : "This screen follows the class once a teacher starts one."}</p>
+        </div>
+      </div>
+    );
+  if (data.error) return <div className="msg"><p>{data.error}</p></div>;
+  const c = data.instructions || {};
   return (
     <div className="stepwall">
       <div className="panel code">
         <div className="bar">
           {data.title} · step {data.step}: {data.step_title}
         </div>
-        <pre>{data.code}</pre>
+        <div className="steptext">
+          <Markdown text={data.description || data.summary} />
+          {data.own_code && (
+            <div className="brief">
+              <h3>Writing your own</h3>
+              <ul>
+                <li>
+                  <b>You are given</b> {(c.params || []).length} setting{(c.params || []).length === 1 ? "" : "s"} from the form
+                  {(c.inputs || []).length ? ` and ${c.inputs.join(", ")} from the step before` : ""}.
+                </li>
+                {(c.outputs || []).length > 0 && (
+                  <li>
+                    <b>You must save</b> {c.outputs.join(", ")} — the next step reads them by name.
+                  </li>
+                )}
+                {(c.metrics || []).length > 0 && (
+                  <li>
+                    <b>You are judged on</b> {(c.metrics || []).slice(0, 4).map((m) => m.label).join(", ")}.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
       <div className="panel handed">
         <h2>Handed in ({(data.handed_in || []).length})</h2>
@@ -181,29 +215,64 @@ function StepView({ data }) {
   );
 }
 
-/** One student's work, put up by the teacher: their code, or what they got. */
+/** One student, put up by the teacher: their code, or their figures beside the ones
+ *  the standard code produced for the same step. */
 function StudentView({ data }) {
   if (!data) return null;
+  if (data.no_class)
+    return (
+      <div className="msg">
+        <div>
+          <h1>No running class</h1>
+          <p>This screen follows the class once a teacher starts one.</p>
+        </div>
+      </div>
+    );
+  if (data.error) return <div className="msg"><p>{data.error}</p></div>;
+  const rows = data.compare || [];
   return (
     <div className="stepwall one">
       <div className="panel code">
         <div className="bar">
           {data.name} · step {data.step}
-          {data.step_title ? ` · ${data.step_title}` : ""} · {data.show === "code" ? "their code" : "their results"}
+          {data.step_title ? ` · ${data.step_title}` : ""} · {data.show === "code" ? "their code" : "their results against the standard code"}
         </div>
-        {data.error && <p className="muted" style={{ padding: 20 }}>{data.error}</p>}
-        {data.show === "code" && data.code !== undefined && <pre>{data.code}</pre>}
-        {data.show !== "code" && data.result && (
-          <div style={{ padding: 16, overflow: "auto" }}>
-            <Kpis metrics={data.result.metrics} />
-            {(data.result.charts || []).length > 0 && (
-              <div className="charts" style={{ marginTop: 16 }}>
-                {data.result.charts.slice(0, 4).map((c) => (
-                  <ChartCard key={c.id} spec={c} height={260} allowStretch={false} />
+        {data.show === "code" && <pre>{data.code}</pre>}
+        {data.show !== "code" && (
+          <div className="compare">
+            {rows.length > 0 ? (
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>Figure</th>
+                    <th>{data.name}</th>
+                    <th>The standard code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.key}>
+                      <td>{r.label}</td>
+                      <td>
+                        <b>{r.mine === null || r.mine === undefined ? "–" : fmtNum(r.mine)}</b>
+                      </td>
+                      <td className="muted">{r.standard === null || r.standard === undefined ? "–" : fmtNum(r.standard)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <Kpis metrics={data.result?.metrics} />
+            )}
+            {!data.standard && <p className="muted">Nothing to compare with yet: the standard code has not been run on this step.</p>}
+            {(data.result?.charts || []).length > 0 && (
+              <div className="charts">
+                {data.result.charts.slice(0, 3).map((c) => (
+                  <ChartCard key={c.id} spec={c} height={240} allowStretch={false} />
                 ))}
               </div>
             )}
-            {data.run?.own_code && <div className="muted" style={{ marginTop: 10 }}>Run with their own code.</div>}
+            {data.run?.own_code === false && <p className="muted">This run used the standard code.</p>}
           </div>
         )}
       </div>
