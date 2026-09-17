@@ -179,6 +179,29 @@ function HandedIn({ list, selected, cap = 12 }) {
   );
 }
 
+/** The teacher working through this step at the front: where their run is, and the
+ *  figures it has so far. */
+function TeacherRun({ run }) {
+  const done = run.status === "succeeded" || run.status === "failed" || run.status === "cancelled";
+  return (
+    <div className="teacherrun">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <b>Your teacher's run</b>
+        <span className={`pill ${run.status}`}>{run.status}</span>
+      </div>
+      {!done && (
+        <>
+          <div className="progress">
+            <i style={{ width: `${Math.max(2, Math.round(run.progress_pct || 0))}%` }} />
+          </div>
+          {run.progress_msg && <div className="muted small">{run.progress_msg}</div>}
+        </>
+      )}
+      {(run.metrics || []).length > 0 && <Kpis metrics={run.metrics} />}
+    </div>
+  );
+}
+
 /** Displays 1-4 while a class runs: what the step is for, the picture that explains
  *  it, and what a student's own version of it has to do. */
 function StepView({ data }) {
@@ -208,6 +231,7 @@ function StepView({ data }) {
           <div className="prose">
             <Markdown text={data.description || data.summary} />
           </div>
+          {data.teacher_run && <TeacherRun run={data.teacher_run} />}
           {data.own_code && (
             <div className="brief">
               <h3>Writing your own</h3>
@@ -294,8 +318,7 @@ function StudentView({ data }) {
   );
 }
 
-/** The code the experiment ships with, and what it produced — what every student's
- *  own version is measured against. */
+/** The code the experiment ships with — just the code, the whole screen. */
 function StandardView({ data }) {
   if (!data) return null;
   if (data.no_class)
@@ -309,19 +332,11 @@ function StandardView({ data }) {
     );
   if (data.error) return <div className="msg"><p>{data.error}</p></div>;
   return (
-    <div className="stepwall">
+    <div className="stepwall one">
       <div className="panel code">
-        <div className="bar">
-          The standard code · {data.title} · step {data.step}: {data.step_title}
-        </div>
-        <div className="split">
-          <pre>{data.code}</pre>
-          <div className="side">
-            {data.result?.metrics?.length ? <Kpis metrics={data.result.metrics} /> : <p className="muted">It has not been run on this class yet.</p>}
-          </div>
-        </div>
+        <div className="bar">The standard code</div>
+        <pre>{data.code}</pre>
       </div>
-      {data.own_code && <HandedIn list={data.handed_in} />}
     </div>
   );
 }
@@ -334,7 +349,13 @@ export default function Display() {
   const mode = state?.mode;
   // the screen says what it is showing, not which screen it is
   const step = state?.payload?.step || state?.data?.step;
-  const title = mode === "step" || mode === "student" ? `Step ${step || n}` : mode === "leaderboard" ? "Leaderboard" : state?.name || "Atelier";
+  const stepTitle = state?.data?.step_title;
+  const title =
+    mode === "step" || mode === "student" || mode === "standard"
+      ? `Step ${step || n}${stepTitle ? ` · ${stepTitle}` : ""}`
+      : mode === "leaderboard"
+        ? "Leaderboard"
+        : state?.name || "Atelier";
   return (
     <div className="display">
       {mode !== "grafana" && (

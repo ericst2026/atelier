@@ -221,6 +221,7 @@ export default function ClassPanel() {
 /** The wall: one control per screen, so the teacher can follow a step or put a
  *  student up. Lives in its own tab, but needs the same class state. */
 export function WallPanel() {
+  const { user } = useAuth();
   const [state, setState] = useState(null);
   const [displays, setDisplays] = useState([]);
   const [spec, setSpec] = useState(null); // to know which steps can be handed in
@@ -238,6 +239,8 @@ export function WallPanel() {
     load();
   };
   const session = state?.running ? state.session : null;
+  // the wall is the running class's: only its teacher, or an admin, points it
+  const canSet = Boolean(session && (session.me?.mine || user?.role === "admin"));
   useEffect(() => {
     if (!session?.experiment) return setSpec(null);
     api(`/experiments/${session.experiment}`).then(setSpec).catch(() => setSpec(null));
@@ -251,9 +254,10 @@ export function WallPanel() {
             ? "Screens 1–4 follow the four steps: what the step is for, what your own version has to do, and who has handed it in. Put a student up to compare their figures with the standard code."
             : "No class is running, so the step screens say so. The last screen keeps the hardware dashboard."}
         </div>
-        <div className="grid2">
+        {session && !canSet && <div className="tip">{session.teacher} is teaching the class, so the screens are theirs to set.</div>}
+        <div className="wallrow">
           {displays.map((d) => (
-            <DisplayControl key={d.id} display={d} session={session} spec={spec} onPush={push} />
+            <DisplayControl key={d.id} display={d} session={session} spec={spec} onPush={push} canSet={canSet} />
           ))}
         </div>
       </div>
@@ -261,10 +265,10 @@ export function WallPanel() {
   );
 }
 
-function DisplayControl({ display, session, spec, onPush }) {
+function DisplayControl({ display, session, spec, onPush, canSet }) {
   const isStep = display.id <= 4;
   const payload = display.payload || {};
-  const [step, setStep] = useState(payload.step || display.id);
+  const step = display.id; // screen 1 is step 1, and so on
   const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
   // only this step's own_code decides whether there is anything to hand in
@@ -296,7 +300,7 @@ function DisplayControl({ display, session, spec, onPush }) {
   return (
     <div className="inset stack" style={{ padding: 10, gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <b>{isStep ? `Step ${payload.step || display.id} screen` : `Screen ${display.id}`}</b>
+        <b>{isStep ? `Step ${display.id}${spec?.steps?.[display.id - 1] ? ` · ${spec.steps[display.id - 1].title}` : ""}` : "Leaderboard / hardware"}</b>
         <a className="small" href={`/display/${display.id}`} target="_blank" rel="noreferrer">
           open
         </a>
@@ -313,23 +317,14 @@ function DisplayControl({ display, session, spec, onPush }) {
       </div>
       {isStep ? (
         <>
-          <div className="row" style={{ gap: 6 }}>
-            <select value={step} onChange={(e) => setStep(e.target.value)} disabled={!session} style={{ width: 100 }}>
-              {[1, 2, 3, 4].map((n) => (
-                <option key={n} value={n}>
-                  step {n}
-                </option>
-              ))}
-            </select>
-            <select value={show} onChange={(e) => setShow(e.target.value)} disabled={!session} style={{ flex: 1 }}>
-              <option value="explanation">what the step is</option>
-              <option value="standard">the standard code</option>
-              <option value="results">a student's results</option>
-              {ownCode && <option value="code">a student's code</option>}
-            </select>
-          </div>
+          <select value={show} onChange={(e) => setShow(e.target.value)} disabled={!canSet}>
+            <option value="explanation">what the step is</option>
+            <option value="standard">the standard code</option>
+            <option value="results">a student's results</option>
+            {ownCode && <option value="code">a student's code</option>}
+          </select>
           {needsPerson && (
-            <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!session}>
+            <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!canSet}>
               <option value="">{people.length ? "— who —" : ownCode ? "— nobody has handed this in —" : "— nobody is in the class —"}</option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
@@ -338,16 +333,16 @@ function DisplayControl({ display, session, spec, onPush }) {
               ))}
             </select>
           )}
-          <button className="btn sm primary" onClick={apply} disabled={!session || (needsPerson && !who)}>
+          <button className="btn sm primary" onClick={apply} disabled={!canSet || (needsPerson && !who)}>
             Put it up
           </button>
         </>
       ) : (
         <div className="row" style={{ gap: 6 }}>
-          <button className={`btn sm ${display.mode === "grafana" ? "primary" : "ghost"}`} onClick={() => onPush(display.id, { mode: "grafana", payload: {} })}>
+          <button className={`btn sm ${display.mode === "grafana" ? "primary" : "ghost"}`} disabled={!canSet} onClick={() => onPush(display.id, { mode: "grafana", payload: {} })}>
             Hardware
           </button>
-          <button className={`btn sm ${display.mode === "leaderboard" ? "primary" : "ghost"}`} onClick={() => onPush(display.id, { mode: "leaderboard", payload: { experiment: session?.experiment } })}>
+          <button className={`btn sm ${display.mode === "leaderboard" ? "primary" : "ghost"}`} disabled={!canSet} onClick={() => onPush(display.id, { mode: "leaderboard", payload: { experiment: session?.experiment } })}>
             Leaderboard
           </button>
         </div>

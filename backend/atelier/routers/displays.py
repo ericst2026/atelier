@@ -44,6 +44,13 @@ def set_display(n: int, body: DisplayIn, teacher: User = Depends(require_teacher
     d = db.get(Display, n)
     if d is None:
         raise HTTPException(404, "No such display")
+    # the wall belongs to the class in the room: while one runs, only its teacher
+    # (or an admin) decides what the screens show
+    from .classroom import active_session
+
+    running = active_session(db)
+    if running is not None and teacher.role != "admin" and running.started_by != teacher.id:
+        raise HTTPException(403, "The wall belongs to the class that is running, and that is not yours")
     if body.mode not in MODES:
         raise HTTPException(400, f"mode must be one of {sorted(MODES)}")
     if body.mode == "run":

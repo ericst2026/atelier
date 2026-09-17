@@ -304,3 +304,11 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 /* the standard code beside what it produced, both inside the screen */
 .display .stepwall .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); min-height: 0; }
 .display .stepwall .split .side { padding: 16px; overflow: hidden; border-left: 1px solid var(--line); }
+
+/* the five wall screens side by side, as they hang on the wall */
+.wallrow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1300px) { .wallrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .wallrow { grid-template-columns: minmax(0, 1fr); } }
+/* the teacher's run of the step, on the step screen */
+.display .teacherrun { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--inset); }
+.display .teacherrun .progress { height: 12px; }

@@ -285,6 +285,17 @@ def _result_of(run_id: Optional[int]) -> dict[str, Any]:
     return storage.read_json(storage.run_dir(int(run_id)) / "result.json", {}) if run_id else {}
 
 
+def _teacher_run(db: Session, session: ClassSession, step_no: int) -> Optional[dict[str, Any]]:
+    """The class teacher's latest run of this step in this class, live: when they
+    work through the experiment at the front, the step screen follows them."""
+    for run in db.scalars(select(Run).where(Run.experiment == session.experiment, Run.step == step_no, Run.user_id == session.started_by, Run.kind == "step").order_by(Run.id.desc())).all():
+        # only this class's runs: last week's run of the step is not what the room
+        # is watching the teacher do now
+        if (run.inputs or {}).get("class_session") == session.id:
+            return {"id": run.id, "status": run.status, "progress_pct": run.progress_pct, "progress_msg": run.progress_msg, "metrics": (run.metrics or [])[:6]}
+    return None
+
+
 def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[str, Any]:
     """What displays 1-4 show while a class runs: what the step is for, what a
     student's own version of it has to do, and who has handed theirs in."""
@@ -327,6 +338,7 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
         "figure": f"/api/experiments/{slug}/figure/{step_no}",
         "instructions": c,
         "handed_in": handed if step.own_code else [],
+        "teacher_run": _teacher_run(db, session, step_no),
     }
 
 
