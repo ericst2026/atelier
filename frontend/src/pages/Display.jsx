@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ChartCard from "../components/ChartCard";
 import Kpis from "../components/Kpi";
+import ResultsView from "../components/ResultsView";
 import Markdown from "../components/Markdown";
 import { wsUrl } from "../lib/api";
 import { fmtDuration, fmtNum, fmtTime } from "../lib/format";
@@ -305,7 +306,7 @@ function StudentView({ data }) {
                 </tbody>
               </table>
             ) : (
-              <Kpis metrics={data.result?.metrics} />
+              <ResultsView result={data.result} />
             )}
             {data.standard_state && data.standard_state !== "succeeded" && (
               <p className="muted">The standard code is still {data.standard_state === "missing" ? "not there" : data.standard_state}.</p>

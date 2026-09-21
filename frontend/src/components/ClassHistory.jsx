@@ -40,8 +40,9 @@ export default function ClassHistory({ onResumed }) {
           <table className="data">
             <thead>
               <tr>
+                <th>Class</th>
                 <th>Experiment</th>
-                {data.all_teachers && <th>Teacher</th>}
+                <th>Owner</th>
                 <th>Started</th>
                 <th>State</th>
                 <th>In the class</th>
@@ -51,8 +52,9 @@ export default function ClassHistory({ onResumed }) {
             <tbody>
               {sessions.map((s) => (
                 <tr key={s.id}>
+                  <td>{s.name || <span className="faint">unnamed</span>}</td>
                   <td>{s.title || s.experiment}</td>
-                  {data.all_teachers && <td>{s.teacher}</td>}
+                  <td>{s.teacher}</td>
                   <td>{fmtTime(s.started_at)}</td>
                   <td>
                     {s.ended_at ? <span className="muted">ended {fmtTime(s.ended_at)}</span> : s.paused ? <b style={{ color: "var(--sun)" }}>paused</b> : <b style={{ color: "var(--kept)" }}>running</b>}
@@ -97,7 +99,8 @@ function ClassWork({ session }) {
     <div className="panel stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3>
-          {session.title || session.experiment} · {fmtTime(session.started_at)}
+          {session.name ? `${session.name} · ` : ""}
+          {session.title || session.experiment} · {session.teacher} · {fmtTime(session.started_at)}
         </h3>
         <div className="ctl">
           {[1, 2, 3, 4].map((n) => (

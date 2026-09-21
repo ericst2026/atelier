@@ -102,59 +102,6 @@ export default function ClassPanel() {
   const inClass = members.filter((m) => m.admitted);
   return (
     <div className="stack">
-      <div className="panel stack">
-        <h3>Start an experiment</h3>
-        {running && (
-          <div className="help">
-            {ours ? "Your class" : `${s.teacher}'s class`} is running. Pause or end it before starting another.
-          </div>
-        )}
-        {teachable.length === 0 ? (
-          <div className="help">An admin has not given you an experiment to teach yet.</div>
-        ) : (
-          <div className="stack" style={{ gap: 10 }}>
-            <label className="field">
-              <span>Name it</span>
-              <input
-                type="text"
-                value={name}
-                placeholder="Tuesday 2pm, group B — anything that tells it from the others"
-                onChange={(e) => setName(e.target.value)}
-                disabled={running}
-              />
-              <span className="help">The experiment says what kind of class it is; this says which one.</span>
-            </label>
-            <label className="field">
-              <span>Experiment</span>
-              <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={running} style={{ maxWidth: 420 }}>
-                <option value="">— choose an experiment —</option>
-                {teachable.map((e) => (
-                  <option key={e.slug} value={e.slug}>
-                    {e.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {pick && spec && startFields(spec).length > 0 && (
-          <div className="inset stack" style={{ padding: 12, gap: 8 }}>
-            <b className="small">What the class starts from</b>
-            <div className="help">
-              Students have not done the experiment this one builds on, so choose it once here. These are fixed for everyone in the class.
-            </div>
-            <ParamsForm params={startFields(spec)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
-          </div>
-        )}
-            <button className="btn primary" onClick={start} disabled={!pick || !name.trim() || running}>
-              <Play size={14} /> Start the experiment
-            </button>
-          </div>
-        )}
-        {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
-        <div className="help">
-          While a class runs, that is the only experiment students can work on, and only after you let them in.
-        </div>
-      </div>
-
       {running && (
         <div className="panel stack" style={{ borderColor: ours ? "var(--kept)" : "var(--line)" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
@@ -213,6 +160,59 @@ export default function ClassPanel() {
           )}
         </div>
       )}
+
+      <div className="panel stack">
+        <h3>Start an experiment</h3>
+        {running && (
+          <div className="help">
+            {ours ? "Your class" : `${s.teacher}'s class`} is running. Pause or end it before starting another.
+          </div>
+        )}
+        {teachable.length === 0 ? (
+          <div className="help">An admin has not given you an experiment to teach yet.</div>
+        ) : (
+          <div className="stack" style={{ gap: 10 }}>
+            <label className="field">
+              <span>Name it</span>
+              <input
+                type="text"
+                value={name}
+                placeholder="Tuesday 2pm, group B — anything that tells it from the others"
+                onChange={(e) => setName(e.target.value)}
+                disabled={running}
+              />
+              <span className="help">The experiment says what kind of class it is; this says which one.</span>
+            </label>
+            <label className="field">
+              <span>Experiment</span>
+              <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={running} style={{ maxWidth: 420 }}>
+                <option value="">— choose an experiment —</option>
+                {teachable.map((e) => (
+                  <option key={e.slug} value={e.slug}>
+                    {e.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pick && spec && startFields(spec).length > 0 && (
+          <div className="inset stack" style={{ padding: 12, gap: 8 }}>
+            <b className="small">What the class starts from</b>
+            <div className="help">
+              Students have not done the experiment this one builds on, so choose it once here. These are fixed for everyone in the class.
+            </div>
+            <ParamsForm params={startFields(spec)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
+          </div>
+        )}
+            <button className="btn primary" onClick={start} disabled={!pick || !name.trim() || running}>
+              <Play size={14} /> Start the experiment
+            </button>
+          </div>
+        )}
+        {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
+        <div className="help">
+          While a class runs, that is the only experiment students can work on, and only after you let them in.
+        </div>
+      </div>
 
     </div>
   );

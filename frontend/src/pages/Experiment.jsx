@@ -15,11 +15,11 @@ import { fmtTime } from "../lib/format";
 import { liveCharts, useRunStream } from "../lib/runs";
 
 
-function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession, prefill }) {
+function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession }) {
   const { isTeacher } = useAuth();
   const defaults = useMemo(
-    () => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(prefill || {}), ...(locked || {}) }),
-    [step, locked, prefill]
+    () => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(locked || {}) }),
+    [step, locked]
   );
   const [params, setParams] = useState(defaults);
   const [parentId, setParentId] = useState(prevRuns[0]?.id || null);
@@ -262,7 +262,10 @@ export default function Experiment() {
   // class's. Without it this is your own work, and the class's runs stay out of it.
   const classId = Number(sp.get("class")) || null;
   const session = cls?.running && cls.session?.experiment === slug ? cls.session : null;
-  const inClass = Boolean(classId && session && session.id === classId);
+  // the class's teacher and the people they let in; nobody else, admins included,
+  // can view this experiment as the class — it is not their class
+  const member = Boolean(session && (session.me?.mine || session.me?.admitted));
+  const inClass = Boolean(classId && session && session.id === classId && member);
   const shownRuns = useMemo(
     () => runs.filter((r) => (inClass ? (r.inputs || {}).class_session === classId : !(r.inputs || {}).class_session)),
     [runs, inClass, classId]
@@ -278,16 +281,9 @@ export default function Experiment() {
     }
     return st;
   }, [shownRuns]);
-  // the teacher's own form opens on what their class is set to, and can be changed
-  const prefillFor = (st) => {
-    if (!inClass || !session.me?.mine) return null;
-    const keys = new Set((st.params || []).map((p) => p.key));
-    const fixed = Object.entries(session.params || {}).filter(([k]) => keys.has(k));
-    return fixed.length ? Object.fromEntries(fixed) : null;
-  };
-  // in someone else's class, what the teacher chose is what runs
+  // in class, what the class was started from is what runs — for its teacher as well
   const lockedFor = (st) => {
-    if (!inClass || session.me?.mine) return null;
+    if (!inClass) return null;
     const keys = new Set((st.params || []).map((p) => p.key));
     const fixed = Object.entries(session.params || {}).filter(([k]) => keys.has(k));
     return fixed.length ? Object.fromEntries(fixed) : null;
@@ -321,22 +317,26 @@ export default function Experiment() {
           <Link to={`/experiments/${slug}`}>on your own</Link>.
         </div>
       )}
-      {!inClass && session && (
+      {!inClass && session && member && (
         <div className="tip" style={{ marginBottom: 12 }}>
           {session.teacher} is running a class on this experiment. This page is your own work —{" "}
           <Link to={`/experiments/${slug}?class=${session.id}`}>open the class</Link>.
         </div>
       )}
+      {classId && !inClass && (
+        <div className="tip" style={{ marginBottom: 12 }}>
+          You are not in that class, so this is your own work on the experiment.
+        </div>
+      )}
       <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp(classId ? { step: String(n), class: String(classId) } : { step: String(n) })} />
       <StepPanel
-        key={step.index}
+        key={`${step.index}-${inClass ? classId : "own"}`}
         spec={spec}
         step={step}
         runs={shownRuns.filter((r) => r.step === step.index)}
         prevRuns={shownRuns.filter((r) => r.step === step.index - 1 && r.status === "succeeded")}
         onStarted={loadRuns}
         locked={lockedFor(step)}
-        prefill={prefillFor(step)}
         classSession={inClass ? session.id : null}
       />
       {spec.description && (

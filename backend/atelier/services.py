@@ -163,10 +163,10 @@ def create_step_run(db: Session, bus: SyncBus, user: User, spec: ExperimentSpec,
         session = classroom.active_session(db)
         if session.params:
             keys = {p["key"] for p in step.params}
-            # a student has not done the experiment this one builds on, so what the
-            # teacher chose is what runs; for the teacher it is a starting point
+            # what the class was started from is what runs, for everyone in it —
+            # its teacher included, so the class all works from the same material
             fixed = {k: v for k, v in session.params.items() if k in keys}
-            params = {**params, **fixed} if user.id != session.started_by else {**fixed, **{k: v for k, v in params.items() if v not in (None, "")}}
+            params = {**params, **fixed}
     else:
         allowed, why = classroom.may_run_alone(db, user, spec.slug)
         if not allowed:

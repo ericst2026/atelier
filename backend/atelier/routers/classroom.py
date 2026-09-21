@@ -77,7 +77,9 @@ def may_run_in_class(db: Session, user: User, experiment: str, session_id: int) 
         return False, "That class is not running now."
     if s.experiment != experiment:
         return False, f"That class is running {s.experiment}."
-    if user.role == "admin" or s.started_by == user.id:
+    # the class's own teacher, and the people they let in — being an admin does not
+    # make someone part of a class they were not let into
+    if s.started_by == user.id:
         return True, ""
     m = membership(db, s.id, user.id)
     if m is not None and m.admitted:
