@@ -112,7 +112,7 @@ because there is only one tree:
 ```yaml
 # .env on both machines
 ATELIER_STORAGE_MODE=shared
-ATELIER_NFS_HOST=192.168.1.30
+ATELIER_NFS_HOST=192.168.170.101
 ATELIER_NFS_EXPERIMENTS=/export/atelier/experiments
 ```
 
@@ -278,7 +278,7 @@ Set these in `.env` and layer the override on:
 
 ```bash
 ATELIER_STORAGE_MODE=shared
-ATELIER_NFS_HOST=192.168.1.30
+ATELIER_NFS_HOST=192.168.170.101
 ATELIER_NFS_DATA=/export/atelier/data
 ATELIER_NFS_EXPERIMENTS=/export/atelier/experiments
 ```
@@ -361,9 +361,9 @@ and fails quietly — so the targets live in files Prometheus re-reads by itself
 
 ```yaml
 # deploy/prometheus/targets/gpu-nodes.yml
-- targets: ["192.168.1.30:9101"]
+- targets: ["192.168.170.101:9101"]
   labels: { node: gpu-a, role: worker }
-- targets: ["192.168.1.31:9101"]
+- targets: ["192.168.170.101:9101"]
   labels: { node: gpu-b, role: worker }
 ```
 
@@ -385,7 +385,7 @@ docker compose -f docker-compose.worker.yml --profile dashboards up -d
 Check it took, at `http://<control>/prometheus/targets` or:
 
 ```bash
-curl -s http://192.168.1.30:9101/metrics | grep atelier_gpu_utilization
+curl -s http://192.168.170.101:9101/metrics | grep atelier_gpu_utilization
 ```
 
 If that returns nothing, the worker is running but not seeing the GPUs — almost

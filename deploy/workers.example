@@ -13,6 +13,6 @@
 # Nothing else differs between nodes: GPU counts, cards and CPU-only machines are
 # found on each node when it is deployed.
 
-atelier@192.168.1.30 name=gpu-a
-atelier@192.168.1.31 name=gpu-b
-atelier@192.168.1.40 name=cpu-a slots=2
+atelier@192.168.170.101 name=gpu-a
+atelier@192.168.170.101 name=gpu-b
+atelier@192.168.170.101 name=cpu-a slots=2

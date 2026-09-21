@@ -69,14 +69,14 @@ On the control machine: an SSH key the nodes accept without a prompt, and the no
 list.
 
 ```bash
-ssh-copy-id atelier@192.168.1.30          # for each node
+ssh-copy-id atelier@192.168.170.101          # for each node
 cp deploy/workers.example deploy/workers  # then list your nodes
 ```
 
 ```
-atelier@192.168.1.30 name=gpu-a
-atelier@192.168.1.31 name=gpu-b
-atelier@192.168.1.40 name=cpu-a slots=2
+atelier@192.168.170.101 name=gpu-a
+atelier@192.168.170.101 name=gpu-b
+atelier@192.168.170.101 name=cpu-a slots=2
 ```
 
 A line needs only the SSH destination. The name defaults to the node's hostname, and

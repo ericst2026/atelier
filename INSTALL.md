@@ -223,7 +223,7 @@ Two ways to deploy and update every worker from the control machine, both covere
 **Over SSH** — each node needs only SSH and Docker:
 
 ```bash
-cp deploy/workers.example deploy/workers     # one line per node: atelier@192.168.1.30
+cp deploy/workers.example deploy/workers     # one line per node: atelier@192.168.170.101
 export CONTROL_HOST=192.168.1.20
 scripts/deploy/deploy-workers.sh check
 scripts/deploy/deploy-workers.sh up

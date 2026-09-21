@@ -10,7 +10,7 @@ export default defineConfig({
     // the network but not offered on the VPN or the docker/WSL interfaces. Set
     // VITE_DEV_HOST when the address changes (vite exits if it cannot bind it);
     // note that with a fixed address, localhost is no longer served.
-    host: process.env.VITE_DEV_HOST || "192.168.200.106",
+    host: process.env.VITE_DEV_HOST || "192.168.170.101",
     port: 5173,
     proxy: {
       "/api": { target: "http://localhost", changeOrigin: true },

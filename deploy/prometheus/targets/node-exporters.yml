@@ -1,9 +1,9 @@
 # The same machines, port 9100, for CPU, memory, disk and network.
 # Started by the `dashboards` profile in docker-compose.worker.yml.
-- targets: ["192.168.1.30:9100"]
+- targets: ["192.168.170.101:9100"]
   labels:
     node: gpu-a
 
-# - targets: ["192.168.1.31:9100"]
+# - targets: ["192.168.170.101:9100"]
 #   labels:
 #     node: gpu-b
