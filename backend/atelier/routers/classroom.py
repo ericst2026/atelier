@@ -219,6 +219,19 @@ def stop_class(teacher: User = Depends(require_teacher), db: Session = Depends(g
     return _state(db, teacher, registry)
 
 
+@router.get("/step/{step_no}/people")
+def step_people(step_no: int, teacher: User = Depends(require_teacher), db: Session = Depends(get_db)):
+    """For the wall: who in the running class has something to show for this step.
+    `ran` is everyone with a finished run of it in this class — their results can be
+    put up. `handed_in` is who handed their own code in — only they have code to show."""
+    from .. import board
+
+    s = active_session(db)
+    if s is None:
+        return {"ran": [], "handed_in": []}
+    return {"ran": board.ran_in_class(db, s, s.experiment, step_no), "handed_in": board._handed_in(db, s.experiment, step_no, s)}
+
+
 @router.post("/pause")
 def pause_class(teacher: User = Depends(require_teacher), db: Session = Depends(get_db), registry: Registry = Depends(get_registry), bus: SyncBus = Depends(get_bus)):
     """Put the class down without ending it: the room is free for another teacher,

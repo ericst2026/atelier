@@ -273,19 +273,22 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const [who, setWho] = useState(payload.user_id || "");
   // only this step's own_code decides whether there is anything to hand in
   const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
-  const [handed, setHanded] = useState([]);
+  // who has something to show for this step in this class: anyone with a finished
+  // run of it has results; only those who handed their own code in have code
+  const [who2, setWho2] = useState({ ran: [], handed_in: [] });
   useEffect(() => {
-    if (!session?.experiment || !ownCode) return setHanded([]);
-    api(`/submissions?experiment=${session.experiment}&step=${Number(step)}`)
-      .then((subs) => {
-        const seen = new Set();
-        setHanded(subs.filter((x) => !seen.has(x.user_id) && seen.add(x.user_id)).map((x) => ({ user_id: x.user_id, name: x.name || x.username })));
-      })
-      .catch(() => setHanded([]));
-  }, [session?.experiment, step, ownCode]);
-  // where nobody writes their own, a student's results still exist — they ran the
-  // standard code — so the people to choose from are the class itself
-  const people = ownCode ? handed : (session?.members || []).filter((m) => m.admitted).map((m) => ({ user_id: m.user_id, name: m.name || m.username }));
+    if (!session) return setWho2({ ran: [], handed_in: [] });
+    const fetchPeople = () =>
+      api(`/class/step/${Number(step)}/people`)
+        .then((r) => setWho2({ ran: r.ran || [], handed_in: r.handed_in || [] }))
+        .catch(() => setWho2({ ran: [], handed_in: [] }));
+    fetchPeople();
+    const t = setInterval(fetchPeople, 8000); // a student finishing mid-lesson appears without a reload
+    return () => clearInterval(t);
+  }, [session?.id, step]);
+  const handed = who2.handed_in;
+  const union = [...who2.ran, ...who2.handed_in].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i);
+  const people = show === "code" ? handed : union;
   const apply = () => {
     const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
@@ -325,7 +328,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
           </select>
           {needsPerson && (
             <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!canSet}>
-              <option value="">{people.length ? "— who —" : ownCode ? "— nobody has handed this in —" : "— nobody is in the class —"}</option>
+              <option value="">{people.length ? "— who —" : show === "code" ? "— nobody has handed this in —" : "— nobody has finished this step yet —"}</option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.name}

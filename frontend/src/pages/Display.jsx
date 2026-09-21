@@ -308,6 +308,13 @@ function StudentView({ data }) {
             ) : (
               <ResultsView result={data.result} />
             )}
+            {rows.length > 0 && (data.result?.charts || []).length > 0 && (
+              <div className="charts">
+                {data.result.charts.slice(0, 2).map((c) => (
+                  <ChartCard key={c.id} spec={c} height={220} allowStretch={false} />
+                ))}
+              </div>
+            )}
             {data.standard_state && data.standard_state !== "succeeded" && (
               <p className="muted">The standard code is still {data.standard_state === "missing" ? "not there" : data.standard_state}.</p>
             )}

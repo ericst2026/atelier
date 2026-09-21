@@ -268,12 +268,47 @@ def _metric_pairs(mine: list[dict], standard: list[dict]) -> list[dict[str, Any]
     return rows
 
 
-def _handed_in(db: Session, slug: str, step_no: int) -> list[dict[str, Any]]:
-    """Who has handed this step in, newest attempt each, in the order they did."""
+def class_people(db: Session, session: Optional[ClassSession]) -> Optional[set[int]]:
+    """The class's teacher and everyone let in. None when there is no class to
+    scope by, which callers read as "anyone"."""
+    if session is None:
+        return None
+    from .models import SessionMember
+
+    admitted = db.scalars(select(SessionMember.user_id).where(SessionMember.session_id == session.id, SessionMember.admitted.is_(True))).all()
+    return {session.started_by, *admitted}
+
+
+def latest_class_run(db: Session, session: Optional[ClassSession], slug: str, step_no: int, user_id: int) -> Optional[Run]:
+    """This person's newest finished run of the step in this class — or, with no
+    class to scope by, their newest finished run of it at all."""
+    q = select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc())
+    for run in db.scalars(q).all():
+        if session is None or (run.inputs or {}).get("class_session") == session.id:
+            return run
+    return None
+
+
+def ran_in_class(db: Session, session: Optional[ClassSession], slug: str, step_no: int) -> list[dict[str, Any]]:
+    """Who has a finished run of this step in this class, newest first."""
+    seen: set[int] = set()
+    out = []
+    for run in db.scalars(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc())).all():
+        if run.user_id in seen or (session is not None and (run.inputs or {}).get("class_session") != session.id):
+            continue
+        seen.add(run.user_id)
+        u = db.get(User, run.user_id)
+        out.append({"user_id": run.user_id, "name": (u.name or u.username) if u else "?", "run_id": run.id})
+    return out
+
+
+def _handed_in(db: Session, slug: str, step_no: int, session: Optional[ClassSession] = None) -> list[dict[str, Any]]:
+    """Who in this class has handed this step in, newest attempt each."""
+    people = class_people(db, session)
     seen: set[int] = set()
     out = []
     for sub in db.scalars(select(Submission).where(Submission.experiment == slug, Submission.step == step_no).order_by(Submission.id.desc())).all():
-        if sub.user_id in seen:
+        if sub.user_id in seen or (people is not None and sub.user_id not in people):
             continue
         seen.add(sub.user_id)
         u = db.get(User, sub.user_id)
@@ -283,6 +318,16 @@ def _handed_in(db: Session, slug: str, step_no: int) -> list[dict[str, Any]]:
 
 def _result_of(run_id: Optional[int]) -> dict[str, Any]:
     return storage.read_json(storage.run_dir(int(run_id)) / "result.json", {}) if run_id else {}
+
+
+def _finished(db: Session, run_id: Optional[int]) -> Optional[Run]:
+    """A run a submission points at, if it is still there and it succeeded. A
+    submission keeps the ids it was made with; the runs can since have been
+    deleted, or still be going."""
+    if not run_id:
+        return None
+    run = db.get(Run, int(run_id))
+    return run if run is not None and run.status == "succeeded" else None
 
 
 def _teacher_run(db: Session, session: ClassSession, step_no: int) -> Optional[dict[str, Any]]:
@@ -318,13 +363,7 @@ def step_view(db: Session, registry: Registry, payload: dict[str, Any]) -> dict[
         return {"no_class": True, "title": spec.title, "step": step_no, "step_title": step.title}
     c = stepcode.contract(spec, step)
     seen: set[int] = set()
-    handed = []
-    for sub in db.scalars(select(Submission).where(Submission.experiment == slug, Submission.step == step_no).order_by(Submission.id.desc())).all():
-        if sub.user_id in seen:
-            continue
-        seen.add(sub.user_id)
-        u = db.get(User, sub.user_id)
-        handed.append({"user_id": sub.user_id, "name": (u.name or u.username) if u else "?", "submission_id": sub.id, "at": sub.created_at.isoformat()})
+    handed = _handed_in(db, slug, step_no, session)
     return {
         "experiment": slug,
         "title": spec.title,
@@ -367,7 +406,7 @@ def standard_view(db: Session, registry: Registry, payload: dict[str, Any]) -> d
         "step_title": step.title,
         "code": code,
         "own_code": step.own_code,
-        "handed_in": _handed_in(db, slug, step_no) if step.own_code else [],
+        "handed_in": _handed_in(db, slug, step_no, session) if step.own_code else [],
     }
     # what it produced: whatever this class last ran it for — a baseline queued by a
     # submission, or the teacher's own run of the step
@@ -405,32 +444,38 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
         return {"error": "that experiment is not loaded"}
     # a step nobody can re-implement has nothing handed in, so the room is not shown
     # a list of names that would always be empty
-    out["handed_in"] = _handed_in(db, slug, step_no) if step.own_code else []
+    out["handed_in"] = _handed_in(db, slug, step_no, session) if step.own_code else []
     sub = db.scalar(select(Submission).where(Submission.experiment == slug, Submission.step == step_no, Submission.user_id == user_id).order_by(Submission.id.desc()))
-    if sub is None:
-        # the teacher's own work is not handed in to anybody, so it is read from the
-        # last run they made of this step
-        run = db.scalar(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step", Run.status == "succeeded").order_by(Run.id.desc()))
-        if run is None:
+    if sub is not None:
+        out["submission_id"] = sub.id
+        out["at"] = sub.created_at.isoformat()
+    if show == "code":
+        if sub is None:
             out["error"] = "they have not handed this step in"
             return out
-        out["their_own"] = True
-        out["result"] = _result_of(run.id)
-        out["run"] = {"id": run.id, "own_code": (run.inputs or {}).get("code_source") == "own"}
-        return out
-    out["submission_id"] = sub.id
-    out["at"] = sub.created_at.isoformat()
-    if show == "code":
         path = storage.submission_dir(sub.id) / f"step{step_no}.py"
         out["code"] = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
         return out
-    mine = _result_of(sub.own_run_id or sub.last_test_run_id)
-    base = _result_of(sub.standard_run_id)
+    # results: what their own code produced when they handed it in, if that run is
+    # still there — otherwise their newest finished run of the step in this class
+    own = _finished(db, sub.own_run_id or sub.last_test_run_id) if sub is not None else None
+    run = own or latest_class_run(db, session, slug, step_no, user_id)
+    if run is None:
+        out["error"] = "no finished run of this step in this class yet"
+        return out
+    mine = _result_of(run.id)
     out["result"] = mine
-    out["compare"] = _metric_pairs(mine.get("metrics") or [], base.get("metrics") or [])
-    if sub.standard_run_id and not base:
-        run = db.get(Run, sub.standard_run_id)
-        out["standard_state"] = run.status if run else "missing"
+    out["run"] = {"id": run.id, "own_code": (run.inputs or {}).get("code_source") == "own"}
+    if own is not None:
+        # their own code, beside the standard code on the same settings
+        base_run = _finished(db, sub.standard_run_id)
+        if base_run is not None:
+            out["compare"] = _metric_pairs(mine.get("metrics") or [], _result_of(base_run.id).get("metrics") or [])
+        elif sub.standard_run_id:
+            pending = db.get(Run, sub.standard_run_id)
+            out["standard_state"] = pending.status if pending else "missing"
+    else:
+        out["their_own"] = True
     return out
 
 
