@@ -274,6 +274,7 @@ function StudentView({ data }) {
         </div>
       </div>
     );
+  if (data.show === "running") return <RunningView data={data} />;
   const rows = (data.compare || []).slice(0, 9);
   return (
     <div className={`stepwall ${data.own_code ? "" : "one"}`}>
@@ -322,6 +323,110 @@ function StudentView({ data }) {
         )}
       </div>
       {data.own_code && <HandedIn list={data.handed_in} selected={data.user_id} />}
+    </div>
+  );
+}
+
+/** Why a run stopped, in words a room can read, from how the process ended. */
+function whyItStopped(run) {
+  if (run.exit_code === -9 || run.exit_code === 137) return "It was killed for using more memory than the machine allows.";
+  if (/timed out/.test(run.error || "")) return `It ran past its ${run.timeout_min}-minute limit.`;
+  return null;
+}
+
+/** The live curves of a run: every loss on one chart, the rest beside it. */
+function liveCharts(live) {
+  const series = Object.entries(live?.series || {}).filter(([, pts]) => pts.length > 1);
+  const merge = (entries) => {
+    const rows = new Map();
+    for (const [k, pts] of entries) for (const p of pts) rows.set(p.x, { ...(rows.get(p.x) || { x: p.x }), [k]: p.y });
+    return [...rows.values()].sort((a, b) => a.x - b.x);
+  };
+  const colors = ["kept", "hold", "sky", "raw", "sun"];
+  const losses = series.filter(([k]) => /loss/.test(k));
+  const others = series.filter(([k]) => !/loss|learning_rate|^lr$|grad_norm/.test(k));
+  const out = [];
+  if (losses.length) out.push({ id: "loss", title: "Loss so far", type: "line", x: "x", series: losses.map(([k], i) => ({ key: k, label: k.replace(/_/g, " "), color: colors[i % colors.length] })), data: merge(losses) });
+  if (others.length) out.push({ id: others[0][0], title: others[0][0].replace(/_/g, " "), type: "line", x: "x", series: [{ key: others[0][0], label: others[0][0].replace(/_/g, " "), color: "sky" }], data: merge([others[0]]) });
+  return out.slice(0, 2);
+}
+
+/** One student's newest run of the step, as it goes: how far along, the curves so
+ *  far, and — when it fails — the error and the end of its log, which is where
+ *  the reason is. */
+function RunningView({ data }) {
+  const run = data.run;
+  const head = (
+    <div className="bar">
+      {data.name} · step {data.step}
+      {data.step_title ? ` · ${data.step_title}` : ""} · their run, live
+    </div>
+  );
+  if (!run)
+    return (
+      <div className="stepwall one">
+        <div className="panel code">
+          {head}
+          <p className="muted" style={{ padding: 20, fontSize: 20 }}>{data.error || "No run yet."}</p>
+        </div>
+      </div>
+    );
+  const going = run.status === "running" || run.status === "queued";
+  const failed = run.status === "failed" || run.status === "cancelled";
+  const why = failed ? whyItStopped(run) : null;
+  const charts = liveCharts(data.live);
+  return (
+    <div className="stepwall one">
+      <div className="panel code">
+        {head}
+        <div className="running">
+          <div className="side">
+            <div className="row" style={{ gap: 14, fontSize: 20 }}>
+              <span className={`pill ${run.status}`} style={{ fontSize: 18 }}>
+                <i className="dot" /> {run.status}
+              </span>
+              <span className="muted">
+                run {run.id} · {run.own_code ? "their own code" : "the standard code"} · {fmtDuration(run.elapsed)}
+                {going ? ` of ${run.timeout_min} min allowed` : ""}
+              </span>
+            </div>
+            {going && (
+              <>
+                <div className="progress big">
+                  <i style={{ width: `${Math.max(2, Math.round(run.progress_pct || 0))}%` }} />
+                </div>
+                <div style={{ fontSize: 20 }}>
+                  {Math.round(run.progress_pct || 0)}% · {run.progress_msg || (run.status === "queued" ? "waiting for the machine" : "starting")}
+                </div>
+              </>
+            )}
+            {failed && (
+              <div className="failbox">
+                <b>{run.status === "cancelled" ? "Stopped" : "It failed"}</b>
+                {why && <div>{why}</div>}
+                {run.error && <pre>{run.error.split("\n").slice(-8).join("\n")}</pre>}
+              </div>
+            )}
+            {run.status === "succeeded" && (run.metrics || []).length > 0 && <Kpis metrics={run.metrics} />}
+            <div className="charts">
+              {charts.map((c) => (
+                <ChartCard key={c.id} spec={c} height={charts.length > 1 ? 190 : 300} allowStretch={false} />
+              ))}
+            </div>
+          </div>
+          <div className="log runlog">
+            {(data.log_tail || []).length === 0 ? (
+              <span className="sys">nothing in the log yet</span>
+            ) : (
+              data.log_tail.map((l, i) => (
+                <div key={i} className={/error|traceback|exception|killed|failed/i.test(l) ? "err" : ""}>
+                  {l}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

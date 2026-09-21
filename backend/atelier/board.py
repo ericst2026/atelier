@@ -302,6 +302,67 @@ def ran_in_class(db: Session, session: Optional[ClassSession], slug: str, step_n
     return out
 
 
+def runs_in_class(db: Session, session: Optional[ClassSession], slug: str, step_no: int) -> list[dict[str, Any]]:
+    """Everyone's newest run of this step in this class, however it is going — the
+    ones still running, and the ones that failed, are the ones worth watching."""
+    seen: set[int] = set()
+    out = []
+    for run in db.scalars(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.kind == "step").order_by(Run.id.desc())).all():
+        if run.user_id in seen or (session is not None and (run.inputs or {}).get("class_session") != session.id):
+            continue
+        seen.add(run.user_id)
+        u = db.get(User, run.user_id)
+        out.append({"user_id": run.user_id, "name": (u.name or u.username) if u else "?", "run_id": run.id, "status": run.status, "progress_pct": run.progress_pct})
+    return out
+
+
+def _readable_log(run_id: int, n: int = 40) -> list[str]:
+    """The end of a run's log as a person would read it: a progress bar redraws
+    itself on one line with carriage returns, so only its last state is kept, and
+    the machine-readable progress lines are left out."""
+    path = storage.run_dir(run_id) / "run.log"
+    if not path.exists():
+        return []
+    with open(path, "rb") as fh:
+        fh.seek(0, 2)
+        size = fh.tell()
+        fh.seek(max(0, size - 64 * 1024))
+        text = fh.read().decode("utf-8", errors="replace")
+    lines = []
+    for raw in text.split("\n")[-n * 4 :]:
+        line = raw.rstrip("\r").split("\r")[-1].rstrip()
+        if line and not line.startswith("::"):
+            lines.append(line if len(line) <= 240 else line[:240] + "…")
+    return lines[-n:]
+
+
+def running_view(db: Session, session: Optional[ClassSession], slug: str, step_no: int, user_id: int) -> dict[str, Any]:
+    """One person's newest run of the step in this class, as it goes: how far it
+    has got, its curves so far, and — when it fails — why."""
+    for run in db.scalars(select(Run).where(Run.experiment == slug, Run.step == step_no, Run.user_id == user_id, Run.kind == "step").order_by(Run.id.desc())).all():
+        if session is not None and (run.inputs or {}).get("class_session") != session.id:
+            continue
+        return {
+            "run": {
+                "id": run.id,
+                "status": run.status,
+                "progress_pct": run.progress_pct,
+                "progress_msg": run.progress_msg,
+                "elapsed": _elapsed(run),
+                "timeout_min": run.timeout_min,
+                "own_code": (run.inputs or {}).get("code_source") == "own",
+                "params": run.params or {},
+                "error": run.error,
+                "exit_code": run.exit_code,
+                "metrics": (run.metrics or [])[:6],
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+            },
+            "live": storage.read_json(storage.run_dir(run.id) / "live.json", None),
+            "log_tail": _readable_log(run.id),
+        }
+    return {"error": "they have not run this step in this class yet"}
+
+
 def _handed_in(db: Session, slug: str, step_no: int, session: Optional[ClassSession] = None) -> list[dict[str, Any]]:
     """Who in this class has handed this step in, newest attempt each."""
     people = class_people(db, session)
@@ -449,6 +510,9 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
     if sub is not None:
         out["submission_id"] = sub.id
         out["at"] = sub.created_at.isoformat()
+    if show == "running":
+        out.update(running_view(db, session, slug, step_no, user_id))
+        return out
     if show == "code":
         if sub is None:
             out["error"] = "they have not handed this step in"

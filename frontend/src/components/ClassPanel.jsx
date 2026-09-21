@@ -275,27 +275,28 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
   // who has something to show for this step in this class: anyone with a finished
   // run of it has results; only those who handed their own code in have code
-  const [who2, setWho2] = useState({ ran: [], handed_in: [] });
+  // and anyone who has started a run of it at all can be watched while it goes
+  const [who2, setWho2] = useState({ ran: [], handed_in: [], running: [] });
   useEffect(() => {
-    if (!session) return setWho2({ ran: [], handed_in: [] });
+    if (!session) return setWho2({ ran: [], handed_in: [], running: [] });
     const fetchPeople = () =>
       api(`/class/step/${Number(step)}/people`)
-        .then((r) => setWho2({ ran: r.ran || [], handed_in: r.handed_in || [] }))
-        .catch(() => setWho2({ ran: [], handed_in: [] }));
+        .then((r) => setWho2({ ran: r.ran || [], handed_in: r.handed_in || [], running: r.running || [] }))
+        .catch(() => setWho2({ ran: [], handed_in: [], running: [] }));
     fetchPeople();
     const t = setInterval(fetchPeople, 8000); // a student finishing mid-lesson appears without a reload
     return () => clearInterval(t);
   }, [session?.id, step]);
   const handed = who2.handed_in;
   const union = [...who2.ran, ...who2.handed_in].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i);
-  const people = show === "code" ? handed : union;
+  const people = show === "code" ? handed : show === "running" ? who2.running : union;
   const apply = () => {
     const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
     if (show === "standard") return onPush(display.id, { mode: "standard", payload: base });
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
   };
-  const needsPerson = show === "results" || show === "code";
+  const needsPerson = show === "results" || show === "code" || show === "running";
   // the option can be left behind when the step changes under it
   useEffect(() => {
     if (!ownCode && show === "code") setShow("explanation");
@@ -311,7 +312,9 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
       <div className="small muted">
         showing:{" "}
         {display.mode === "student"
-          ? `${payload.show || "results"} of one student`
+          ? payload.show === "running"
+            ? "one student's run, live"
+            : `${payload.show || "results"} of one student`
           : display.mode === "standard"
             ? "the standard code"
             : display.mode === "step"
@@ -325,13 +328,17 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
             <option value="standard">the standard code</option>
             <option value="results">a student's results</option>
             {ownCode && <option value="code">a student's code</option>}
+            <option value="running">a student's run, live</option>
           </select>
           {needsPerson && (
             <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!canSet}>
-              <option value="">{people.length ? "— who —" : show === "code" ? "— nobody has handed this in —" : "— nobody has finished this step yet —"}</option>
+              <option value="">
+                {people.length ? "— who —" : show === "code" ? "— nobody has handed this in —" : show === "running" ? "— nobody has run this step yet —" : "— nobody has finished this step yet —"}
+              </option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.name}
+                  {show === "running" && m.status ? ` · ${m.status === "running" ? `running ${Math.round(m.progress_pct || 0)}%` : m.status}` : ""}
                 </option>
               ))}
             </select>

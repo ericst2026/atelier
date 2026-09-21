@@ -75,8 +75,23 @@ def load_tokenizer(path: str | Path, padding_side: str = "left"):
     tok = AutoTokenizer.from_pretrained(str(path), local_files_only=True, trust_remote_code=False)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+    if not getattr(tok, "chat_template", None):
+        # a base model ships without one, and TRL cannot train on chats without it;
+        # this renders exactly like chat_prompt's plain fallback, so the prompts a
+        # model is trained on are the prompts it is later asked
+        tok.chat_template = PLAIN_CHAT_TEMPLATE
     tok.padding_side = padding_side
     return tok
+
+
+PLAIN_CHAT_TEMPLATE = (
+    "{% for m in messages %}"
+    "{% if m['role'] == 'system' %}System: {{ m['content'] }}\n\n"
+    "{% elif m['role'] == 'user' %}User: {{ m['content'] }}\n\n"
+    "{% else %}Assistant: {{ m['content'] }}{{ eos_token }}\n\n{% endif %}"
+    "{% endfor %}"
+    "{% if add_generation_prompt %}Assistant:{% endif %}"
+)
 
 
 def load_model(path: str | Path, dtype: str = "bf16", device: Optional[str] = None, adapter: Optional[str | Path] = None):
@@ -192,10 +207,15 @@ class ProgressCallback:
                 series = {k.replace("/", "_"): v for k, v in series.items()}
                 from atelier_sdk import progress
 
-                progress(100.0 * state.global_step / max(1, total_steps), f"{label} step {state.global_step}/{total_steps}" + (f" · loss {logs['loss']:.3f}" if "loss" in logs else ""), step=state.global_step, **series)
+                eta = ""
+                if state.global_step > 0:
+                    left = (time.time() - cb.t0) / state.global_step * (total_steps - state.global_step)
+                    eta = f" · ~{left / 3600:.1f} h left" if left >= 5400 else f" · ~{left / 60:.0f} min left"
+                progress(100.0 * state.global_step / max(1, total_steps), f"{label} step {state.global_step}/{total_steps}" + (f" · loss {logs['loss']:.3f}" if "loss" in logs else "") + eta, step=state.global_step, **series)
                 cb.history.append({"step": state.global_step, **logs})
 
         self.history: list[dict[str, Any]] = []
+        self.t0 = time.time()
         self.callback = _CB()
 
 
@@ -217,6 +237,19 @@ def lora_config(r: int = 16, alpha: int = 32, dropout: float = 0.05, target_modu
     return LoraConfig(r=r, lora_alpha=alpha, lora_dropout=dropout, target_modules=target_modules or ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], task_type="CAUSAL_LM")
 
 
+def cpu_micro_batch(model, vocab: int, batch_size: int, max_length: int) -> int:
+    """The largest even part of a batch whose longest sequences fit in half the
+    memory beside the weights: about 16 bytes per token per vocabulary entry for
+    the logits and their loss, and 60 per token, layer and width for the rest."""
+    from atelier_mini.train import memory_limit
+
+    cfg = model.config
+    per_seq = max_length * (16 * vocab + 60 * getattr(cfg, "num_hidden_layers", 12) * getattr(cfg, "hidden_size", 768))
+    weights = 4 * sum(p.numel() for p in model.parameters())
+    fits = max(1, int((memory_limit() * 0.6 - weights) // per_seq))
+    return max(d for d in range(1, batch_size + 1) if batch_size % d == 0 and d <= fits)
+
+
 def sft_train(model_path: Path, train_rows: list[dict[str, Any]], out_dir: Path, val_rows: Optional[list[dict[str, Any]]] = None, method: str = "lora", lora: Optional[dict[str, Any]] = None, epochs: float = 1.0, lr: float = 2e-4, batch_size: int = 4, grad_accum: int = 4, max_length: int = 1024, packing: bool = False, warmup_ratio: float = 0.03, dtype: str = "bf16", gradient_checkpointing: bool = True, label: str = "sft") -> dict[str, Any]:
     """Supervised fine-tuning with TRL on rows shaped {"messages": [...]}. Returns training history."""
     import torch
@@ -226,6 +259,16 @@ def sft_train(model_path: Path, train_rows: list[dict[str, Any]], out_dir: Path,
 
     tok = load_tokenizer(model_path, padding_side="right")
     model = AutoModelForCausalLM.from_pretrained(str(model_path), torch_dtype=torch_dtype(dtype), local_files_only=True)
+    if not torch.cuda.is_available():
+        # on a CPU the logits of a long sequence over a large vocabulary are most of
+        # the memory; fewer sequences at once, accumulated to the same batch
+        part = cpu_micro_batch(model, len(tok), batch_size, max_length)
+        if part < batch_size:
+            print(f"[sft] {batch_size} sequences at a time do not fit in memory on the cpu: {part} at a time, accumulated {batch_size // part * grad_accum}×", flush=True)
+            grad_accum *= batch_size // part
+            batch_size = part
+            # and keep only each layer's input, working the rest out again going back
+            gradient_checkpointing = True
     train_ds = Dataset.from_list(train_rows)
     val_ds = Dataset.from_list(val_rows) if val_rows else None
     steps_per_epoch = math.ceil(len(train_rows) / (batch_size * grad_accum * max(1, torch.cuda.device_count())))
@@ -250,6 +293,7 @@ def sft_train(model_path: Path, train_rows: list[dict[str, Any]], out_dir: Path,
         bf16=dtype == "bf16" and torch.cuda.is_available(),
         fp16=dtype == "fp16" and torch.cuda.is_available(),
         gradient_checkpointing=gradient_checkpointing,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if gradient_checkpointing else None,
         report_to="none",
         seed=1,
     )

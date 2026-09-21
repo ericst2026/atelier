@@ -32,7 +32,10 @@ def on_log(row):
     if "val_loss" in row:
         progress(100 * row["step"] / max_iters, f"step {row['step']}/{max_iters} · val {row['val_loss']:.3f}", step=row["step"], val_loss=row["val_loss"], train_loss=row["train_loss"])
     else:
-        progress(100 * row["step"] / max_iters, f"step {row['step']}/{max_iters} · loss {row['loss']:.3f} · {row.get('tokens_per_sec', 0):,.0f} tok/s", step=row["step"], loss=row["loss"], tokens_per_sec=row.get("tokens_per_sec"))
+        tps = row.get("tokens_per_sec") or 0
+        left = (max_iters - row["step"]) * int(P["batch_size"]) * int(P["grad_accum"]) * cfg.block_size / tps if tps else 0
+        eta = f" · ~{left / 3600:.1f} h left" if left >= 5400 else f" · ~{left / 60:.0f} min left" if left else ""
+        progress(100 * row["step"] / max_iters, f"step {row['step']}/{max_iters} · loss {row['loss']:.3f} · {tps:,.0f} tok/s{eta}", step=row["step"], loss=row["loss"], tokens_per_sec=row.get("tokens_per_sec"))
 
 
 res = pretrain(model, train, val, run_dir, max_iters=max_iters, batch_size=int(P["batch_size"]), grad_accum=int(P["grad_accum"]), block_size=cfg.block_size, lr=float(P["lr"]), warmup=int(P["warmup"]), weight_decay=float(P["weight_decay"]), eval_every=int(P["eval_every"]), eval_iters=int(P["eval_iters"]), device=device, on_log=on_log)

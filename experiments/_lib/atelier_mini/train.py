@@ -16,15 +16,50 @@ def cosine_lr(it: int, max_iters: int, lr: float, warmup: int, floor: float = 0.
     return lr * floor + 0.5 * (lr - lr * floor) * (1 + math.cos(math.pi * min(p, 1.0)))
 
 
+def memory_limit() -> int:
+    """Bytes this process may use: the container's limit, else the machine's memory."""
+    for f in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            v = Path(f).read_text().strip()
+            if v.isdigit() and int(v) < 1 << 50:
+                return int(v)
+        except OSError:
+            pass
+    try:
+        import os
+
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        return 8 << 30
+
+
+def micro_batch(model, batch_size: int, block_size: int, device: str) -> int:
+    """How many sequences go through the model at once. On a GPU, all of them. On
+    a CPU the activations of a whole batch can outgrow the container — every
+    sequence costs about 140 bytes per token, layer and width, plus its logits —
+    so the batch is split into the largest even part that fits in half the
+    memory, and gradients are accumulated over the parts. The step is the same
+    step; it only takes a little longer."""
+    if str(device).startswith("cuda"):
+        return batch_size
+    c = model.config
+    per_seq = block_size * (140 * c.n_layer * c.n_embd + 16 * c.vocab_size)
+    weights = 16 * sum(p.numel() for p in model.parameters())  # weights, grads, two Adam moments
+    fits = max(1, int((memory_limit() * 0.5 - weights) // per_seq))
+    return max(d for d in range(1, batch_size + 1) if batch_size % d == 0 and d <= fits)
+
+
 @torch.no_grad()
 def estimate_loss(model, stream: TokenStream, batch_size: int, block_size: int, device, iters: int = 20) -> float:
     model.eval()
     total = 0.0
+    part = micro_batch(model, batch_size, block_size, device)
     for _ in range(iters):
         x, y = stream.batch(batch_size, block_size, device)
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
-            _, loss = model(x, y)
-        total += float(loss)
+        for i in range(0, batch_size, part):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
+                _, loss = model(x[i : i + part], y[i : i + part])
+            total += float(loss) * len(x[i : i + part]) / batch_size
     model.train()
     return total / iters
 
@@ -34,6 +69,10 @@ def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir:
     block_size = block_size or model.config.block_size
     opt = model.optimizers(weight_decay, lr)
     tokens_per_step = batch_size * block_size * grad_accum
+    part = micro_batch(model, batch_size, block_size, device)
+    splits = batch_size // part
+    if splits > 1:
+        print(f"[train] each batch of {batch_size} runs as {splits} parts of {part} to fit in memory on the {device}", flush=True)
     history, best, t0 = [], float("inf"), time.time()
     model.train()
     for it in range(max_iters + 1):
@@ -52,16 +91,19 @@ def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir:
             if it == max_iters:
                 break
         step_t = time.time()
+        step_loss = 0.0
         for micro in range(grad_accum):
             x, y = train_stream.batch(batch_size, block_size, device)
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
-                _, loss = model(x, y)
-            (loss / grad_accum).backward()
+            for i in range(0, batch_size, part):
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
+                    _, loss = model(x[i : i + part], y[i : i + part])
+                (loss / (grad_accum * splits)).backward()
+                step_loss += loss.item() / (grad_accum * splits)
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 10 == 0:
-            on_log({"step": it, "loss": float(loss) * grad_accum, "tokens_per_sec": tokens_per_step / max(time.time() - step_t, 1e-6), "lr": opt.param_groups[0]["lr"]})
+            on_log({"step": it, "loss": step_loss, "tokens_per_sec": tokens_per_step / max(time.time() - step_t, 1e-6), "lr": opt.param_groups[0]["lr"]})
     return {"history": history, "best_val_loss": best, "elapsed_sec": time.time() - t0, "tokens_seen": max_iters * tokens_per_step, "checkpoint": str(out_dir / "model.pt")}
 
 
@@ -86,9 +128,12 @@ def sft(model, tok, rows: list[dict], out_dir: Path, val_rows: Optional[list[dic
         with torch.no_grad():
             for i in range(0, min(len(val_rows), 256), batch_size):
                 x, y, m = sft_batch(val_rows[i : i + batch_size], tok, block_size, device, system)
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
-                    _, loss = model(x, y, m)
-                total += float(loss)
+                part = micro_batch(model, len(x), x.shape[1], device)
+                counted = m.sum().clamp(min=1)
+                for j in range(0, len(x), part):
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
+                        _, loss = model(x[j : j + part], y[j : j + part], m[j : j + part])
+                    total += float(loss * m[j : j + part].sum() / counted)
                 n += 1
         model.train()
         return total / max(n, 1)
@@ -110,14 +155,20 @@ def sft(model, tok, rows: list[dict], out_dir: Path, val_rows: Optional[list[dic
         batch = order[cursor : cursor + batch_size]
         cursor += batch_size
         x, y, m = sft_batch(batch, tok, block_size, device, system)
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
-            _, loss = model(x, y, m)
-        loss.backward()
+        part = micro_batch(model, len(batch), x.shape[1], device)
+        counted = m.sum().clamp(min=1)
+        loss = 0.0
+        for i in range(0, len(batch), part):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.startswith("cuda")):
+                _, piece = model(x[i : i + part], y[i : i + part], m[i : i + part])
+            share = m[i : i + part].sum() / counted
+            (piece * share).backward()
+            loss += (piece * share).item()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 5 == 0:
-            on_log({"step": it, "loss": float(loss), "lr": opt.param_groups[0]["lr"]})
+            on_log({"step": it, "loss": loss, "lr": opt.param_groups[0]["lr"]})
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save(out_dir / "model.pt", {"sft": True, "steps": steps})
     return {"history": history, "elapsed_sec": time.time() - t0, "checkpoint": str(out_dir / "model.pt"), "steps": steps}

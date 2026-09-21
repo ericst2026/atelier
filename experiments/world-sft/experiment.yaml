@@ -88,7 +88,7 @@ steps:
     timeout_min: 180
     figures: [{key: eval_loss, label: val loss}]
     params:
-      - {key: epochs, label: Epochs, type: float, min: 0.2, max: 10, step: 0.2, default: 2}
+      - {key: epochs, label: Epochs, type: float, min: 0.05, max: 10, step: 0.05, default: 2}
       - {key: lr, label: Learning rate, type: float, min: 0.000001, max: 0.001, step: 0.000001, default: 0.0002}
       - {key: batch_size, label: Examples per step, type: int, min: 4, max: 128, default: 24}
       - {key: warmup, label: Warmup steps, type: int, min: 0, max: 500, default: 20}
