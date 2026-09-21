@@ -35,10 +35,12 @@ if prepared:
     data_label = f"materials/{P['data_material']}"
 else:
     rows = []
+    by_family: dict = {}
     for i, ex in enumerate(world.instructions(n, with_steps=with_steps, difficulty=difficulty)):
         rows.append(ex)
+        by_family[ex.get("family", "other")] = by_family.get(ex.get("family", "other"), 0) + 1
         if i % 2000 == 0:
-            progress(70 * i / n, f"{i:,} demonstrations")
+            progress(70 * i / n, f"{i:,} demonstrations", step=i + 1, x_label="demonstrations written", **{f"demonstrations__{k}": v for k, v in by_family.items()})
     val = world.eval_set(int(P["val_examples"]), seed=555_003, difficulty=difficulty, families=families)
     data_label = "generated from the world"
 # the held-out questions steps 2 and 4 grade, the same for both sources

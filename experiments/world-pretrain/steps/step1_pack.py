@@ -44,7 +44,7 @@ else:
     data_label = "generated from the world"
     progress(2, f"generating {n:,} documents in {world.pack['name']}")
     texts = (d["text"] for d in world.documents(n, mix))
-stats = pack(texts, tok, run_dir / "all.bin", max_tokens=int(P["max_tokens"]), progress=lambda d, t: progress(5 + 85 * t / int(P["max_tokens"]), f"{d:,} docs · {t:,} tokens", step=d, tokens=t))
+stats = pack(texts, tok, run_dir / "all.bin", max_tokens=int(P["max_tokens"]), progress=lambda d, t: progress(5 + 85 * t / int(P["max_tokens"]), f"{d:,} docs · {t:,} tokens", step=d, x_label="documents packed", tokens=t, tokens_per_document=t / max(d, 1)))
 
 import numpy as np  # noqa: E402
 

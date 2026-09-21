@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_mini.embed import Index, recall_at_k, train_contrastive
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -44,7 +44,7 @@ def recall5(e) -> float:
 before = recall5(emb)
 progress(10, f"before training: recall@5 {before:.1%}")
 res = train_contrastive(emb, train, run_dir, val, epochs=float(P["epochs"]), batch_size=int(P["batch_size"]), lr=float(P["lr"]), temperature=float(P["temperature"]), hard_negatives=bool(P["hard_negatives"]), freeze_body=bool(P["freeze_body"]), device=device,
-                        on_log=lambda r: progress(10 + 80 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · in-batch {r['in_batch_accuracy']:.0%}" if "in_batch_accuracy" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **{k: v for k, v in r.items() if k in ("loss", "in_batch_accuracy")}))
+                        on_log=lambda r: progress(10 + 80 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · in-batch {r['in_batch_accuracy']:.0%}" if "in_batch_accuracy" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **curves(r)))
 after = recall5(emb)
 # a HuggingFace base is stored as its fine-tuned weights plus where the base (config, tokenizer) lives
 save_embedder(emb, run_dir / "embedder.pt", {"tokenizer": str(I["tokenizer"]), "lang": I.get("lang", "en"), "base_model": I["base_model"]})

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves
 from atelier_mini.data import TokenStream
 from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.train import pretrain
@@ -36,7 +36,7 @@ single = MiniLM(cfg).to(device)
 progress(3, f"reference run: 1 GPU, {iters} steps")
 res_single = pretrain(single, TokenStream(I["train_bin"], meta["dtype"]), TokenStream(I["val_bin"], meta["dtype"]), run_dir / "single",
                       max_iters=iters, batch_size=batch, block_size=cfg.block_size, lr=6e-4, warmup=max(10, iters // 20), eval_every=max(25, iters // 8), device=device,
-                      on_log=lambda r: progress(3 + 45 * r["step"] / iters, f"{one_name} · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{k: v for k, v in r.items() if k == "val_loss"}))
+                      on_log=lambda r: progress(3 + 45 * r["step"] / iters, f"{one_name} · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **curves(r, "val_loss", "loss", "grad_norm")))
 del single
 if not cpu:
     torch.cuda.empty_cache()

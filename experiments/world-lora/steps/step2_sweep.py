@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.lora import adapter_bytes, apply_lora
 from atelier_mini.model import MiniLM
@@ -52,7 +52,7 @@ for i, r in enumerate(ranks):
     steps_total = max(1, int(len(rows) * float(P["epochs"]) / int(P["batch_size"])))
 
     def on_log(x, i=i, r=r, steps_total=steps_total):
-        progress(10 + 80 * (i + x["step"] / steps_total) / len(ranks), f"rank {r} · step {x['step']}/{steps_total}", step=x["step"], **{k: v for k, v in x.items() if k == "loss"})
+        progress(10 + 80 * (i + x["step"] / steps_total) / len(ranks), f"rank {r} · step {x['step']}/{steps_total}", step=x["step"], **{f"loss_rank{r}": v for k, v in curves(x, "loss").items()})
 
     res = sft(model, tok, rows, run_dir / f"r{r}", None, epochs=float(P["epochs"]), batch_size=int(P["batch_size"]), lr=float(P["lr"]), system=system, device=device, on_log=on_log)
     acc = accuracy(model)

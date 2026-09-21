@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 
 parse_args()
 P = params({"epochs": 2.0, "lr": 2e-4, "batch_size": 24, "warmup": 20, "weight_decay": 0.1, "use_system": True})
@@ -26,7 +26,7 @@ def on_log(row):
         msg += f" · val {row['eval_loss']:.3f}"
     elif "loss" in row:
         msg += f" · loss {row['loss']:.3f}"
-    progress(100 * row["step"] / steps_total, msg, step=row["step"], **{k: v for k, v in row.items() if k in ("loss", "eval_loss")})
+    progress(100 * row["step"] / steps_total, msg, step=row["step"], **curves(row))
 
 
 if fmt == "hf":

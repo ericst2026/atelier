@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves
 from atelier_mini.data import TokenStream, pack
 from atelier_mini.model import MiniLM
 from atelier_mini.tok import MiniTokenizer
@@ -56,7 +56,7 @@ model._cos = model._sin = None
 iters = int(P["max_iters"])
 res = pretrain(model, TokenStream(run_dir / "train.bin", stats["dtype"]), TokenStream(run_dir / "val.bin", stats["dtype"]), run_dir,
                max_iters=iters, batch_size=int(P["batch_size"]), block_size=target, lr=float(P["lr"]), warmup=max(10, iters // 20), eval_every=max(25, iters // 10), device=device,
-               on_log=lambda r: progress(35 + 60 * r["step"] / iters, f"step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{k: v for k, v in r.items() if k in ("val_loss", "loss")}))
+               on_log=lambda r: progress(35 + 60 * r["step"] / iters, f"step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **curves(r)))
 model.save(run_dir / "model.pt", {"long": True, "tokenizer": str(I["tokenizer"]), "lang": I.get("lang", "en"), "system": I.get("system"), "base_model": I["model"], "rope_scale": float(I["rope_scale"]), "rope_base": float(I["rope_base"]), "context": target})
 
 R = Result()

@@ -203,7 +203,7 @@ class ProgressCallback:
         class _CB(TrainerCallback):
             def on_log(self, args, state, control, logs=None, **kw):
                 logs = logs or {}
-                series = {k: v for k, v in logs.items() if isinstance(v, (int, float)) and (k in ("loss", "eval_loss", "learning_rate", "grad_norm") or k.startswith(("reward", "kl", "completion")))}
+                series = {k: v for k, v in logs.items() if isinstance(v, (int, float)) and (k in ("loss", "eval_loss", "learning_rate", "grad_norm", "mean_token_accuracy", "eval_mean_token_accuracy", "entropy") or k.startswith(("reward", "kl", "completion", "logps")))}
                 series = {k.replace("/", "_"): v for k, v in series.items()}
                 from atelier_sdk import progress
 

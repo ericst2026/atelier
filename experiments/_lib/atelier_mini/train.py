@@ -99,11 +99,12 @@ def pretrain(model, train_stream: TokenStream, val_stream: TokenStream, out_dir:
                     _, loss = model(x[i : i + part], y[i : i + part])
                 (loss / (grad_accum * splits)).backward()
                 step_loss += loss.item() / (grad_accum * splits)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        # the norm before clipping: how hard this batch pulled on the weights
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip))
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 10 == 0:
-            on_log({"step": it, "loss": step_loss, "tokens_per_sec": tokens_per_step / max(time.time() - step_t, 1e-6), "lr": opt.param_groups[0]["lr"]})
+            on_log({"step": it, "loss": step_loss, "tokens_per_sec": tokens_per_step / max(time.time() - step_t, 1e-6), "lr": opt.param_groups[0]["lr"], "grad_norm": grad_norm})
     return {"history": history, "best_val_loss": best, "elapsed_sec": time.time() - t0, "tokens_seen": max_iters * tokens_per_step, "checkpoint": str(out_dir / "model.pt")}
 
 
@@ -164,11 +165,11 @@ def sft(model, tok, rows: list[dict], out_dir: Path, val_rows: Optional[list[dic
             share = m[i : i + part].sum() / counted
             (piece * share).backward()
             loss += (piece * share).item()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 5 == 0:
-            on_log({"step": it, "loss": loss, "lr": opt.param_groups[0]["lr"]})
+            on_log({"step": it, "loss": loss, "lr": opt.param_groups[0]["lr"], "grad_norm": grad_norm})
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save(out_dir / "model.pt", {"sft": True, "steps": steps})
     return {"history": history, "elapsed_sec": time.time() - t0, "checkpoint": str(out_dir / "model.pt"), "steps": steps}

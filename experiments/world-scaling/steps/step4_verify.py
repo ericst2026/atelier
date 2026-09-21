@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves
 from atelier_mini.data import TokenStream
 from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.train import pretrain
@@ -27,7 +27,7 @@ print(f"[verify] {model.num_params():,} parameters · {iters} steps · predicted
 
 res = pretrain(model, TokenStream(I["train_bin"], meta["dtype"]), TokenStream(I["val_bin"], meta["dtype"]), run_dir,
                max_iters=iters, batch_size=plan["batch_size"], block_size=cfg.block_size, lr=1e-3 * (288 / cfg.n_embd) ** 0.5, warmup=max(10, iters // 20), device=device,
-               on_log=lambda r: progress(100 * r["step"] / iters, f"step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{k: v for k, v in r.items() if k in ("val_loss", "loss")}))
+               on_log=lambda r: progress(100 * r["step"] / iters, f"step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **curves(r)))
 measured = res["best_val_loss"]
 predicted = fit["predicted_loss"]
 error = (measured - predicted) / predicted

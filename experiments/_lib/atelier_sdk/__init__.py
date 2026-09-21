@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-__all__ = ["RUN_DIR", "MATERIALS", "params", "inputs", "progress", "Result", "material", "hist", "read_jsonl", "write_jsonl", "parse_args", "run_dir"]
+__all__ = ["RUN_DIR", "MATERIALS", "params", "inputs", "progress", "curves", "Result", "material", "hist", "read_jsonl", "write_jsonl", "parse_args", "run_dir"]
 
 
 def _run_dir() -> Path:
@@ -72,7 +72,16 @@ _last_progress = 0.0
 
 
 def progress(pct: Optional[float] = None, msg: Optional[str] = None, min_interval: float = 0.0, **series: Any) -> None:
-    """Report progress. Extra keywords become live chart series (use step=... for the x value)."""
+    """Report progress. Extra keywords become live chart series (use step=... for the x value).
+
+    What a series is called decides where it is drawn: anything with `loss` in
+    its name goes on the loss chart, `grad_norm` on the gradient chart, `lr` or
+    `learning_rate` on the learning-rate chart, `*_per_sec` on the speed chart,
+    `accuracy`, `reward`, `kl` on their own, and anything else on a chart of its
+    own. `group__name` puts a curve on the `group` chart, labelled `name`
+    (documents__story, documents__record: one chart, a line each). And
+    `x_label="documents"` says what the x axis counts, when it is not optimizer
+    steps; say it once, with the first point."""
     global _last_progress
     now = time.time()
     if min_interval and now - _last_progress < min_interval and not series:
@@ -86,6 +95,26 @@ def progress(pct: Optional[float] = None, msg: Optional[str] = None, min_interva
     if series:
         payload["series"] = {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v) for k, v in series.items()}
     print("::progress " + json.dumps(payload), flush=True)
+
+
+# what a training log row carries that is not a curve: the x value, and running
+# totals that only ever climb
+_NOT_CURVES = {"step", "x", "epoch", "elapsed", "tokens", "tokens_seen", "examples_seen"}
+
+
+def curves(row: dict[str, Any], *keep: str) -> dict[str, float]:
+    """The numbers in a training log row worth drawing live: loss, gradient norm,
+    learning rate, speed, accuracy... Pass names to keep only those.
+
+        on_log=lambda r: progress(pct, msg, step=r["step"], **curves(r))"""
+    out = {}
+    for k, v in row.items():
+        if k in _NOT_CURVES or (keep and k not in keep):
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            continue
+        out[k.replace("/", "_")] = float(v)
+    return out
 
 
 def hist(values: Iterable[float], bins: int = 20, log: bool = False, lo: Optional[float] = None, hi: Optional[float] = None, integer: bool = False) -> list[dict[str, Any]]:

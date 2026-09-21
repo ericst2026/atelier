@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_mini.gen import generate
 from atelier_mini.lora import adapter_bytes, apply_lora
 from atelier_mini.model import MiniLM
@@ -56,7 +56,7 @@ for j, mode in enumerate(("lora", "full")):
         torch.cuda.reset_peak_memory_stats()
     t0 = time.time()
     res = sft(model, tok, rows, run_dir / mode, None, epochs=float(P["epochs"]), batch_size=24, lr=lr, system=system, device=device,
-              on_log=lambda x, j=j, mode=mode: progress(5 + 45 * j + 35 * x["step"] / steps_total, f"{mode} · step {x['step']}/{steps_total}", step=x["step"], **{k: v for k, v in x.items() if k == "loss"}))
+              on_log=lambda x, j=j, mode=mode: progress(5 + 45 * j + 35 * x["step"] / steps_total, f"{mode} · step {x['step']}/{steps_total}", step=x["step"], **{f"loss_{mode}": v for k, v in curves(x, "loss").items()}))
     acc, by_family = accuracy(model)
     runs.append({
         "mode": "LoRA" if mode == "lora" else "full fine-tune",

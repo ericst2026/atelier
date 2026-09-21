@@ -88,12 +88,33 @@ class LiveSeries:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.series: dict[str, list[dict[str, float]]] = {}
+        # what the x axis counts, when a step says (optimizer steps, documents read,
+        # merges made); a chart without one counts steps
+        self.x_label: Optional[str] = None
+        # how far along the run said it was, against time: every step reports this,
+        # so even a step that draws nothing of its own has a live curve, and a
+        # stall shows as a flat line
+        self.timeline: list[dict[str, float]] = []
+        self.t0 = time.time()
         self.counter = 0
         self.dirty = False
+
+    def mark(self, pct: float) -> None:
+        t = round(time.time() - self.t0, 1)
+        last = self.timeline[-1] if self.timeline else None
+        if last is not None and last["y"] == pct and t - last["x"] < 30:
+            return
+        self.timeline.append({"x": t, "y": pct})
+        if len(self.timeline) > MAX_LIVE_POINTS:
+            del self.timeline[::2]
+        self.dirty = True
 
     def add(self, series: dict[str, Any]) -> None:
         if not series:
             return
+        label = series.pop("x_label", None)
+        if isinstance(label, str) and label:
+            self.x_label = label[:40]
         x = series.pop("step", series.pop("x", None))
         if x is None:
             x = self.counter
@@ -111,7 +132,7 @@ class LiveSeries:
 
     def flush(self) -> None:
         if self.dirty:
-            storage.write_json(self.path, {"series": self.series})
+            storage.write_json(self.path, {"series": self.series, "timeline": self.timeline, **({"x_label": self.x_label} if self.x_label else {})})
             self.dirty = False
 
 
@@ -186,16 +207,21 @@ def execute(run_id: int, gpu_ids: list[int], bus: SyncBus) -> None:
                         if r is not None:
                             if p.get("pct") is not None:
                                 r.progress_pct = max(0.0, min(100.0, float(p["pct"])))
+                                live.mark(r.progress_pct)
                             if p.get("msg") is not None:
                                 r.progress_msg = str(p["msg"])[:300]
                             db.commit()
                     bus.publish_run(run_id, {"type": "progress", "pct": p.get("pct"), "msg": p.get("msg"), "series": series})
-                    continue
-                buffer.append(line.rstrip("\n"))
+                else:
+                    buffer.append(line.rstrip("\n"))
+                # a training loop prints nothing but progress lines once it is going,
+                # so the log and the curves are written out on time as well, or the
+                # wall would see neither until the run ended
                 if len(buffer) >= 40 or time.time() - last_flush > 0.3:
                     logf.flush()
                     live.flush()
-                    bus.publish_run(run_id, {"type": "log", "lines": buffer})
+                    if buffer:
+                        bus.publish_run(run_id, {"type": "log", "lines": buffer})
                     buffer, last_flush = [], time.time()
             if buffer:
                 bus.publish_run(run_id, {"type": "log", "lines": buffer})

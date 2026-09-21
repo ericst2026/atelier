@@ -52,10 +52,12 @@ else:
         raise SystemExit("At least one share must be above zero.")
     mix = {"story": float(P["story_share"]) / total, "record": float(P["record_share"]) / total, "task": float(P["task_share"]) / total}
     docs = []
+    by_kind: dict = {}
     for i, d in enumerate(world.documents(n, mix)):
         docs.append({**d, "truth": "unique"})
+        by_kind[d.get("kind", "other")] = by_kind.get(d.get("kind", "other"), 0) + 1
         if i % 2000 == 0:
-            progress(70 * i / n, f"{i:,} documents")
+            progress(70 * i / n, f"{i:,} documents", step=i + 1, x_label="documents written", **{f"documents__{k}": v for k, v in by_kind.items()})
     # duplicates are planted only in generated text, where we know there were none.
     # Real corpora have their own, which is what the next step is for.
     planted = int(n * float(P["dup_rate"]))

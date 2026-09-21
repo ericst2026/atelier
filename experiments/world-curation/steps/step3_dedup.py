@@ -13,7 +13,8 @@ docs = read_jsonl(I["filtered"])
 texts = [d["text"] for d in docs]
 progress(5, f"{len(docs):,} documents after filtering")
 
-res = dedupe(texts, lowercase=True, collapse_ws=True, near=bool(P["near"]), shingle="word", n=int(P["n"]), threshold=float(P["threshold"]), progress=lambda pct, msg: progress(5 + 80 * pct / 100, msg))
+res = dedupe(texts, lowercase=True, collapse_ws=True, near=bool(P["near"]), shingle="word", n=int(P["n"]), threshold=float(P["threshold"]), progress=lambda pct, msg: progress(5 + 80 * pct / 100, msg),
+             on_pairs=lambda k, total, similar: progress(step=k, x_label="candidate pairs checked", near_duplicate_pairs=similar, share_similar=similar / max(k, 1)))
 kept_idx = set(res["kept"])
 kept = [docs[i] for i in res["kept"]]
 removed = [docs[i] for i in range(len(docs)) if i not in kept_idx]

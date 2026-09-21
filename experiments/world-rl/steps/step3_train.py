@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_world import World
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -76,7 +76,7 @@ else:
 
     def on_log(row):
         progress(100 * (row["step"] + 1) / max_steps, f"step {row['step'] + 1}/{max_steps} · reward {row['reward']:.3f} · KL {row['kl']:.4f} · {row['completion_length']:.0f} tokens",
-                 step=row["step"], reward=row["reward"], kl=row["kl"], completion_length=row["completion_length"], reward_std=row["reward_std"])
+                 step=row["step"], **curves(row, "reward", "reward_std", "kl", "completion_length", "loss", "grad_norm", "solved"))
 
     res = grpo(model, tok, prompts, reward_fn, run_dir, reference=reference, group_size=int(P["group_size"]), prompts_per_step=int(P["prompts_per_step"]), max_new_tokens=int(P["max_new_tokens"]), temperature=float(P["temperature"]), beta=float(P["beta"]), lr=float(P["lr"]), max_steps=max_steps, clip_eps=float(P["clip_eps"]), system=system, device=device, on_log=on_log)
     model.save(run_dir / "model.pt", {"rl": True, "tokenizer": str(I["tokenizer"]), "lang": I.get("lang", "en"), "system": system, "base_model": I["policy"]})

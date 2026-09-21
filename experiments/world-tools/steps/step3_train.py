@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 
 parse_args()
 P = params({"epochs": 3.0, "lr": 2e-4, "batch_size": 24})
@@ -51,7 +51,7 @@ else:
     progress(2, f"{len(rows):,} demonstrations · {steps_total} steps")
 
     res = sft(model, tok, rows, run_dir, val, epochs=float(P["epochs"]), batch_size=int(P["batch_size"]), lr=float(P["lr"]), system=system, device=device,
-              on_log=lambda r: progress(100 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · val {r['eval_loss']:.3f}" if "eval_loss" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **{k: v for k, v in r.items() if k in ("loss", "eval_loss")}))
+              on_log=lambda r: progress(100 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · val {r['eval_loss']:.3f}" if "eval_loss" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **curves(r)))
     model.save(run_dir / "model.pt", {"tools": True, "tokenizer": str(I["tokenizer"]), "lang": I.get("lang", "en"), "system": system, "base_model": I["policy"]})
     hist = res["history"]
     tool_model, tool_adapter = str(run_dir / "model.pt"), None

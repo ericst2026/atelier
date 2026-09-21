@@ -115,11 +115,11 @@ def dpo(model, reference, tok, pairs: list[dict], out_dir: Path, val_pairs: Opti
         chunk = order[cursor : cursor + batch_size]
         cursor += batch_size
         stats = _step(chunk, train=True)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 5 == 0:
-            on_log({"step": it, **stats})
+            on_log({"step": it, **stats, "lr": opt.param_groups[0]["lr"], "grad_norm": grad_norm})
     out_dir.mkdir(parents=True, exist_ok=True)
     model.save(out_dir / "model.pt", {"dpo": True, "beta": beta, "steps": steps})
     return {"history": history, "elapsed_sec": time.time() - t0, "checkpoint": str(out_dir / "model.pt"), "steps": steps}

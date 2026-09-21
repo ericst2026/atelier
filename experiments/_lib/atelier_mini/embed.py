@@ -207,11 +207,11 @@ def train_contrastive(embedder, pairs: list[dict], out_dir, val_pairs: Optional[
         labels = torch.arange(len(chunk), device=logits.device)
         loss = torch.nn.functional.cross_entropy(logits, labels)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(params, 1.0))
         opt.step()
         opt.zero_grad(set_to_none=True)
         if on_log and it % 5 == 0:
-            on_log({"step": it, "loss": float(loss)})
+            on_log({"step": it, "loss": float(loss), "lr": opt.param_groups[0]["lr"], "grad_norm": grad_norm})
     out_dir.mkdir(parents=True, exist_ok=True)
     torch.save({"model_state": embedder.model.state_dict(), "config": embedder.model.config.to_dict(), "proj": embedder.proj.state_dict() if isinstance(embedder.proj, torch.nn.Linear) else None, "layer": embedder.layer, "dim": embedder.dim, "max_length": embedder.max_length}, out_dir / "embedder.pt")
     return {"history": history, "elapsed_sec": time.time() - t0, "checkpoint": str(out_dir / "embedder.pt"), "steps": steps}

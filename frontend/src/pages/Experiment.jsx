@@ -106,7 +106,7 @@ function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession
   const ownRun = (r) => (r.inputs || {}).code_source === "own";
   const shown = runs.find((r) => r.id === selected);
   const finished = stream.status === "succeeded" || stream.status === "failed" || stream.status === "cancelled";
-  const live = liveCharts(stream.live);
+  const live = liveCharts(stream.live, stream.liveXLabel);
   return (
     <div className={`steplayout ${editing ? "withcode" : ""}`}>
       <div className="stack">

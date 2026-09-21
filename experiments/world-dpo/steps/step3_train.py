@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 
 parse_args()
 P = params({"beta": 0.1, "epochs": 1.0, "lr": 5e-6, "batch_size": 8, "label_smoothing": 0.0})
@@ -105,7 +105,7 @@ else:
     progress(2, f"{len(pairs):,} pairs · beta {P['beta']} · {steps_total} steps")
 
     res = dpo(model, reference, tok, pairs, run_dir, val, beta=float(P["beta"]), epochs=float(P["epochs"]), batch_size=int(P["batch_size"]), lr=float(P["lr"]), label_smoothing=float(P["label_smoothing"]), system=system, device=device,
-              on_log=lambda r: progress(100 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · pair accuracy {r['eval_accuracy']:.0%}" if "eval_accuracy" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **{k: v for k, v in r.items() if k in ("loss", "accuracy", "margin", "eval_accuracy", "eval_margin", "chosen_logp", "rejected_logp")}))
+              on_log=lambda r: progress(100 * r["step"] / steps_total, f"step {r['step']}/{steps_total}" + (f" · pair accuracy {r['eval_accuracy']:.0%}" if "eval_accuracy" in r else f" · loss {r.get('loss', 0):.3f}"), step=r["step"], **curves(r)))
     model.save(run_dir / "model.pt", {"dpo": True, "tokenizer": str(I["tokenizer"]), "lang": I.get("lang", "en"), "system": system, "base_model": I["policy"], "beta": float(P["beta"])})
     h = res["history"]
     dpo_model, dpo_adapter = str(run_dir / "model.pt"), None

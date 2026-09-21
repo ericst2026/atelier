@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, wsUrl } from "./api";
 import { useSocket } from "./ws";
+import { buildLiveCharts } from "./liveCharts";
 
 const MAX_LINES = 3000;
 
@@ -10,6 +11,8 @@ export function useRunStream(runId) {
   const [lines, setLines] = useState([]);
   const [progress, setProgress] = useState(null);
   const [live, setLive] = useState({});
+  // what the x axis of the live curves counts, when the step says
+  const [liveXLabel, setLiveXLabel] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
@@ -24,6 +27,7 @@ export function useRunStream(runId) {
     setLines([]);
     setProgress(null);
     setLive({});
+    setLiveXLabel(null);
     setResult(null);
     setError(null);
     if (!runId) return;
@@ -41,6 +45,7 @@ export function useRunStream(runId) {
         setLines(msg.lines || []);
         setProgress({ pct: msg.progress_pct, msg: msg.progress_msg, status: msg.status });
         setLive(msg.live?.series || {});
+        setLiveXLabel(msg.live?.x_label || null);
       } else if (msg.type === "log") {
         setLines((prev) => {
           const next = prev.concat(msg.lines || []);
@@ -55,6 +60,7 @@ export function useRunStream(runId) {
             const x = s.step ?? s.x;
             delete s.step;
             delete s.x;
+            if (typeof s.x_label === "string") setLiveXLabel(s.x_label);
             for (const [k, v] of Object.entries(s)) {
               if (typeof v !== "number") continue;
               const arr = (next[k] || []).slice();
@@ -75,12 +81,10 @@ export function useRunStream(runId) {
   const active = !!runId && (!run || run.status === "queued" || run.status === "running");
   useSocket(runId ? wsUrl(`/ws/runs/${runId}`) : null, onMessage, { enabled: !!runId });
   const cancel = useCallback(() => api(`/runs/${runId}/cancel`, { method: "POST" }).then(setRun), [runId]);
-  return { run, lines, progress, live, result, error, cancel, active, status: progress?.status || run?.status };
+  return { run, lines, progress, live, liveXLabel, result, error, cancel, active, status: progress?.status || run?.status };
 }
 
-/** Live series → chart specs for ChartCard. */
-export function liveCharts(live) {
-  return Object.entries(live || {})
-    .filter(([, pts]) => pts && pts.length > 1)
-    .map(([k, pts]) => ({ id: `live-${k}`, title: `${k} (live)`, type: "line", x: "x", series: [{ key: "y", label: k, color: "sky" }], data: pts, x_log: false, y_log: false }));
+/** Live series → chart specs for ChartCard, grouped by what they measure. */
+export function liveCharts(live, xLabel) {
+  return buildLiveCharts(live, { xLabel });
 }

@@ -105,7 +105,7 @@ def grpo(
             kl = ((torch.exp(diff) - diff - 1) * m).sum() / m.sum().clamp(min=1)
         loss = policy_loss + beta * kl
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        grad_norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
         opt.step()
         opt.zero_grad(set_to_none=True)
 
@@ -118,6 +118,7 @@ def grpo(
             "kl": float(kl),
             "completion_length": float(lengths.float().mean()),
             "loss": float(loss),
+            "grad_norm": grad_norm,
             "elapsed": time.time() - t0,
         }
         history.append(row)

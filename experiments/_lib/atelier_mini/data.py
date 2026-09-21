@@ -1,4 +1,5 @@
 """Packing text into one flat token stream, and sampling batches from it."""
+import time
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -13,6 +14,9 @@ def pack(texts: Iterable[str], tok, out_path: Path, eos: bool = True, max_tokens
     n = 0
     docs = 0
     lengths = []
+    # a report every so many documents, or every second, whichever comes first: a
+    # small corpus would otherwise finish before its first report
+    last = time.monotonic()
     for text in texts:
         ids = tok.encode(text, eos=eos)
         lengths.append(len(ids))
@@ -21,10 +25,13 @@ def pack(texts: Iterable[str], tok, out_path: Path, eos: bool = True, max_tokens
         buf.append(np.array(ids, dtype=dtype))
         n += len(ids)
         docs += 1
-        if progress and docs % 5000 == 0:
+        if progress and (docs % 5000 == 0 or time.monotonic() - last > 1.0):
             progress(docs, n)
+            last = time.monotonic()
         if max_tokens and n >= max_tokens:
             break
+    if progress and docs:
+        progress(docs, n)
     arr = np.concatenate(buf) if buf else np.zeros(0, dtype=dtype)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     arr.tofile(out_path)

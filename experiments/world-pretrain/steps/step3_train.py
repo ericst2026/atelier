@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves
 from atelier_mini.data import TokenStream
 from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.train import pretrain
@@ -35,7 +35,7 @@ def on_log(row):
         tps = row.get("tokens_per_sec") or 0
         left = (max_iters - row["step"]) * int(P["batch_size"]) * int(P["grad_accum"]) * cfg.block_size / tps if tps else 0
         eta = f" · ~{left / 3600:.1f} h left" if left >= 5400 else f" · ~{left / 60:.0f} min left" if left else ""
-        progress(100 * row["step"] / max_iters, f"step {row['step']}/{max_iters} · loss {row['loss']:.3f} · {tps:,.0f} tok/s{eta}", step=row["step"], loss=row["loss"], tokens_per_sec=row.get("tokens_per_sec"))
+        progress(100 * row["step"] / max_iters, f"step {row['step']}/{max_iters} · loss {row['loss']:.3f} · {tps:,.0f} tok/s{eta}", step=row["step"], **curves(row, "loss", "tokens_per_sec", "lr", "grad_norm"))
 
 
 res = pretrain(model, train, val, run_dir, max_iters=max_iters, batch_size=int(P["batch_size"]), grad_accum=int(P["grad_accum"]), block_size=cfg.block_size, lr=float(P["lr"]), warmup=int(P["warmup"]), weight_decay=float(P["weight_decay"]), eval_every=int(P["eval_every"]), eval_iters=int(P["eval_iters"]), device=device, on_log=on_log)

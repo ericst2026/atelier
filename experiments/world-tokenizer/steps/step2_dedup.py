@@ -17,7 +17,8 @@ docs = read_jsonl(corpus)
 texts = [d["text"] for d in docs]
 progress(5, f"{len(docs)} documents loaded")
 
-res = dedupe(texts, bool(P["lowercase"]), bool(P["collapse_ws"]), bool(P["strip_punct"]), bool(P["near"]), P["shingle"], int(P["n"]), float(P["threshold"]), P["keep"], progress=progress)
+res = dedupe(texts, bool(P["lowercase"]), bool(P["collapse_ws"]), bool(P["strip_punct"]), bool(P["near"]), P["shingle"], int(P["n"]), float(P["threshold"]), P["keep"], progress=progress,
+               on_pairs=lambda k, total, similar: progress(step=k, x_label="candidate pairs checked", near_duplicate_pairs=similar, share_similar=similar / max(k, 1)))
 kept_idx = set(res["kept"])
 removed = []
 for i, j in res["removed_exact"].items():

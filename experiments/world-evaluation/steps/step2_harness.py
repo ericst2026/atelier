@@ -38,7 +38,8 @@ for i, item in enumerate(choice):
     for m in methods:
         picks[m].append(pick(scores, m))
     if i % 25 == 0:
-        progress(5 + 65 * i / len(choice), f"scoring item {i}/{len(choice)}")
+        so_far = {f"accuracy__{m}": sum(p == x["answer"] for p, x in zip(picks[m], choice)) / (i + 1) for m in methods}
+        progress(5 + 65 * i / len(choice), f"scoring item {i}/{len(choice)}", step=i + 1, x_label="items scored", **so_far)
 
 n_opt = int(I.get("n_options", 4))
 rows, by_family = [], {}

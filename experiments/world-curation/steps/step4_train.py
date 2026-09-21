@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_mini.data import TokenStream, pack
 from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.tok import load_tokenizer
@@ -75,7 +75,7 @@ for i, (name, texts) in enumerate(corpora.items()):
     res = pretrain(model, TokenStream(run_dir / f"train_{i}.bin", st["dtype"]), val, run_dir / f"m{i}",
                    max_iters=iters, batch_size=int(P["batch_size"]), block_size=cfg.block_size, lr=float(P["lr"]),
                    warmup=max(20, iters // 20), eval_every=max(25, iters // 10), device=device,
-                   on_log=lambda r, i=i, name=name: progress(5 + 85 * (i + r["step"] / iters) / len(corpora), f"{name} · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{k: v for k, v in r.items() if k == "val_loss"}))
+                   on_log=lambda r, i=i, name=name: progress(5 + 85 * (i + r["step"] / iters) / len(corpora), f"{name} · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{f"val_loss_{name}": v for k, v in curves(r, "val_loss").items()}))
     results.append({"corpus": name, "docs": st["docs"], "tokens": st["tokens"], "val_loss": res["best_val_loss"]})
     for h in res["history"]:
         curves.setdefault(h["step"], {"step": h["step"]})[name] = h["val_loss"]

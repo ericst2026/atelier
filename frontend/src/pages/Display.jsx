@@ -5,6 +5,7 @@ import Kpis from "../components/Kpi";
 import ResultsView from "../components/ResultsView";
 import Markdown from "../components/Markdown";
 import { wsUrl } from "../lib/api";
+import { buildLiveCharts } from "../lib/liveCharts";
 import { fmtDuration, fmtNum, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
 
@@ -124,7 +125,7 @@ function Leaderboard({ data }) {
 function RunView({ data }) {
   if (!data) return <div className="msg"><p>No run selected.</p></div>;
   const { run, result, live } = data;
-  const liveCharts = Object.entries(live?.series || {}).filter(([, pts]) => pts.length > 1).map(([k, pts]) => ({ id: k, title: k, type: "line", x: "x", series: [{ key: "y", label: k, color: "sky" }], data: pts }));
+  const liveCharts = buildLiveCharts(live, { max: 4 });
   return (
     <>
       <div className="row" style={{ fontSize: 22 }}>
@@ -334,23 +335,6 @@ function whyItStopped(run) {
   return null;
 }
 
-/** The live curves of a run: every loss on one chart, the rest beside it. */
-function liveCharts(live) {
-  const series = Object.entries(live?.series || {}).filter(([, pts]) => pts.length > 1);
-  const merge = (entries) => {
-    const rows = new Map();
-    for (const [k, pts] of entries) for (const p of pts) rows.set(p.x, { ...(rows.get(p.x) || { x: p.x }), [k]: p.y });
-    return [...rows.values()].sort((a, b) => a.x - b.x);
-  };
-  const colors = ["kept", "hold", "sky", "raw", "sun"];
-  const losses = series.filter(([k]) => /loss/.test(k));
-  const others = series.filter(([k]) => !/loss|learning_rate|^lr$|grad_norm/.test(k));
-  const out = [];
-  if (losses.length) out.push({ id: "loss", title: "Loss so far", type: "line", x: "x", series: losses.map(([k], i) => ({ key: k, label: k.replace(/_/g, " "), color: colors[i % colors.length] })), data: merge(losses) });
-  if (others.length) out.push({ id: others[0][0], title: others[0][0].replace(/_/g, " "), type: "line", x: "x", series: [{ key: others[0][0], label: others[0][0].replace(/_/g, " "), color: "sky" }], data: merge([others[0]]) });
-  return out.slice(0, 2);
-}
-
 /** One student's newest run of the step, as it goes: how far along, the curves so
  *  far, and — when it fails — the error and the end of its log, which is where
  *  the reason is. */
@@ -374,7 +358,10 @@ function RunningView({ data }) {
   const going = run.status === "running" || run.status === "queued";
   const failed = run.status === "failed" || run.status === "cancelled";
   const why = failed ? whyItStopped(run) : null;
-  const charts = liveCharts(data.live);
+  // a wall does not scroll: up to four charts, two abreast, fewer when the error
+  // needs the room
+  const charts = buildLiveCharts(data.live, { max: failed ? 2 : 4 });
+  const chartHeight = charts.length >= 3 ? 230 : charts.length === 2 ? (failed ? 230 : 360) : 420;
   return (
     <div className="stepwall one">
       <div className="panel code">
@@ -408,9 +395,9 @@ function RunningView({ data }) {
               </div>
             )}
             {run.status === "succeeded" && (run.metrics || []).length > 0 && <Kpis metrics={run.metrics} />}
-            <div className="charts">
+            <div className={`livecharts ${charts.length > 1 ? "two" : ""}`}>
               {charts.map((c) => (
-                <ChartCard key={c.id} spec={c} height={charts.length > 1 ? 190 : 300} allowStretch={false} />
+                <ChartCard key={c.id} spec={c} height={chartHeight} allowStretch={false} />
               ))}
             </div>
           </div>

@@ -32,7 +32,7 @@ t0 = time.time()
 word_freq = bpe.count_words(d["text"] for d in train_docs)
 progress(10, f"{len(word_freq):,} distinct pre-tokens")
 model = bpe.train(word_freq, "byte", int(P["vocab_size"]), int(P["min_freq"]), False,
-                  progress=lambda pct, msg, vocab, tokens: progress(10 + pct * 0.85, msg, step=vocab, tokens=tokens))
+                  progress=lambda pct, msg, vocab, tokens: progress(10 + pct * 0.85, msg, step=vocab, x_label="vocabulary size", tokens=tokens, characters_per_token=budget / max(tokens, 1)))
 train_sec = time.time() - t0
 tok_path = run_dir / "tokenizer.json"
 model.save(tok_path)

@@ -75,7 +75,10 @@ class UnionFind:
             self.p[max(ra, rb)] = min(ra, rb)
 
 
-def dedupe(texts: list[str], lowercase: bool = True, collapse_ws: bool = True, strip_punct: bool = False, near: bool = True, shingle: str = "word", n: int = 3, threshold: float = 0.7, keep: str = "first", max_bucket: int = 400, progress=None) -> dict[str, Any]:
+def dedupe(texts: list[str], lowercase: bool = True, collapse_ws: bool = True, strip_punct: bool = False, near: bool = True, shingle: str = "word", n: int = 3, threshold: float = 0.7, keep: str = "first", max_bucket: int = 400, progress=None, on_pairs=None) -> dict[str, Any]:
+    """on_pairs(checked, total, similar), when given, is called as the near pass
+    checks the candidate pairs LSH found: how many it has checked, of how many,
+    and how many of those turned out similar enough to be duplicates."""
     N = len(texts)
     norm = [normalize(t, lowercase, collapse_ws, strip_punct) for t in texts]
     # pass 1: exact duplicates after normalization
@@ -122,12 +125,15 @@ def dedupe(texts: list[str], lowercase: bool = True, collapse_ws: bool = True, s
             progress(65, f"{candidates} candidate pairs from LSH")
         uf = UnionFind(N)
         pair_sim: dict[tuple[int, int], float] = {}
-        for i, j in pairs:
+        every = max(1, candidates // 40)
+        for k, (i, j) in enumerate(pairs, 1):
             s = jaccard(sh[i], sh[j])
             sim_values.append(s)
             if s >= threshold:
                 uf.union(i, j)
                 pair_sim[(i, j)] = s
+            if on_pairs and (k % every == 0 or k == candidates):
+                on_pairs(k, candidates, len(pair_sim))
         groups: dict[int, list[int]] = defaultdict(list)
         for i in survivors:
             groups[uf.find(i)].append(i)

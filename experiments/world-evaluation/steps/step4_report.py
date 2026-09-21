@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from atelier_sdk import Result, inputs, params, parse_args, progress, read_jsonl
+from atelier_sdk import Result, inputs, params, parse_args, progress, curves, read_jsonl
 from atelier_mini.data import TokenStream, pack
 from atelier_mini.model import MiniConfig, MiniLM
 from atelier_mini.tok import MiniTokenizer
@@ -74,7 +74,7 @@ for i, (name, texts) in enumerate((("clean", clean_docs), ("contaminated", dirty
     model = MiniLM(cfg).to(device)
     res = pretrain(model, TokenStream(run_dir / f"train_{name}.bin", st["dtype"]), val, run_dir / name,
                    max_iters=iters, batch_size=32, block_size=cfg.block_size, lr=8e-4, warmup=max(20, iters // 20), eval_every=max(25, iters // 6), device=device,
-                   on_log=lambda r, i=i, name=name: progress(10 + 40 * (i + r["step"] / iters), f"{name} model · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{k: v for k, v in r.items() if k == "val_loss"}))
+                   on_log=lambda r, i=i, name=name: progress(10 + 40 * (i + r["step"] / iters), f"{name} model · step {r['step']}/{iters}" + (f" · val {r['val_loss']:.3f}" if "val_loss" in r else ""), step=r["step"], **{f"val_loss_{name}": v for k, v in curves(r, "val_loss").items()}))
     trained[name] = {"path": res["checkpoint"], "val_loss": res["best_val_loss"], "tokens": st["tokens"]}
     del model
     torch.cuda.empty_cache()
