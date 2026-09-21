@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
+import { useT } from "../i18n";
 import { fmtBytes } from "../lib/format";
 
 /** entries: [{path,type,bytes}] flat; renders a collapsible tree. */
 export default function FileTree({ entries, selected, onSelect }) {
+  const t = useT();
   const [closed, setClosed] = useState({});
   const byParent = {};
   for (const e of entries) {
@@ -31,6 +33,6 @@ export default function FileTree({ entries, selected, onSelect }) {
         </div>
       );
     });
-  if (!entries || !entries.length) return <div className="faint small">empty</div>;
+  if (!entries || !entries.length) return <div className="faint small">{t("widgets.fileTree.empty")}</div>;
   return <div className="tree">{render("", 0)}</div>;
 }

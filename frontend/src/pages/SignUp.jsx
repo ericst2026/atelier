@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import Brand from "../components/Brand";
+import { LanguageSelect, useT } from "../i18n";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -7,6 +9,7 @@ import { useAuth } from "../lib/auth";
  *  waits for an admin to approve it. */
 export default function SignUp() {
   const { user, ready, login } = useAuth();
+  const t = useT();
   const nav = useNavigate();
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
@@ -20,8 +23,8 @@ export default function SignUp() {
     e.preventDefault();
     setError(null);
     // say what is missing instead of sitting there doing nothing
-    if (!username.trim()) return setError("Choose a username.");
-    if (password.length < 4) return setError("The password needs at least four characters.");
+    if (!username.trim()) return setError(t("auth.signUp.chooseUsername"));
+    if (password.length < 4) return setError(t("auth.signUp.passwordShort"));
     setBusy(true);
     try {
       await api("/auth/signup", { method: "POST", body: { username: username.trim(), name: name.trim(), password, role } });
@@ -33,7 +36,7 @@ export default function SignUp() {
           await login(username.trim(), password);
           nav("/", { replace: true });
         } catch (err) {
-          setError(`Your account was created, but signing in failed: ${err.message}. Try the sign-in page.`);
+          setError(t("auth.signUp.signInFailed", { message: err.message }));
         }
       }
     } catch (err) {
@@ -45,53 +48,53 @@ export default function SignUp() {
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20 }}>
       <form className="panel" onSubmit={submit} style={{ width: 380, display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <div className="brand" style={{ fontSize: 26 }}>
-            Ate<b>lier</b>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Brand size={36} className="big" />
+            <div className="muted">{t("auth.signUp.subtitle")}</div>
           </div>
-          <div className="muted">Make an account</div>
+          <LanguageSelect />
         </div>
         {pending ? (
           <>
-            <div className="tip">
-              Your teacher account is waiting for an admin to approve it. You will be able to sign in once they do.
-            </div>
+            <div className="tip">{t("auth.signUp.pending")}</div>
             <Link className="btn" to="/login">
-              Back to sign in
+              {t("auth.signUp.backToSignIn")}
             </Link>
           </>
         ) : (
           <>
             <label className="field">
-              <span>Username</span>
+              <span>{t("auth.username")}</span>
               <input type="text" value={username} autoFocus autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
-              <span className="help">Letters, digits, dot, dash and underscore.</span>
+              <span className="help">{t("auth.signUp.usernameHelp")}</span>
             </label>
             <label className="field">
-              <span>Your name</span>
+              <span>{t("auth.signUp.yourName")}</span>
               <input type="text" value={name} autoComplete="name" onChange={(e) => setName(e.target.value)} />
-              <span className="help">Shown to your teacher and on the wall displays.</span>
+              <span className="help">{t("auth.signUp.nameHelp")}</span>
             </label>
             <label className="field">
-              <span>Password</span>
+              <span>{t("auth.password")}</span>
               <input type="password" value={password} autoComplete="new-password" onChange={(e) => setPassword(e.target.value)} />
             </label>
             <label className="field">
-              <span>I am a</span>
+              <span>{t("auth.signUp.iAmA")}</span>
               <select value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="student">student</option>
-                <option value="teacher">teacher</option>
+                <option value="student">{t("common.role.student")}</option>
+                <option value="teacher">{t("common.role.teacher")}</option>
               </select>
               <span className="help">
-                {role === "teacher" ? "A teacher account has to be approved by an admin before you can sign in." : "You can sign in straight away. Running experiments on your own needs an admin's permission."}
+                {role === "teacher" ? t("auth.signUp.teacherHelp") : t("auth.signUp.studentHelp")}
               </span>
             </label>
             {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
             <button className="btn primary" type="submit" disabled={busy}>
-              {busy ? "Creating…" : "Create the account"}
+              {busy ? t("auth.signUp.creating") : t("auth.signUp.create")}
             </button>
             <div className="help">
-              Already have one? <Link to="/login">Sign in</Link>.
+              {t("auth.signUp.alreadyHave")} <Link to="/login">{t("auth.signIn")}</Link>
+              {t("auth.signUp.alreadyHaveAfter")}
             </div>
           </>
         )}

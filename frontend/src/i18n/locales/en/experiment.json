@@ -1,0 +1,65 @@
+{
+  "breadcrumb": "Experiments",
+  "class": {
+    "inClass": {
+      "before": "You are in {teacher}'s class. This page shows the class's work; your own runs of this experiment are under ",
+      "link": "on your own",
+      "after": "."
+    },
+    "running": {
+      "before": "{teacher} is running a class on this experiment. This page is your own work — ",
+      "link": "open the class",
+      "after": "."
+    },
+    "notIn": "You are not in that class, so this is your own work on the experiment."
+  },
+  "buildOn": {
+    "label": "Build on",
+    "pick": "— pick a finished step {n} run —",
+    "finishFirst": "Finish step {n} first."
+  },
+  "codeSource": {
+    "label": "Code for this step",
+    "standard": "the standard code",
+    "own": "my own code",
+    "ownHelp": "Your file runs with the same params and inputs as the standard one.",
+    "standardHelp": "The implementation this experiment ships with."
+  },
+  "gpus": {
+    "label": "GPUs for this run",
+    "studentsGet": "Students always get {n}."
+  },
+  "run": {
+    "starting": "Starting…",
+    "own": "Run my code for step {n}",
+    "standard": "Run step {n}",
+    "timeout": "up to {min} min"
+  },
+  "runs": {
+    "title": "Your runs of this step",
+    "ownTag": "own"
+  },
+  "code": {
+    "title": "Your code · step {n}",
+    "saved": "Saved",
+    "prototype": "Prototype",
+    "handIn": "Hand in",
+    "loading": "loading…",
+    "prototypeNote": "This is a prototype: the inputs and outputs are filled in, the work is yours.",
+    "savedWithError": "Saved, but Python cannot read it yet — {error}",
+    "resetConfirm": "Replace your code for this step with the prototype? What you wrote is lost.",
+    "reset": "Back to the prototype.",
+    "handedIn": "Handed in to your teacher as submission #{id}."
+  },
+  "showing": {
+    "run": "Showing run #{id} · {code} · {time}",
+    "own": "your own code",
+    "standard": "the standard code",
+    "ownNotRun": "— your own code has not run yet, so this is the standard one"
+  },
+  "empty": "Set the parameters and run the step. Output streams here while it runs.",
+  "log": {
+    "show": "Show log",
+    "hide": "Hide log"
+  }
+}

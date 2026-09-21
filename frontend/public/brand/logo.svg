@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LLM Course">
+  <!-- The course logo. Replace this file (any image works: .svg, .png…) and, if the
+       name or extension changes, update frontend/src/brand.js. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#15243b" stroke="#2a3d5f" stroke-width="2"/>
+  <g stroke="#7cc4ff" stroke-width="2.4" stroke-linecap="round" opacity="0.85">
+    <line x1="18" y1="20" x2="32" y2="32"/>
+    <line x1="18" y1="44" x2="32" y2="32"/>
+    <line x1="32" y1="32" x2="46" y2="20"/>
+    <line x1="32" y1="32" x2="46" y2="44"/>
+    <line x1="18" y1="20" x2="18" y2="44"/>
+    <line x1="46" y1="20" x2="46" y2="44"/>
+  </g>
+  <circle cx="18" cy="20" r="5" fill="#5fd3b8"/>
+  <circle cx="18" cy="44" r="5" fill="#5fd3b8"/>
+  <circle cx="46" cy="20" r="5" fill="#b79cff"/>
+  <circle cx="46" cy="44" r="5" fill="#b79cff"/>
+  <circle cx="32" cy="32" r="7" fill="#f4a259"/>
+</svg>

@@ -1,0 +1,43 @@
+{
+  "language": {
+    "name": "English",
+    "choose": "Language"
+  },
+  "tagline": "LLM experiments on the classroom GPU node",
+  "loading": "Loading…",
+  "reading": "Reading…",
+  "saving": "Saving…",
+  "working": "Working…",
+  "save": "Save",
+  "saved": "Saved.",
+  "cancel": "Cancel",
+  "close": "Close",
+  "open": "Open",
+  "delete": "Delete",
+  "edit": "Edit",
+  "add": "Add",
+  "remove": "Remove",
+  "back": "Back",
+  "yes": "Yes",
+  "no": "No",
+  "none": "none",
+  "unnamed": "unnamed",
+  "step": "step",
+  "stepN": "Step {n}",
+  "runN": "run {id}",
+  "error": "Something went wrong: {message}",
+  "status": {
+    "queued": "queued",
+    "running": "running",
+    "succeeded": "succeeded",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "paused": "paused",
+    "ended": "ended"
+  },
+  "role": {
+    "admin": "admin",
+    "teacher": "teacher",
+    "student": "student"
+  }
+}

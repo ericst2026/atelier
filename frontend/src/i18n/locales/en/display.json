@@ -1,0 +1,77 @@
+{
+  "stepN": "step {n}",
+  "leaderboard": "Leaderboard",
+  "hardware": "hardware",
+  "waiting": "Waiting for data…",
+  "connecting": "Connecting to the server…",
+  "live": "live",
+  "reconnecting": "reconnecting",
+  "noClass": {
+    "title": "No running class",
+    "text": "This screen follows the class once a teacher starts one."
+  },
+  "gpus": {
+    "gpu": "GPU {n}",
+    "noData": "no data",
+    "free": "free",
+    "count": "{n} GPU",
+    "idle": "Nothing is running. The node is yours."
+  },
+  "progress": {
+    "submitted": "{n} submitted",
+    "notStarted": "not started",
+    "allSteps": "all 4 steps",
+    "atStep": "at step {n}",
+    "students_one": "{count} student",
+    "students_other": "{count} students"
+  },
+  "board": {
+    "empty": "No published results yet.",
+    "points": "{n} pts"
+  },
+  "run": {
+    "none": "No run selected.",
+    "noneYet": "No run yet.",
+    "theirLive": "their run, live",
+    "theirOwnCode": "their own code",
+    "standardCode": "the standard code",
+    "ofAllowed": " of {n} min allowed",
+    "waitingMachine": "waiting for the machine",
+    "starting": "starting",
+    "stopped": "Stopped",
+    "failed": "It failed",
+    "outOfMemory": "It was killed for using more memory than the machine allows.",
+    "timedOut": "It ran past its {n}-minute limit.",
+    "logEmpty": "nothing in the log yet"
+  },
+  "handedIn": {
+    "title": "Handed in ({n})",
+    "nobody": "Nobody yet.",
+    "more": "and {n} more"
+  },
+  "teacherRun": "Your teacher's run",
+  "step": {
+    "finished": "finished",
+    "writeOwn": "Writing your own",
+    "givenLabel": "You are given",
+    "givenSettings_one": "{count} setting from the form",
+    "givenSettings_other": "{count} settings from the form",
+    "givenInputs": " and {inputs} from the step before",
+    "saveLabel": "You must save",
+    "judgedLabel": "Judged on",
+    "end": "."
+  },
+  "student": {
+    "theirCode": "their code",
+    "theirResults": "their results",
+    "againstStandard": "their results against the standard code",
+    "figure": "Figure",
+    "standardCode": "The standard code",
+    "standardMissing": "The standard code is still not there.",
+    "standardState": "The standard code is still {state}.",
+    "standardEnded": "The standard code's run {state}."
+  },
+  "standard": {
+    "title": "The standard code"
+  }
+}

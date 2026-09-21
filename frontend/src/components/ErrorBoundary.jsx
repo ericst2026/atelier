@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../i18n";
 
 /** A page that throws should say what happened rather than going white — in a
  *  classroom nobody is going to open the browser console. */
@@ -21,17 +22,17 @@ export default class ErrorBoundary extends React.Component {
     return (
       <main className="page">
         <div className="panel stack" style={{ borderColor: "var(--dup)" }}>
-          <h2>This page stopped</h2>
-          <p className="muted">Something in the page threw an error. The rest of the app is still fine.</p>
+          <h2>{t("widgets.errorBoundary.title")}</h2>
+          <p className="muted">{t("widgets.errorBoundary.body")}</p>
           <pre className="log" style={{ maxHeight: 220 }}>
             {String(this.state.error?.stack || this.state.error)}
           </pre>
           <div className="row">
             <button className="btn primary" onClick={() => this.setState({ error: null })}>
-              Try again
+              {t("widgets.errorBoundary.retry")}
             </button>
             <button className="btn" onClick={() => window.location.assign("/")}>
-              Back to the experiments
+              {t("widgets.errorBoundary.home")}
             </button>
           </div>
         </div>

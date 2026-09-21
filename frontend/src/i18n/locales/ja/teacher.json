@@ -1,0 +1,73 @@
+{
+  "title": "教師",
+  "subtitle": "ノード、クラス、画面の管理。",
+  "tabs": {
+    "class": "クラス",
+    "history": "過去のクラス",
+    "displays": "壁面ディスプレイ",
+    "runs": "実行",
+    "live": "ノード"
+  },
+  "modes": {
+    "grafana": "ハードウェア (Grafana)",
+    "live": "実行中のジョブ",
+    "progress": "クラスの進捗",
+    "leaderboard": "リーダーボード",
+    "run": "実行の結果",
+    "message": "メッセージ"
+  },
+  "gpusFree_one": "GPU {count} 基 · 空き {free}",
+  "gpusFree_other": "GPU {count} 基 · 空き {free}",
+  "node": {
+    "noGpus": "GPU なし",
+    "heartbeatLate": " · ハートビート遅延",
+    "reporting": " · 応答あり",
+    "notCheckedIn": " · 未接続",
+    "cpu": "CPU",
+    "runsOnProcessor": "CPU で実行",
+    "gpu": "GPU {index} · {used}/{total} GB · {temp}°",
+    "free": "空き"
+  },
+  "live": {
+    "waitingWorker": "ワーカーを待っています…",
+    "running": "実行中 {n}",
+    "queued": "待機中 {n}",
+    "nodes": "ノード {n} 台",
+    "workerOk": "ワーカー正常",
+    "workerOffline": "ワーカー停止中",
+    "noWorker": "接続しているワーカーはありません。",
+    "col": {
+      "run": "実行",
+      "who": "ユーザー",
+      "what": "内容",
+      "gpus": "GPU",
+      "status": "状態",
+      "progress": "進捗",
+      "elapsed": "経過時間"
+    }
+  },
+  "runs": {
+    "confirmDelete": "実行 {id} とそのファイルを削除しますか?",
+    "filter": {
+      "all": "すべての状態",
+      "active": "待機中 + 実行中",
+      "succeeded": "成功",
+      "failed": "失敗 + 中止"
+    },
+    "refresh": "更新",
+    "col": {
+      "user": "ユーザー",
+      "experiment": "実験",
+      "class": "クラス",
+      "whoseClass": "担当教師",
+      "kind": "種類",
+      "label": "ラベル",
+      "status": "状態",
+      "gpus": "GPU",
+      "created": "作成日時"
+    },
+    "onTheirOwn": "個人",
+    "stop": "停止",
+    "delete": "削除"
+  }
+}

@@ -3,21 +3,23 @@ import { Link, useSearchParams } from "react-router-dom";
 import { StatusPill } from "../components/RunStatus";
 import ClassHistory from "../components/ClassHistory";
 import ClassPanel, { WallPanel } from "../components/ClassPanel";
+import { useT } from "../i18n";
 import { api, wsUrl } from "../lib/api";
 import { fmtBytes, fmtDuration, fmtTime } from "../lib/format";
 import { useSocket } from "../lib/ws";
 
 const MODES = [
-  ["grafana", "Hardware (Grafana)"],
-  ["live", "Live runs"],
-  ["progress", "Class progress"],
-  ["leaderboard", "Leaderboard"],
-  ["run", "A run's results"],
-  ["message", "Message"],
+  ["grafana", "teacher.modes.grafana"],
+  ["live", "teacher.modes.live"],
+  ["progress", "teacher.modes.progress"],
+  ["leaderboard", "teacher.modes.leaderboard"],
+  ["run", "teacher.modes.run"],
+  ["message", "teacher.modes.message"],
 ];
 
 /** The GPUs of one machine, labelled by that machine's own indices. */
 function NodeCard({ name, gpus, worker, single }) {
+  const t = useT();
   const free = (worker?.free_gpus || []).filter((g) => (single ? true : String(g).startsWith(`${name}:`))).length;
   const stale = worker?.at ? Date.now() - new Date(`${worker.at}Z`).getTime() > 30000 : true;
   return (
@@ -25,19 +27,17 @@ function NodeCard({ name, gpus, worker, single }) {
       <div className="row" style={{ justifyContent: "space-between" }}>
         <b>{name}</b>
         <span className="small muted">
-          {gpus.length ? `${gpus.length} GPU${gpus.length === 1 ? "" : "s"} · ${free} free` : "no GPUs"}
-          {worker ? (stale ? " · heartbeat late" : " · reporting") : " · not checked in"}
+          {gpus.length ? t("teacher.gpusFree", { count: gpus.length, free }) : t("teacher.node.noGpus")}
+          {worker ? (stale ? t("teacher.node.heartbeatLate") : t("teacher.node.reporting")) : t("teacher.node.notCheckedIn")}
         </span>
       </div>
       <div className="kpis">
-        {gpus.length === 0 && <div className="kpi"><div className="v">CPU</div><div className="l">runs on processor</div></div>}
+        {gpus.length === 0 && <div className="kpi"><div className="v">{t("teacher.node.cpu")}</div><div className="l">{t("teacher.node.runsOnProcessor")}</div></div>}
         {gpus.map((g) => (
           <div key={g.uid || `${name}:${g.index}`} className={`kpi ${g.job ? "raw" : "kept"}`}>
             <div className="v">{g.util}%</div>
-            <div className="l">
-              GPU {g.index} · {(g.mem_used / 1e9).toFixed(0)}/{(g.mem_total / 1e9).toFixed(0)} GB · {g.temp}°
-            </div>
-            <div className="h">{g.job ? `${g.job.user} · ${g.job.experiment} · run ${g.job.run_id}` : "free"}</div>
+            <div className="l">{t("teacher.node.gpu", { index: g.index, used: (g.mem_used / 1e9).toFixed(0), total: (g.mem_total / 1e9).toFixed(0), temp: g.temp })}</div>
+            <div className="h">{g.job ? `${g.job.user} · ${g.job.experiment} · ${t("common.runN", { id: g.job.run_id })}` : t("teacher.node.free")}</div>
           </div>
         ))}
       </div>
@@ -46,7 +46,8 @@ function NodeCard({ name, gpus, worker, single }) {
 }
 
 function LivePanel({ live }) {
-  if (!live) return <div className="empty">Waiting for the worker…</div>;
+  const t = useT();
+  if (!live) return <div className="empty">{t("teacher.live.waitingWorker")}</div>;
   const gpus = live.gpus?.gpus || [];
   // a GPU belongs to a machine; index 0 on one node is not index 0 on another
   const nodeNames = live.nodes?.length ? live.nodes : [...new Set(gpus.map((g) => g.node).filter(Boolean))];
@@ -56,14 +57,16 @@ function LivePanel({ live }) {
     <div className="stack">
       <div className="row">
         <span className="pill running">
-          <i className="dot" /> {live.running.length} running
+          <i className="dot" /> {t("teacher.live.running", { n: live.running.length })}
         </span>
-        <span className="pill queued">{live.queued.length} queued</span>
+        <span className="pill queued">{t("teacher.live.queued", { n: live.queued.length })}</span>
         <span className="pill">
-          {live.worker ? `${nodeNames.length > 1 ? `${nodeNames.length} nodes` : "worker ok"} · ${gpus.length} GPU${gpus.length === 1 ? "" : "s"} · ${(live.worker.free_gpus || []).length} free` : "worker offline"}
+          {live.worker
+            ? `${nodeNames.length > 1 ? t("teacher.live.nodes", { n: nodeNames.length }) : t("teacher.live.workerOk")} · ${t("teacher.gpusFree", { count: gpus.length, free: (live.worker.free_gpus || []).length })}`
+            : t("teacher.live.workerOffline")}
         </span>
       </div>
-      {nodeNames.length === 0 && <div className="help">No worker has checked in.</div>}
+      {nodeNames.length === 0 && <div className="help">{t("teacher.live.noWorker")}</div>}
       <div className={nodeNames.length > 1 ? "grid2" : "stack"}>
         {nodeNames.map((name) => (
           <div key={name} className={nodeNames.length > 1 ? "panel" : ""}>
@@ -80,13 +83,13 @@ function LivePanel({ live }) {
         <table className="data">
           <thead>
             <tr>
-              <th>Run</th>
-              <th>Who</th>
-              <th>What</th>
-              <th>GPUs</th>
-              <th>Status</th>
-              <th>Progress</th>
-              <th>Elapsed</th>
+              <th>{t("teacher.live.col.run")}</th>
+              <th>{t("teacher.live.col.who")}</th>
+              <th>{t("teacher.live.col.what")}</th>
+              <th>{t("teacher.live.col.gpus")}</th>
+              <th>{t("teacher.live.col.status")}</th>
+              <th>{t("teacher.live.col.progress")}</th>
+              <th>{t("teacher.live.col.elapsed")}</th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +119,7 @@ function LivePanel({ live }) {
 }
 
 function RunsPanel() {
+  const t = useT();
   const [runs, setRuns] = useState([]);
   const [filter, setFilter] = useState("");
   const load = useCallback(() => api(`/runs?limit=200${filter ? `&status=${filter}` : ""}`).then(setRuns), [filter]);
@@ -127,7 +131,7 @@ function RunsPanel() {
     load();
   };
   const del = async (r) => {
-    if (!window.confirm(`Delete run ${r.id} and its files?`)) return;
+    if (!window.confirm(t("teacher.runs.confirmDelete", { id: r.id }))) return;
     await api(`/runs/${r.id}`, { method: "DELETE" });
     load();
   };
@@ -135,13 +139,13 @@ function RunsPanel() {
     <div className="stack">
       <div className="row">
         <select style={{ width: 200 }} value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">all statuses</option>
-          <option value="queued,running">queued + running</option>
-          <option value="succeeded">succeeded</option>
-          <option value="failed,cancelled">failed + cancelled</option>
+          <option value="">{t("teacher.runs.filter.all")}</option>
+          <option value="queued,running">{t("teacher.runs.filter.active")}</option>
+          <option value="succeeded">{t("teacher.runs.filter.succeeded")}</option>
+          <option value="failed,cancelled">{t("teacher.runs.filter.failed")}</option>
         </select>
         <button className="btn sm" onClick={load}>
-          Refresh
+          {t("teacher.runs.refresh")}
         </button>
       </div>
       <div className="tablewrap">
@@ -149,15 +153,15 @@ function RunsPanel() {
           <thead>
             <tr>
               <th>#</th>
-              <th>User</th>
-              <th>Experiment</th>
-              <th>Class</th>
-              <th>Whose class</th>
-              <th>Kind</th>
-              <th>Label</th>
-              <th>Status</th>
-              <th>GPUs</th>
-              <th>Created</th>
+              <th>{t("teacher.runs.col.user")}</th>
+              <th>{t("teacher.runs.col.experiment")}</th>
+              <th>{t("teacher.runs.col.class")}</th>
+              <th>{t("teacher.runs.col.whoseClass")}</th>
+              <th>{t("teacher.runs.col.kind")}</th>
+              <th>{t("teacher.runs.col.label")}</th>
+              <th>{t("teacher.runs.col.status")}</th>
+              <th>{t("teacher.runs.col.gpus")}</th>
+              <th>{t("teacher.runs.col.created")}</th>
               <th></th>
             </tr>
           </thead>
@@ -167,7 +171,7 @@ function RunsPanel() {
                 <td>{r.id}</td>
                 <td>{r.username}</td>
                 <td>{r.experiment}</td>
-                <td>{r.class_name || <span className="faint">on their own</span>}</td>
+                <td>{r.class_name || <span className="faint">{t("teacher.runs.onTheirOwn")}</span>}</td>
                 <td>{r.class_teacher || <span className="faint">–</span>}</td>
                 <td>
                   {r.kind}
@@ -182,12 +186,12 @@ function RunsPanel() {
                 <td className="row" style={{ gap: 6 }}>
                   {(r.status === "queued" || r.status === "running") && (
                     <button className="btn sm danger" onClick={() => cancel(r)}>
-                      stop
+                      {t("teacher.runs.stop")}
                     </button>
                   )}
                   {r.status !== "queued" && r.status !== "running" && (
                     <button className="btn sm ghost" onClick={() => del(r)}>
-                      delete
+                      {t("teacher.runs.delete")}
                     </button>
                   )}
                 </td>
@@ -201,6 +205,7 @@ function RunsPanel() {
 }
 
 export default function Teacher() {
+  const t = useT();
   const [sp, setSp] = useSearchParams();
   const section = sp.get("section") || "class";
   const setSection = (k) => setSp({ section: k });
@@ -210,20 +215,14 @@ export default function Teacher() {
     <main className="page">
       <div className="hero">
         <div>
-          <h1>Teacher</h1>
-          <p className="muted">The node, the class, the screens.</p>
+          <h1>{t("teacher.title")}</h1>
+          <p className="muted">{t("teacher.subtitle")}</p>
         </div>
       </div>
       <div className="tabs">
-        {[
-          ["class", "The class"],
-          ["history", "Past classes"],
-          ["displays", "The wall"],
-          ["runs", "Runs"],
-          ["live", "The node"],
-        ].map(([k, l]) => (
+        {["class", "history", "displays", "runs", "live"].map((k) => (
           <button key={k} className={section === k ? "active" : ""} onClick={() => setSection(k)}>
-            {l}
+            {t(`teacher.tabs.${k}`)}
           </button>
         ))}
       </div>

@@ -1,0 +1,42 @@
+{
+  "title": "アカウント",
+  "intro": "サインインできる人、その役割、各自で実行できる実験を管理します。",
+  "loadFailed": "アカウントを読み込めませんでした: {message}",
+  "created": "{username} を作成しました。",
+  "imported": "{created} 件作成、{skipped} 件スキップしました。",
+  "waiting": {
+    "title": "承認待ち ({n})",
+    "askedRole": "{role}として申請",
+    "approve": "承認"
+  },
+  "add": {
+    "title": "アカウントを追加",
+    "username": "ユーザー名",
+    "name": "名前",
+    "password": "パスワード",
+    "importCsv": "CSV をインポート",
+    "csvColumns": "CSV の列: username,name,role,password"
+  },
+  "empty": "アカウントがありません。",
+  "table": {
+    "username": "ユーザー名",
+    "name": "名前",
+    "role": "役割",
+    "canSignIn": "サインイン",
+    "mayRunAlone": "各自で実行可",
+    "active": "可",
+    "waiting": "承認待ち",
+    "experiments_one": "{count} 件の実験",
+    "experiments_other": "{count} 件の実験",
+    "resetPassword": "パスワードをリセット",
+    "newPasswordPrompt": "{username} の新しいパスワード",
+    "deactivate": "無効にする",
+    "approve": "承認"
+  },
+  "self": {
+    "title": "{name} が各自で実行できる実験",
+    "all": "すべて",
+    "teacherHelp": "教師はこれらの実験でのみ授業を開くこともできます。",
+    "studentHelp": "授業外で実行できるのはこれらだけです。授業中は教師が開始した実験に取り組みます。"
+  }
+}

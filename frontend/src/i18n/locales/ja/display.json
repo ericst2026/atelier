@@ -1,0 +1,77 @@
+{
+  "stepN": "ステップ {n}",
+  "leaderboard": "ランキング",
+  "hardware": "ハードウェア",
+  "waiting": "データを待っています…",
+  "connecting": "サーバーに接続中…",
+  "live": "ライブ",
+  "reconnecting": "再接続中",
+  "noClass": {
+    "title": "実施中の授業はありません",
+    "text": "教師が授業を始めると、この画面に表示されます。"
+  },
+  "gpus": {
+    "gpu": "GPU {n}",
+    "noData": "データなし",
+    "free": "空き",
+    "count": "{n} GPU",
+    "idle": "実行中のものはありません。ノードは空いています。"
+  },
+  "progress": {
+    "submitted": "提出 {n}",
+    "notStarted": "未着手",
+    "allSteps": "全 4 ステップ",
+    "atStep": "ステップ {n}",
+    "students_one": "学生 {count} 人",
+    "students_other": "学生 {count} 人"
+  },
+  "board": {
+    "empty": "公開された結果はまだありません。",
+    "points": "{n} 点"
+  },
+  "run": {
+    "none": "実行が選ばれていません。",
+    "noneYet": "まだ実行がありません。",
+    "theirLive": "実行をライブ表示",
+    "theirOwnCode": "本人のコード",
+    "standardCode": "標準コード",
+    "ofAllowed": " / 上限 {n} 分",
+    "waitingMachine": "マシンの空き待ち",
+    "starting": "開始中",
+    "stopped": "中止しました",
+    "failed": "失敗しました",
+    "outOfMemory": "マシンの上限を超えるメモリを使ったため、強制終了されました。",
+    "timedOut": "制限時間の {n} 分を超えました。",
+    "logEmpty": "ログはまだありません"
+  },
+  "handedIn": {
+    "title": "提出済み ({n})",
+    "nobody": "まだ誰もいません。",
+    "more": "ほか {n} 人"
+  },
+  "teacherRun": "教師の実行",
+  "step": {
+    "finished": "終了",
+    "writeOwn": "自分で書く場合",
+    "givenLabel": "受け取るもの:",
+    "givenSettings_one": "フォームの設定 {count} 個",
+    "givenSettings_other": "フォームの設定 {count} 個",
+    "givenInputs": "、前のステップの {inputs}",
+    "saveLabel": "保存するもの:",
+    "judgedLabel": "評価項目:",
+    "end": "。"
+  },
+  "student": {
+    "theirCode": "本人のコード",
+    "theirResults": "本人の結果",
+    "againstStandard": "本人の結果と標準コードの比較",
+    "figure": "指標",
+    "standardCode": "標準コード",
+    "standardMissing": "標準コードはまだありません。",
+    "standardState": "標準コードはまだ{state}です。",
+    "standardEnded": "標準コードの実行は{state}しました。"
+  },
+  "standard": {
+    "title": "標準コード"
+  }
+}

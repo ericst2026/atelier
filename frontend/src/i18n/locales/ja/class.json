@@ -1,0 +1,109 @@
+{
+  "panel": {
+    "running": "実施中: {name}",
+    "since": "{time} から",
+    "pauseTitle": "クラスを終了せずに教室を空けます",
+    "pause": "一時停止",
+    "end": "終了",
+    "asking": "参加希望 ({n})",
+    "nobodyWaiting": "待っている人はいません。",
+    "inClass": "クラスの参加者 ({n})",
+    "nobodyYet": "まだいません。",
+    "accept": "許可",
+    "deny": "拒否"
+  },
+  "start": {
+    "heading": "実験を始める",
+    "yoursRunning": "あなたのクラスが実施中です。別のクラスを始める前に一時停止または終了してください。",
+    "othersRunning": "{teacher} さんのクラスが実施中です。別のクラスを始める前に一時停止または終了してください。",
+    "nothingToTeach": "担当する実験がまだ管理者から割り当てられていません。",
+    "nameIt": "名前",
+    "namePlaceholder": "火曜 14 時・B グループ など、他のクラスと区別できる名前",
+    "nameHelp": "実験はクラスの種類を、この名前はどのクラスかを表します。",
+    "experiment": "実験",
+    "choose": "— 実験を選択 —",
+    "startsFrom": "クラスの出発点",
+    "startsFromHelp": "この実験の前提となる実験を学生はまだ行っていないため、ここで一度だけ選んでください。クラス全員に共通で固定されます。",
+    "button": "実験を開始",
+    "onlyThis": "クラスの実施中、学生が取り組めるのはその実験だけで、あなたが参加を許可した後に限られます。",
+    "fromStep": "{label} (ステップ {n})"
+  },
+  "wall": {
+    "heading": "壁面ディスプレイの表示",
+    "helpRunning": "画面 1〜4 は 4 つのステップに対応し、ステップの目的、自分のコードで実装すべきこと、提出した人を表示します。学生を表示すると、その数値を標準コードと比較できます。",
+    "helpIdle": "クラスが実施されていないため、ステップ画面にはその旨が表示されます。最後の画面はハードウェアのダッシュボードのままです。",
+    "notYours": "{teacher} さんがクラスを担当しているため、画面の設定は担当者が行います。",
+    "leaderboardHardware": "リーダーボード / ハードウェア",
+    "open": "開く",
+    "showing": "表示中: {what}",
+    "shown": {
+      "running": "学生 1 人の実行 (ライブ)",
+      "results": "学生 1 人の結果",
+      "code": "学生 1 人のコード",
+      "standard": "標準コード",
+      "step": "ステップの説明",
+      "grafana": "ハードウェア",
+      "leaderboard": "リーダーボード"
+    },
+    "show": {
+      "explanation": "ステップの説明",
+      "standard": "標準コード",
+      "results": "学生の結果",
+      "code": "学生のコード",
+      "running": "学生の実行 (ライブ)"
+    },
+    "who": "— 学生を選択 —",
+    "nobodyHandedIn": "— まだ誰も提出していません —",
+    "nobodyRan": "— このステップをまだ誰も実行していません —",
+    "nobodyFinished": "— このステップをまだ誰も完了していません —",
+    "runningPct": "実行中 {pct}%",
+    "putItUp": "表示する",
+    "hardware": "ハードウェア",
+    "leaderboard": "リーダーボード"
+  },
+  "banner": {
+    "noClass": "実施中のクラスはありません。",
+    "startOne": {
+      "before": "",
+      "link": "教師ページ",
+      "after": "から開始できます。"
+    },
+    "ownOnly": "個人で取り組める実験: {list}",
+    "lookAround": "閲覧はできますが、ステップを実行するにはクラスへの参加か、個人で取り組むための管理者の許可が必要です。",
+    "inClassNow": "実施中のクラス: {title}",
+    "yours": "あなたのクラス — 参加 {n} 人、待機 {waiting} 人",
+    "admitted": "{teacher} さんのクラスに参加しています。実験を開いてステップを進めてください。",
+    "asked": "{teacher} さんに参加を申請しました。許可されるまでお待ちください。",
+    "adminView": "{teacher} さんが担当しています。",
+    "askTeacher": "{teacher} さんに参加を申請してください。",
+    "waiting": "待機中…",
+    "askToJoin": "参加を申請",
+    "openIt": "開く",
+    "letInFirst": "先生に参加を許可してもらう必要があります",
+    "alsoRun": "個人でも実行できる実験: {list}"
+  },
+  "history": {
+    "empty": "クラスはまだありません。",
+    "col": {
+      "class": "クラス",
+      "experiment": "実験",
+      "owner": "担当者",
+      "started": "開始",
+      "state": "状態",
+      "inClass": "参加者"
+    },
+    "ended": "{time} に終了",
+    "resume": "再開",
+    "nobodyHandedIn": "ステップ {n} の提出はまだありません。",
+    "handedIn": "{time} に提出",
+    "readIt": "見る",
+    "marked": "採点しました。",
+    "theirCode": "提出されたコード",
+    "noCode": "この提出にはコードがありません。",
+    "produced": "実行結果",
+    "notRun": "提出時点では実行されていませんでした。",
+    "mark": "点数 (0〜100)",
+    "feedback": "フィードバック",
+    "saveMark": "点数を保存"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "form": {
+    "bar": "bar",
+    "stacked": "stacked",
+    "line": "line",
+    "area": "area",
+    "scatter": "scatter",
+    "donut": "donut"
+  },
+  "logX": "log x",
+  "logY": "log y",
+  "toggleWidth": "Toggle full width",
+  "other": "other ({n})",
+  "kind": {
+    "loss": "Loss",
+    "reward": "Reward",
+    "accuracy": "Accuracy",
+    "kl": "KL from the starting model",
+    "grad": "Gradient norm",
+    "margin": "Margin",
+    "logp": "Log-probability",
+    "lr": "Learning rate",
+    "speed": "Speed"
+  },
+  "label": {
+    "trainBatch": "train batch",
+    "train": "train",
+    "validation": "validation",
+    "mean": "mean",
+    "spread": "spread",
+    "trainToken": "train (token)",
+    "validationToken": "validation (token)",
+    "tokensPerSec": "tokens / s",
+    "learningRate": "learning rate",
+    "beforeClipping": "before clipping"
+  },
+  "axis": {
+    "step": "step",
+    "seconds": "seconds"
+  },
+  "timeline": {
+    "title": "Progress over time",
+    "done": "% done"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "none": "— なし —",
+  "choose": "— 選択 —",
+  "loading": "読み込み中…",
+  "kind": {
+    "model": "モデル",
+    "dataset": "データセット"
+  },
+  "noMaterialInExperiment": "この実験には、ここで使える準備済みの{kind}がまだありません。教師が experiment.yaml の materials リストに追加します。",
+  "noMaterialUnder": "{dir} に使えるものがまだありません。ワーカーマシンのそこへコピーしてください。一覧は数分以内に更新されます。",
+  "lockedByTeacher": "教師がクラス用に設定した値です。",
+  "runN": "実行 #{id}",
+  "format": {
+    "course": "この講座で作成"
+  }
+}

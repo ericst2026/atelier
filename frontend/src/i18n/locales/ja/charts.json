@@ -1,0 +1,45 @@
+{
+  "form": {
+    "bar": "棒",
+    "stacked": "積み上げ",
+    "line": "折れ線",
+    "area": "面",
+    "scatter": "散布図",
+    "donut": "ドーナツ"
+  },
+  "logX": "log x",
+  "logY": "log y",
+  "toggleWidth": "全幅表示の切り替え",
+  "other": "その他 ({n})",
+  "kind": {
+    "loss": "損失",
+    "reward": "報酬",
+    "accuracy": "正解率",
+    "kl": "初期モデルからの KL",
+    "grad": "勾配ノルム",
+    "margin": "マージン",
+    "logp": "対数確率",
+    "lr": "学習率",
+    "speed": "速度"
+  },
+  "label": {
+    "trainBatch": "学習バッチ",
+    "train": "学習",
+    "validation": "検証",
+    "mean": "平均",
+    "spread": "ばらつき",
+    "trainToken": "学習 (トークン)",
+    "validationToken": "検証 (トークン)",
+    "tokensPerSec": "トークン / 秒",
+    "learningRate": "学習率",
+    "beforeClipping": "クリッピング前"
+  },
+  "axis": {
+    "step": "ステップ",
+    "seconds": "秒"
+  },
+  "timeline": {
+    "title": "進み具合の推移",
+    "done": "完了 %"
+  }
+}

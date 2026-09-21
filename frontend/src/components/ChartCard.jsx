@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Area, Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ReferenceLine, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis, ZAxis } from "recharts";
 import { Maximize2, Minimize2 } from "lucide-react";
+import { t as tr, useT } from "../i18n";
 import { fmtAxis, fmtNum } from "../lib/format";
 
 const COLORS = { raw: "#f4a259", kept: "#5fd3b8", dup: "#ff6b81", hold: "#b79cff", sky: "#7cc4ff", sun: "#ffd166" };
@@ -48,7 +49,7 @@ function slices(data, nameKey, valueKey) {
   if (rows.length <= SLICE_CAP) return rows;
   const head = rows.slice(0, SLICE_CAP - 1);
   const rest = rows.slice(SLICE_CAP - 1);
-  return [...head, { name: `other (${rest.length})`, value: rest.reduce((s, r) => s + r.value, 0) }];
+  return [...head, { name: tr("charts.other", { n: rest.length }), value: rest.reduce((s, r) => s + r.value, 0) }];
 }
 
 /** Which forms this chart can be shown as. A part-to-whole chart can always fall
@@ -65,6 +66,7 @@ function formsFor(spec) {
  *  {id,title,type,x,series:[{key,label,color,axis}],data,x_log,y_log,ref_x,ref_label,note,stretch,y_domain}
  *  type: bar | stacked | line | area | scatter | donut (pie is a donut without the hole). */
 export default function ChartCard({ spec, height = 210, allowStretch = true }) {
+  const t = useT();
   const [type, setType] = useState(spec.type === "pie" ? "donut" : spec.type || "bar");
   const [xLog, setXLog] = useState(!!spec.x_log);
   const [yLog, setYLog] = useState(!!spec.y_log);
@@ -101,25 +103,25 @@ export default function ChartCard({ spec, height = 210, allowStretch = true }) {
       <div className="head">
         <h3>{spec.title}</h3>
         <div className="ctl">
-          {forms.map((t) => (
-            <button key={t} className={type === t ? "on" : ""} onClick={() => setType(t)}>
-              {t}
+          {forms.map((f) => (
+            <button key={f} className={type === f ? "on" : ""} onClick={() => setType(f)}>
+              {t(`charts.form.${f}`)}
             </button>
           ))}
         </div>
         <div className="ctl">
           {!isDonut && canLogX && (
             <button className={xLog ? "on" : ""} onClick={() => setXLog(!xLog)}>
-              log x
+              {t("charts.logX")}
             </button>
           )}
           {!isDonut && (
             <button className={yLog ? "on" : ""} onClick={() => setYLog(!yLog)}>
-              log y
+              {t("charts.logY")}
             </button>
           )}
           {allowStretch && (
-            <button onClick={() => setStretch(!stretch)} title="Toggle full width">
+            <button onClick={() => setStretch(!stretch)} title={t("charts.toggleWidth")}>
               {stretch ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
             </button>
           )}

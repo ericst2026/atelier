@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 import ChartCard from "./ChartCard";
 import Kpis from "./Kpi";
 import Markdown from "./Markdown";
+import { useT } from "../i18n";
 import { fileUrl } from "../lib/api";
 import { fmtBytes, fmtCell } from "../lib/format";
 
@@ -36,14 +37,15 @@ export function DataTable({ table }) {
 }
 
 export function TokenView({ view }) {
+  const t = useT();
   return (
     <div className="stack" style={{ gap: 6 }}>
       <h3>{view.title}</h3>
       <div className="tokens">
-        {view.tokens.map((t, i) => (
-          <span key={i} className={`tok ${t.kind || ""}`} title={`id ${t.id}${t.count ? ` · ${t.count}×` : ""}`}>
-            {t.text}
-            {t.count !== undefined && <small>{t.count}</small>}
+        {view.tokens.map((tok, i) => (
+          <span key={i} className={`tok ${tok.kind || ""}`} title={`${t("results.token.id", { id: tok.id })}${tok.count ? t("results.token.count", { n: tok.count }) : ""}`}>
+            {tok.text}
+            {tok.count !== undefined && <small>{tok.count}</small>}
           </span>
         ))}
       </div>

@@ -1,0 +1,15 @@
+{
+  "teacher": "Teacher",
+  "submission": "submission {id}",
+  "step": "step {n}",
+  "files_one": "{count} file",
+  "files_other": "{count} files",
+  "note": "Note: {note}",
+  "download": "Download",
+  "score": "Score (0–100)",
+  "feedback": "Feedback",
+  "saveGrade": "Save grade",
+  "saved": "Saved",
+  "produced": "What this code produced when they ran it",
+  "runScore": "score {value}"
+}

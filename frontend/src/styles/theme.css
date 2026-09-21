@@ -47,6 +47,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .brand { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .brand b { color: var(--raw); }
+/* the course logo beside its name (src/brand.js); the logo scales, never crops */
+.brandlink { display: flex; }
+.brandlogo { object-fit: contain; flex: 0 0 auto; }
+.brand.big { font-size: 26px; gap: 12px; }
+.langselect { width: auto; padding: 4px 8px; font-size: 13px; }
 .topnav { display: flex; gap: 4px; }
 .topnav a { padding: 6px 12px; border-radius: 999px; color: var(--muted); transition: color .15s ease, background-color .15s ease; }
 .topnav a:hover { color: var(--text); background: var(--inset); text-decoration: none; }

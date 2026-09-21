@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "../i18n";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -7,6 +8,7 @@ import { useAuth } from "../lib/auth";
  *  running, and whatever an admin has let them do on their own. */
 export default function ClassBanner() {
   const { user } = useAuth();
+  const t = useT();
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api("/class").then(setState).catch(() => {}), []);
@@ -30,15 +32,17 @@ export default function ClassBanner() {
   if (!state.running || !s) {
     return (
       <div className="panel" style={{ marginBottom: 14 }}>
-        <b>No class is running.</b>{" "}
+        <b>{t("class.banner.noClass")}</b>{" "}
         {staff ? (
           <span className="muted">
-            Start one from the <Link to="/teacher">teacher page</Link>.
+            {t("class.banner.startOne.before")}
+            <Link to="/teacher">{t("class.banner.startOne.link")}</Link>
+            {t("class.banner.startOne.after")}
           </span>
         ) : mine.length ? (
-          <span className="muted">You can work on your own on: {mine.join(", ")}.</span>
+          <span className="muted">{t("class.banner.ownOnly", { list: mine.join(", ") })}</span>
         ) : (
-          <span className="muted">You can look around, but running a step needs a class, or an admin's permission to work on your own.</span>
+          <span className="muted">{t("class.banner.lookAround")}</span>
         )}
       </div>
     );
@@ -56,37 +60,41 @@ export default function ClassBanner() {
     <div className="panel" style={{ marginBottom: 14, borderColor: canOpen ? "var(--kept)" : "var(--raw)" }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div>
-          <b>In class now: {s.title || s.experiment}</b>
+          <b>{t("class.banner.inClassNow", { title: s.title || s.experiment })}</b>
           <div className="muted small">
             {teaching
-              ? `Yours — ${s.members.filter((m) => m.admitted).length} in the class, ${waiting} waiting`
+              ? t("class.banner.yours", { n: s.members.filter((m) => m.admitted).length, waiting })
               : admitted
-                ? `You are in ${s.teacher}'s class. Open the experiment and work through the steps.`
+                ? t("class.banner.admitted", { teacher: s.teacher })
                 : asked
-                  ? `${s.teacher} has your request — wait to be let in.`
+                  ? t("class.banner.asked", { teacher: s.teacher })
                   : isAdmin
-                    ? `${s.teacher} is teaching it.`
-                    : `Ask ${s.teacher} to let you in.`}
+                    ? t("class.banner.adminView", { teacher: s.teacher })
+                    : t("class.banner.askTeacher", { teacher: s.teacher })}
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
           {mayAsk && (
             <button className="btn primary" onClick={ask} disabled={busy || asked}>
-              {asked ? "Waiting…" : "Ask to join"}
+              {asked ? t("class.banner.waiting") : t("class.banner.askToJoin")}
             </button>
           )}
           {canOpen ? (
             <Link className="btn" to={`/experiments/${s.experiment}?class=${s.id}`}>
-              Open it
+              {t("class.banner.openIt")}
             </Link>
           ) : (
-            <button className="btn" disabled title="Your teacher has to let you in first">
-              Open it
+            <button className="btn" disabled title={t("class.banner.letInFirst")}>
+              {t("class.banner.openIt")}
             </button>
           )}
         </div>
       </div>
-      {!staff && mine.length > 0 && <div className="help" style={{ marginTop: 6 }}>On your own you may also run: {mine.join(", ")}.</div>}
+      {!staff && mine.length > 0 && (
+        <div className="help" style={{ marginTop: 6 }}>
+          {t("class.banner.alsoRun", { list: mine.join(", ") })}
+        </div>
+      )}
     </div>
   );
 }

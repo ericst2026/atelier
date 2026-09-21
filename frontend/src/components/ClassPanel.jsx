@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pause, Play, Square } from "lucide-react";
 import ParamsForm from "./ParamsForm";
+import { useT } from "../i18n";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtTime } from "../lib/format";
@@ -10,6 +11,7 @@ import { fmtTime } from "../lib/format";
  *  runs in the building, so another teacher's has to end before yours starts. */
 export default function ClassPanel() {
   const { user } = useAuth();
+  const t = useT();
   const isAdmin = user?.role === "admin";
   const [state, setState] = useState(null);
   const [experiments, setExperiments] = useState([]);
@@ -106,16 +108,16 @@ export default function ClassPanel() {
         <div className="panel stack" style={{ borderColor: ours ? "var(--kept)" : "var(--line)" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <h3>
-              Running: {s.name || s.title || s.experiment}
-              <span className="faint small"> · {s.title || s.experiment} · {s.teacher} · since {fmtTime(s.started_at)}</span>
+              {t("class.panel.running", { name: s.name || s.title || s.experiment })}
+              <span className="faint small"> · {s.title || s.experiment} · {s.teacher} · {t("class.panel.since", { time: fmtTime(s.started_at) })}</span>
             </h3>
             {ours && (
               <div className="row" style={{ gap: 6 }}>
-                <button className="btn sm" onClick={pause} title="Free the room without ending the class">
-                  <Pause size={13} /> Pause
+                <button className="btn sm" onClick={pause} title={t("class.panel.pauseTitle")}>
+                  <Pause size={13} /> {t("class.panel.pause")}
                 </button>
                 <button className="btn sm danger" onClick={stop}>
-                  <Square size={13} /> End it
+                  <Square size={13} /> {t("class.panel.end")}
                 </button>
               </div>
             )}
@@ -124,8 +126,8 @@ export default function ClassPanel() {
           {ours && (
         <div className="grid2">
           <div className="inset stack" style={{ padding: 12, gap: 8 }}>
-            <b>Asking to join ({waiting.length})</b>
-            {waiting.length === 0 && <div className="help">Nobody is waiting.</div>}
+            <b>{t("class.panel.asking", { n: waiting.length })}</b>
+            {waiting.length === 0 && <div className="help">{t("class.panel.nobodyWaiting")}</div>}
             {waiting.map((m) => (
               <div key={m.user_id} className="row" style={{ justifyContent: "space-between" }}>
                 <span>
@@ -133,25 +135,25 @@ export default function ClassPanel() {
                 </span>
                 <div className="row" style={{ gap: 6 }}>
                   <button className="btn sm good" onClick={() => admit(m.user_id, true)}>
-                    Accept
+                    {t("class.panel.accept")}
                   </button>
                   <button className="btn sm danger" onClick={() => deny(m.user_id)}>
-                    Deny
+                    {t("class.panel.deny")}
                   </button>
                 </div>
               </div>
             ))}
           </div>
           <div className="inset stack" style={{ padding: 12, gap: 8 }}>
-            <b>In the class ({inClass.length})</b>
-            {inClass.length === 0 && <div className="help">Nobody yet.</div>}
+            <b>{t("class.panel.inClass", { n: inClass.length })}</b>
+            {inClass.length === 0 && <div className="help">{t("class.panel.nobodyYet")}</div>}
             {inClass.map((m) => (
               <div key={m.user_id} className="row" style={{ justifyContent: "space-between" }}>
                 <span>
                   {m.name || m.username} <span className="faint small">{m.username}</span>
                 </span>
                 <button className="btn sm ghost" onClick={() => admit(m.user_id, false)}>
-                  Remove
+                  {t("common.remove")}
                 </button>
               </div>
             ))}
@@ -162,31 +164,27 @@ export default function ClassPanel() {
       )}
 
       <div className="panel stack">
-        <h3>Start an experiment</h3>
-        {running && (
-          <div className="help">
-            {ours ? "Your class" : `${s.teacher}'s class`} is running. Pause or end it before starting another.
-          </div>
-        )}
+        <h3>{t("class.start.heading")}</h3>
+        {running && <div className="help">{ours ? t("class.start.yoursRunning") : t("class.start.othersRunning", { teacher: s.teacher })}</div>}
         {teachable.length === 0 ? (
-          <div className="help">An admin has not given you an experiment to teach yet.</div>
+          <div className="help">{t("class.start.nothingToTeach")}</div>
         ) : (
           <div className="stack" style={{ gap: 10 }}>
             <label className="field">
-              <span>Name it</span>
+              <span>{t("class.start.nameIt")}</span>
               <input
                 type="text"
                 value={name}
-                placeholder="Tuesday 2pm, group B — anything that tells it from the others"
+                placeholder={t("class.start.namePlaceholder")}
                 onChange={(e) => setName(e.target.value)}
                 disabled={running}
               />
-              <span className="help">The experiment says what kind of class it is; this says which one.</span>
+              <span className="help">{t("class.start.nameHelp")}</span>
             </label>
             <label className="field">
-              <span>Experiment</span>
+              <span>{t("class.start.experiment")}</span>
               <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={running} style={{ maxWidth: 420 }}>
-                <option value="">— choose an experiment —</option>
+                <option value="">{t("class.start.choose")}</option>
                 {teachable.map((e) => (
                   <option key={e.slug} value={e.slug}>
                     {e.title}
@@ -194,24 +192,20 @@ export default function ClassPanel() {
                 ))}
               </select>
             </label>
-            {pick && spec && startFields(spec).length > 0 && (
+            {pick && spec && startFields(spec, t).length > 0 && (
           <div className="inset stack" style={{ padding: 12, gap: 8 }}>
-            <b className="small">What the class starts from</b>
-            <div className="help">
-              Students have not done the experiment this one builds on, so choose it once here. These are fixed for everyone in the class.
-            </div>
-            <ParamsForm params={startFields(spec)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
+            <b className="small">{t("class.start.startsFrom")}</b>
+            <div className="help">{t("class.start.startsFromHelp")}</div>
+            <ParamsForm params={startFields(spec, t)} values={startParams} onChange={setStartParams} experiment={pick} step={1} />
           </div>
         )}
             <button className="btn primary" onClick={start} disabled={!pick || !name.trim() || running}>
-              <Play size={14} /> Start the experiment
+              <Play size={14} /> {t("class.start.button")}
             </button>
           </div>
         )}
         {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
-        <div className="help">
-          While a class runs, that is the only experiment students can work on, and only after you let them in.
-        </div>
+        <div className="help">{t("class.start.onlyThis")}</div>
       </div>
 
     </div>
@@ -222,6 +216,7 @@ export default function ClassPanel() {
  *  student up. Lives in its own tab, but needs the same class state. */
 export function WallPanel() {
   const { user } = useAuth();
+  const t = useT();
   const [state, setState] = useState(null);
   const [displays, setDisplays] = useState([]);
   const [spec, setSpec] = useState(null); // to know which steps can be handed in
@@ -248,13 +243,9 @@ export function WallPanel() {
   return (
     <div className="stack">
       <div className="panel stack">
-        <h3>What the wall shows</h3>
-        <div className="help">
-          {session
-            ? "Screens 1–4 follow the four steps: what the step is for, what your own version has to do, and who has handed it in. Put a student up to compare their figures with the standard code."
-            : "No class is running, so the step screens say so. The last screen keeps the hardware dashboard."}
-        </div>
-        {session && !canSet && <div className="tip">{session.teacher} is teaching the class, so the screens are theirs to set.</div>}
+        <h3>{t("class.wall.heading")}</h3>
+        <div className="help">{session ? t("class.wall.helpRunning") : t("class.wall.helpIdle")}</div>
+        {session && !canSet && <div className="tip">{t("class.wall.notYours", { teacher: session.teacher })}</div>}
         <div className="wallrow">
           {displays.map((d) => (
             <DisplayControl key={d.id} display={d} session={session} spec={spec} onPush={push} canSet={canSet} />
@@ -266,6 +257,7 @@ export function WallPanel() {
 }
 
 function DisplayControl({ display, session, spec, onPush, canSet }) {
+  const t = useT();
   const isStep = display.id <= 4;
   const payload = display.payload || {};
   const step = display.id; // screen 1 is step 1, and so on
@@ -297,6 +289,17 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
   };
   const needsPerson = show === "results" || show === "code" || show === "running";
+  // what the screen is on now; modes without a label of their own show as they are
+  const showing =
+    display.mode === "student"
+      ? payload.show === "running"
+        ? t("class.wall.shown.running")
+        : payload.show === "code"
+          ? t("class.wall.shown.code")
+          : t("class.wall.shown.results")
+      : ["standard", "step", "grafana", "leaderboard"].includes(display.mode)
+        ? t(`class.wall.shown.${display.mode}`)
+        : display.mode;
   // the option can be left behind when the step changes under it
   useEffect(() => {
     if (!ownCode && show === "code") setShow("explanation");
@@ -304,56 +307,47 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   return (
     <div className="inset stack" style={{ padding: 10, gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <b>{isStep ? `Step ${display.id}${spec?.steps?.[display.id - 1] ? ` · ${spec.steps[display.id - 1].title}` : ""}` : "Leaderboard / hardware"}</b>
+        <b>{isStep ? `${t("common.stepN", { n: display.id })}${spec?.steps?.[display.id - 1] ? ` · ${spec.steps[display.id - 1].title}` : ""}` : t("class.wall.leaderboardHardware")}</b>
         <a className="small" href={`/display/${display.id}`} target="_blank" rel="noreferrer">
-          open
+          {t("class.wall.open")}
         </a>
       </div>
       <div className="small muted">
-        showing:{" "}
-        {display.mode === "student"
-          ? payload.show === "running"
-            ? "one student's run, live"
-            : `${payload.show || "results"} of one student`
-          : display.mode === "standard"
-            ? "the standard code"
-            : display.mode === "step"
-              ? "what the step is"
-              : display.mode}
+        {t("class.wall.showing", { what: showing })}
       </div>
       {isStep ? (
         <>
           <select value={show} onChange={(e) => setShow(e.target.value)} disabled={!canSet}>
-            <option value="explanation">what the step is</option>
-            <option value="standard">the standard code</option>
-            <option value="results">a student's results</option>
-            {ownCode && <option value="code">a student's code</option>}
-            <option value="running">a student's run, live</option>
+            <option value="explanation">{t("class.wall.show.explanation")}</option>
+            <option value="standard">{t("class.wall.show.standard")}</option>
+            <option value="results">{t("class.wall.show.results")}</option>
+            {ownCode && <option value="code">{t("class.wall.show.code")}</option>}
+            <option value="running">{t("class.wall.show.running")}</option>
           </select>
           {needsPerson && (
             <select value={who} onChange={(e) => setWho(e.target.value)} disabled={!canSet}>
               <option value="">
-                {people.length ? "— who —" : show === "code" ? "— nobody has handed this in —" : show === "running" ? "— nobody has run this step yet —" : "— nobody has finished this step yet —"}
+                {people.length ? t("class.wall.who") : show === "code" ? t("class.wall.nobodyHandedIn") : show === "running" ? t("class.wall.nobodyRan") : t("class.wall.nobodyFinished")}
               </option>
               {people.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.name}
-                  {show === "running" && m.status ? ` · ${m.status === "running" ? `running ${Math.round(m.progress_pct || 0)}%` : m.status}` : ""}
+                  {show === "running" && m.status ? ` · ${m.status === "running" ? t("class.wall.runningPct", { pct: Math.round(m.progress_pct || 0) }) : t(`common.status.${m.status}`)}` : ""}
                 </option>
               ))}
             </select>
           )}
           <button className="btn sm primary" onClick={apply} disabled={!canSet || (needsPerson && !who)}>
-            Put it up
+            {t("class.wall.putItUp")}
           </button>
         </>
       ) : (
         <div className="row" style={{ gap: 6 }}>
           <button className={`btn sm ${display.mode === "grafana" ? "primary" : "ghost"}`} disabled={!canSet} onClick={() => onPush(display.id, { mode: "grafana", payload: {} })}>
-            Hardware
+            {t("class.wall.hardware")}
           </button>
           <button className={`btn sm ${display.mode === "leaderboard" ? "primary" : "ghost"}`} disabled={!canSet} onClick={() => onPush(display.id, { mode: "leaderboard", payload: { experiment: session?.experiment } })}>
-            Leaderboard
+            {t("class.wall.leaderboard")}
           </button>
         </div>
       )}
@@ -365,7 +359,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
  *  another experiment's run, and the prepared models or datasets that stand in for
  *  one. A step that builds on the step before it is not here — that is the
  *  student's own work, and they pick their own. */
-function startFields(spec) {
+function startFields(spec, t) {
   const out = [];
   for (const st of spec?.steps || []) {
     for (const p of st.params || []) {
@@ -374,7 +368,7 @@ function startFields(spec) {
         p.type === "material" ||
         (p.type === "select" && /source/.test(p.key));
       if (!fromElsewhere || out.some((x) => x.key === p.key)) continue;
-      out.push(st.index === 1 ? p : { ...p, label: `${p.label} (step ${st.index})` });
+      out.push(st.index === 1 ? p : { ...p, label: t("class.start.fromStep", { label: p.label, n: st.index }) });
     }
   }
   return out;

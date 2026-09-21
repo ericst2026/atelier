@@ -1,0 +1,15 @@
+{
+  "teacher": "教師",
+  "submission": "提出 {id}",
+  "step": "ステップ {n}",
+  "files_one": "{count} ファイル",
+  "files_other": "{count} ファイル",
+  "note": "メモ: {note}",
+  "download": "ダウンロード",
+  "score": "得点 (0–100)",
+  "feedback": "フィードバック",
+  "saveGrade": "採点を保存",
+  "saved": "保存しました",
+  "produced": "このコードを実行したときの結果",
+  "runScore": "得点 {value}"
+}

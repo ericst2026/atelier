@@ -1,0 +1,16 @@
+{
+  "fileTree": {
+    "empty": "empty"
+  },
+  "gpu": {
+    "unavailable": "GPU metrics unavailable",
+    "busy": "{busy}/{total} busy",
+    "noData": "no GPU data"
+  },
+  "errorBoundary": {
+    "title": "This page stopped",
+    "body": "Something in the page threw an error. The rest of the app is still fine.",
+    "retry": "Try again",
+    "home": "Back to the experiments"
+  }
+}

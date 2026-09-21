@@ -1,0 +1,28 @@
+{
+  "title": "Experiments",
+  "intro": "Four steps each. Run them on the server with the standard code, or write your own for the steps that allow it.",
+  "signedInAs": "signed in as {name}",
+  "someFailed": "Some experiments failed to load",
+  "own": {
+    "title": "On your own",
+    "admin_one": "{count} experiment · you are an admin, so all of them",
+    "admin_other": "{count} experiments · you are an admin, so all of them",
+    "granted_one": "{count} experiment granted to you",
+    "granted_other": "{count} experiments granted to you",
+    "noneLoaded": "No experiments are loaded.",
+    "noneGranted": "An admin has not given you anything to run by yourself yet. In class you work on whatever your teacher starts."
+  },
+  "section": {
+    "other": "Other",
+    "experiments_one": "{count} experiment",
+    "experiments_other": "{count} experiments",
+    "finished": "{n} finished"
+  },
+  "card": {
+    "stepsTitle": "{n} of 4 steps done",
+    "stepDone": "step {n} of 4 done",
+    "notStarted": "not started",
+    "submissions_one": "{count} submission",
+    "submissions_other": "{count} submissions"
+  }
+}

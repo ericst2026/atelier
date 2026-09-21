@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopBar from "./components/TopBar";
+import { brandName } from "./brand";
+import { useI18n } from "./i18n";
 import { useAuth } from "./lib/auth";
 import Account from "./pages/Account";
 import Admin from "./pages/Admin";
@@ -15,8 +17,9 @@ import Teacher from "./pages/Teacher";
 
 function RequireAuth({ teacher = false, admin = false }) {
   const { user, ready, isTeacher, isAdmin } = useAuth();
+  const { t } = useI18n();
   const loc = useLocation();
-  if (!ready) return <div className="page muted">Loading…</div>;
+  if (!ready) return <div className="page muted">{t("common.loading")}</div>;
   if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   if (teacher && !isTeacher) return <Navigate to="/" replace />;
   if (admin && !isAdmin) return <Navigate to="/" replace />;
@@ -31,6 +34,10 @@ function RequireAuth({ teacher = false, admin = false }) {
 }
 
 export default function App() {
+  const { lang } = useI18n();
+  useEffect(() => {
+    document.title = brandName(lang);
+  }, [lang]);
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

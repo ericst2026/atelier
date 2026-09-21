@@ -1,0 +1,22 @@
+{
+  "title": "Your account",
+  "signedInAs": "Signed in as {name} · {role}",
+  "passwordsDiffer": "The two new passwords are not the same.",
+  "changed": "Your password is changed.",
+  "password": {
+    "title": "Change your password",
+    "current": "Your password now",
+    "new": "New password",
+    "newHelp": "At least four characters.",
+    "again": "New password again",
+    "changing": "Changing…",
+    "submit": "Change it"
+  },
+  "mayRun": {
+    "title": "What you may run",
+    "admin": "As an admin you can run anything, and you decide what everyone else may run alone.",
+    "own": "On your own, whenever you like:",
+    "nothing": "Nothing on your own yet — an admin grants that per experiment. In class you work on whatever your teacher has started, once they let you in.",
+    "back": "Back to the experiments"
+  }
+}

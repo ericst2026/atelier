@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { useT } from "../i18n";
 import { fmtTime } from "../lib/format";
 
 /** Accounts and permissions — the admin's page. A teacher never comes here: they
  *  run a class and admit students to it, and nothing else. */
 export default function Admin() {
+  const t = useT();
   const [users, setUsers] = useState([]);
   const [experiments, setExperiments] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -19,7 +21,7 @@ export default function Admin() {
           setUsers(u);
           setError(null);
         })
-        .catch((e) => setError(`Could not load the accounts: ${e.message}`)),
+        .catch((e) => setError(t("admin.loadFailed", { message: e.message }))),
     []
   );
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function Admin() {
     try {
       await api("/users", { method: "POST", body: form });
       setForm({ username: "", name: "", role: "student", password: "" });
-      setMsg(`Created ${form.username}.`);
+      setMsg(t("admin.created", { username: form.username }));
       load();
     } catch (e) {
       setError(e.message);
@@ -51,7 +53,7 @@ export default function Admin() {
     fd.append("file", f);
     try {
       const r = await api("/users/import", { method: "POST", form: fd });
-      setMsg(`Created ${r.created.length}, skipped ${r.skipped.length}.`);
+      setMsg(t("admin.imported", { created: r.created.length, skipped: r.skipped.length }));
       load();
     } catch (err) {
       setError(err.message);
@@ -63,8 +65,8 @@ export default function Admin() {
     <main className="page">
       <div className="hero">
         <div>
-          <h1>Accounts</h1>
-          <p className="muted">Who may sign in, what they are, and which experiments they may run on their own.</p>
+          <h1>{t("admin.title")}</h1>
+          <p className="muted">{t("admin.intro")}</p>
         </div>
       </div>
 
@@ -72,15 +74,15 @@ export default function Admin() {
 
       {waiting.length > 0 && (
         <div className="panel stack" style={{ marginBottom: 14, borderColor: "var(--raw)" }}>
-          <h3>Waiting to be let in ({waiting.length})</h3>
+          <h3>{t("admin.waiting.title", { n: waiting.length })}</h3>
           {waiting.map((u) => (
             <div key={u.id} className="row" style={{ justifyContent: "space-between" }}>
               <span>
-                {u.name || u.username} <span className="faint small">{u.username} · asked to be a {u.role} · {fmtTime(u.created_at)}</span>
+                {u.name || u.username} <span className="faint small">{u.username} · {t("admin.waiting.askedRole", { role: t(`common.role.${u.role}`) })} · {fmtTime(u.created_at)}</span>
               </span>
               <div className="row" style={{ gap: 6 }}>
                 <button className="btn sm good" onClick={() => patch(u, { active: true })}>
-                  Approve
+                  {t("admin.waiting.approve")}
                 </button>
               </div>
             </div>
@@ -95,39 +97,39 @@ export default function Admin() {
       )}
 
       <div className="panel stack" style={{ marginBottom: 14 }}>
-        <h3>Add an account</h3>
+        <h3>{t("admin.add.title")}</h3>
         <div className="row">
-          <input type="text" placeholder="username" style={{ width: 140 }} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          <input type="text" placeholder="name" style={{ width: 160 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <input type="text" placeholder={t("admin.add.username")} style={{ width: 140 }} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <input type="text" placeholder={t("admin.add.name")} style={{ width: 160 }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <select style={{ width: 120 }} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            <option value="student">student</option>
-            <option value="teacher">teacher</option>
-            <option value="admin">admin</option>
+            <option value="student">{t("common.role.student")}</option>
+            <option value="teacher">{t("common.role.teacher")}</option>
+            <option value="admin">{t("common.role.admin")}</option>
           </select>
-          <input type="text" placeholder="password" style={{ width: 140 }} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <input type="text" placeholder={t("admin.add.password")} style={{ width: 140 }} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <button className="btn primary sm" onClick={create} disabled={!form.username || !form.password}>
-            Add
+            {t("common.add")}
           </button>
           <button className="btn sm" onClick={() => csv.current?.click()}>
-            Import CSV
+            {t("admin.add.importCsv")}
           </button>
           <input ref={csv} type="file" accept=".csv" style={{ display: "none" }} onChange={importCsv} />
-          <span className="help">CSV columns: username,name,role,password</span>
+          <span className="help">{t("admin.add.csvColumns")}</span>
           {msg && <span className="small" style={{ color: "var(--kept)" }}>{msg}</span>}
         </div>
       </div>
 
-      {users.length === 0 && !error && <div className="empty">No accounts loaded.</div>}
+      {users.length === 0 && !error && <div className="empty">{t("admin.empty")}</div>}
       {users.length > 0 && (
         <div className="tablewrap">
           <table className="data">
             <thead>
               <tr>
-                <th>Username</th>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Can sign in</th>
-                <th>May run alone</th>
+                <th>{t("admin.table.username")}</th>
+                <th>{t("admin.table.name")}</th>
+                <th>{t("admin.table.role")}</th>
+                <th>{t("admin.table.canSignIn")}</th>
+                <th>{t("admin.table.mayRunAlone")}</th>
                 <th></th>
               </tr>
             </thead>
@@ -138,23 +140,23 @@ export default function Admin() {
                   <td>{u.name}</td>
                   <td>
                     <select value={u.role} onChange={(e) => patch(u, { role: e.target.value })} style={{ width: 110 }}>
-                      <option value="student">student</option>
-                      <option value="teacher">teacher</option>
-                      <option value="admin">admin</option>
+                      <option value="student">{t("common.role.student")}</option>
+                      <option value="teacher">{t("common.role.teacher")}</option>
+                      <option value="admin">{t("common.role.admin")}</option>
                     </select>
                   </td>
-                  <td>{u.active ? "yes" : <b style={{ color: "var(--raw)" }}>waiting</b>}</td>
+                  <td>{u.active ? t("admin.table.active") : <b style={{ color: "var(--raw)" }}>{t("admin.table.waiting")}</b>}</td>
                   <td>
                     <button className="btn sm ghost" onClick={() => setEditing(u)}>
-                      {(u.self_experiments || []).length ? `${u.self_experiments.length} experiment${u.self_experiments.length === 1 ? "" : "s"}` : "none"}
+                      {(u.self_experiments || []).length ? t("admin.table.experiments", { count: u.self_experiments.length }) : t("common.none")}
                     </button>
                   </td>
                   <td className="row" style={{ gap: 6 }}>
-                    <button className="btn sm ghost" onClick={() => { const p = window.prompt(`New password for ${u.username}`); if (p) patch(u, { password: p }); }}>
-                      reset password
+                    <button className="btn sm ghost" onClick={() => { const p = window.prompt(t("admin.table.newPasswordPrompt", { username: u.username })); if (p) patch(u, { password: p }); }}>
+                      {t("admin.table.resetPassword")}
                     </button>
                     <button className={`btn sm ${u.active ? "ghost" : "good"}`} onClick={() => patch(u, { active: !u.active })}>
-                      {u.active ? "deactivate" : "approve"}
+                      {u.active ? t("admin.table.deactivate") : t("admin.table.approve")}
                     </button>
                   </td>
                 </tr>
@@ -170,6 +172,7 @@ export default function Admin() {
 /** Which experiments this person may run outside a class — and, for a teacher,
  *  therefore which they may hold a class on. */
 function SelfExperiments({ user, experiments, onClose, onSaved }) {
+  const t = useT();
   const [chosen, setChosen] = useState(user.self_experiments || []);
   const [error, setError] = useState(null);
   useEffect(() => {
@@ -188,26 +191,26 @@ function SelfExperiments({ user, experiments, onClose, onSaved }) {
   return (
     <div className="panel stack" style={{ marginBottom: 14, borderColor: "var(--sky)" }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h3>{user.name || user.username} may run these on their own</h3>
+        <h3>{t("admin.self.title", { name: user.name || user.username })}</h3>
         <div className="row" style={{ gap: 6 }}>
           <button className="btn sm ghost" onClick={() => setChosen([])}>
-            none
+            {t("common.none")}
           </button>
           <button className="btn sm ghost" onClick={() => setChosen(experiments.map((e) => e.slug))}>
-            all
+            {t("admin.self.all")}
           </button>
           <button className="btn sm primary" onClick={save}>
-            Save
+            {t("common.save")}
           </button>
           <button className="btn sm ghost" onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
       <div className="help">
         {user.role === "teacher"
-          ? "A teacher may also hold a class on any of these, and on nothing else."
-          : "Outside a class this is everything they can run. In class they work on whatever their teacher started."}
+          ? t("admin.self.teacherHelp")
+          : t("admin.self.studentHelp")}
       </div>
       {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
       <div className="grid3">

@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 export const fmtInt = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? "–" : Math.round(Number(v)).toLocaleString());
 /** Plain digits, never exponential: 1,234,567 and 0.00015, not 1.23e+6 and 1.5e-4.
  *  Values below the rounding step keep three significant digits instead of
@@ -26,10 +28,10 @@ export const fmtPct =(v, d = 1) => (v === null || v === undefined || Number.isNa
 export const fmtMs = (ms) => {
   if (ms === null || ms === undefined) return "–";
   const s = Number(ms) / 1000;
-  if (s < 1) return `${Math.round(ms)} ms`;
-  if (s < 90) return `${s.toFixed(1)} s`;
-  if (s < 5400) return `${(s / 60).toFixed(1)} min`;
-  return `${(s / 3600).toFixed(2)} h`;
+  if (s < 1) return t("format.ms", { n: Math.round(ms) });
+  if (s < 90) return t("format.s", { n: s.toFixed(1) });
+  if (s < 5400) return t("format.min", { n: (s / 60).toFixed(1) });
+  return t("format.h", { n: (s / 3600).toFixed(2) });
 };
 export const fmtBytes = (b) => {
   if (b === null || b === undefined) return "–";
@@ -70,7 +72,7 @@ export const fmtMetric = (m) => {
 };
 export const fmtCell = (v, fmt) => {
   if (v === null || v === undefined) return "";
-  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (typeof v === "boolean") return v ? t("format.yes") : t("format.no");
   if (fmt === "int") return fmtInt(v);
   if (fmt === "pct") return fmtPct(v);
   if (fmt === "num") return fmtNum(v);

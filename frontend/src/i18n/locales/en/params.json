@@ -1,0 +1,16 @@
+{
+  "none": "— none —",
+  "choose": "— choose —",
+  "loading": "loading…",
+  "kind": {
+    "model": "model",
+    "dataset": "dataset"
+  },
+  "noMaterialInExperiment": "This experiment offers no prepared {kind} here yet. A teacher adds one to the materials list in its experiment.yaml.",
+  "noMaterialUnder": "Nothing suitable under {dir} yet. Copy it there on the worker machine; the list refreshes within a few minutes.",
+  "lockedByTeacher": "Your teacher set this for the class.",
+  "runN": "run #{id}",
+  "format": {
+    "course": "built in this course"
+  }
+}

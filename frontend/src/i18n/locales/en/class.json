@@ -1,0 +1,109 @@
+{
+  "panel": {
+    "running": "Running: {name}",
+    "since": "since {time}",
+    "pauseTitle": "Free the room without ending the class",
+    "pause": "Pause",
+    "end": "End it",
+    "asking": "Asking to join ({n})",
+    "nobodyWaiting": "Nobody is waiting.",
+    "inClass": "In the class ({n})",
+    "nobodyYet": "Nobody yet.",
+    "accept": "Accept",
+    "deny": "Deny"
+  },
+  "start": {
+    "heading": "Start an experiment",
+    "yoursRunning": "Your class is running. Pause or end it before starting another.",
+    "othersRunning": "{teacher}'s class is running. Pause or end it before starting another.",
+    "nothingToTeach": "An admin has not given you an experiment to teach yet.",
+    "nameIt": "Name it",
+    "namePlaceholder": "Tuesday 2pm, group B — anything that tells it from the others",
+    "nameHelp": "The experiment says what kind of class it is; this says which one.",
+    "experiment": "Experiment",
+    "choose": "— choose an experiment —",
+    "startsFrom": "What the class starts from",
+    "startsFromHelp": "Students have not done the experiment this one builds on, so choose it once here. These are fixed for everyone in the class.",
+    "button": "Start the experiment",
+    "onlyThis": "While a class runs, that is the only experiment students can work on, and only after you let them in.",
+    "fromStep": "{label} (step {n})"
+  },
+  "wall": {
+    "heading": "What the wall shows",
+    "helpRunning": "Screens 1–4 follow the four steps: what the step is for, what your own version has to do, and who has handed it in. Put a student up to compare their figures with the standard code.",
+    "helpIdle": "No class is running, so the step screens say so. The last screen keeps the hardware dashboard.",
+    "notYours": "{teacher} is teaching the class, so the screens are theirs to set.",
+    "leaderboardHardware": "Leaderboard / hardware",
+    "open": "open",
+    "showing": "showing: {what}",
+    "shown": {
+      "running": "one student's run, live",
+      "results": "results of one student",
+      "code": "code of one student",
+      "standard": "the standard code",
+      "step": "what the step is",
+      "grafana": "hardware",
+      "leaderboard": "leaderboard"
+    },
+    "show": {
+      "explanation": "what the step is",
+      "standard": "the standard code",
+      "results": "a student's results",
+      "code": "a student's code",
+      "running": "a student's run, live"
+    },
+    "who": "— who —",
+    "nobodyHandedIn": "— nobody has handed this in —",
+    "nobodyRan": "— nobody has run this step yet —",
+    "nobodyFinished": "— nobody has finished this step yet —",
+    "runningPct": "running {pct}%",
+    "putItUp": "Put it up",
+    "hardware": "Hardware",
+    "leaderboard": "Leaderboard"
+  },
+  "banner": {
+    "noClass": "No class is running.",
+    "startOne": {
+      "before": "Start one from the ",
+      "link": "teacher page",
+      "after": "."
+    },
+    "ownOnly": "You can work on your own on: {list}.",
+    "lookAround": "You can look around, but running a step needs a class, or an admin's permission to work on your own.",
+    "inClassNow": "In class now: {title}",
+    "yours": "Yours — {n} in the class, {waiting} waiting",
+    "admitted": "You are in {teacher}'s class. Open the experiment and work through the steps.",
+    "asked": "{teacher} has your request — wait to be let in.",
+    "adminView": "{teacher} is teaching it.",
+    "askTeacher": "Ask {teacher} to let you in.",
+    "waiting": "Waiting…",
+    "askToJoin": "Ask to join",
+    "openIt": "Open it",
+    "letInFirst": "Your teacher has to let you in first",
+    "alsoRun": "On your own you may also run: {list}."
+  },
+  "history": {
+    "empty": "No classes yet.",
+    "col": {
+      "class": "Class",
+      "experiment": "Experiment",
+      "owner": "Owner",
+      "started": "Started",
+      "state": "State",
+      "inClass": "In the class"
+    },
+    "ended": "ended {time}",
+    "resume": "Resume",
+    "nobodyHandedIn": "Nobody has handed in step {n}.",
+    "handedIn": "handed in {time}",
+    "readIt": "Read it",
+    "marked": "Marked.",
+    "theirCode": "Their code",
+    "noCode": "No code in this submission.",
+    "produced": "What it produced",
+    "notRun": "They had not run it when they handed it in.",
+    "mark": "Mark (0–100)",
+    "feedback": "Feedback",
+    "saveMark": "Save the mark"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "fileTree": {
+    "empty": "空"
+  },
+  "gpu": {
+    "unavailable": "GPU の情報を取得できません",
+    "busy": "{busy}/{total} 使用中",
+    "noData": "GPU データなし"
+  },
+  "errorBoundary": {
+    "title": "このページが停止しました",
+    "body": "ページ内でエラーが発生しました。アプリのほかの部分は問題なく動いています。",
+    "retry": "再試行",
+    "home": "実験一覧に戻る"
+  }
+}

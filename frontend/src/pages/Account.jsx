@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "../i18n";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -7,6 +8,7 @@ import { useAuth } from "../lib/auth";
  *  the one thing you can change yourself — your password. */
 export default function Account() {
   const { user } = useAuth();
+  const t = useT();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
@@ -19,13 +21,13 @@ export default function Account() {
     setError(null);
     setMsg(null);
     if (next !== again) {
-      setError("The two new passwords are not the same.");
+      setError(t("account.passwordsDiffer"));
       return;
     }
     setBusy(true);
     try {
       await api("/auth/password", { method: "POST", body: { current, new: next } });
-      setMsg("Your password is changed.");
+      setMsg(t("account.changed"));
       setCurrent("");
       setNext("");
       setAgain("");
@@ -39,41 +41,41 @@ export default function Account() {
     <main className="page">
       <div className="hero">
         <div>
-          <h1>Your account</h1>
+          <h1>{t("account.title")}</h1>
           <p className="muted">
-            Signed in as {user?.name || user?.username} · {user?.role}
+            {t("account.signedInAs", { name: user?.name || user?.username, role: user?.role ? t(`common.role.${user.role}`) : "" })}
           </p>
         </div>
       </div>
       <div className="grid2">
         <form className="panel stack" onSubmit={submit}>
-          <h3>Change your password</h3>
+          <h3>{t("account.password.title")}</h3>
           <label className="field">
-            <span>Your password now</span>
+            <span>{t("account.password.current")}</span>
             <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
           </label>
           <label className="field">
-            <span>New password</span>
+            <span>{t("account.password.new")}</span>
             <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
-            <span className="help">At least four characters.</span>
+            <span className="help">{t("account.password.newHelp")}</span>
           </label>
           <label className="field">
-            <span>New password again</span>
+            <span>{t("account.password.again")}</span>
             <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
           </label>
           {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
           {msg && <div style={{ color: "var(--kept)" }}>{msg}</div>}
           <button className="btn primary" type="submit" disabled={busy || !current || next.length < 4}>
-            {busy ? "Changing…" : "Change it"}
+            {busy ? t("account.password.changing") : t("account.password.submit")}
           </button>
         </form>
         <div className="panel stack">
-          <h3>What you may run</h3>
+          <h3>{t("account.mayRun.title")}</h3>
           {user?.role === "admin" ? (
-            <p className="muted">As an admin you can run anything, and you decide what everyone else may run alone.</p>
+            <p className="muted">{t("account.mayRun.admin")}</p>
           ) : mine.length ? (
             <>
-              <p className="muted">On your own, whenever you like:</p>
+              <p className="muted">{t("account.mayRun.own")}</p>
               <ul className="muted">
                 {mine.map((slug) => (
                   <li key={slug}>{slug}</li>
@@ -81,10 +83,10 @@ export default function Account() {
               </ul>
             </>
           ) : (
-            <p className="muted">Nothing on your own yet — an admin grants that per experiment. In class you work on whatever your teacher has started, once they let you in.</p>
+            <p className="muted">{t("account.mayRun.nothing")}</p>
           )}
           <Link className="btn sm" to="/">
-            Back to the experiments
+            {t("account.mayRun.back")}
           </Link>
         </div>
       </div>

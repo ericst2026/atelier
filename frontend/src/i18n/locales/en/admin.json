@@ -1,0 +1,42 @@
+{
+  "title": "Accounts",
+  "intro": "Who may sign in, what they are, and which experiments they may run on their own.",
+  "loadFailed": "Could not load the accounts: {message}",
+  "created": "Created {username}.",
+  "imported": "Created {created}, skipped {skipped}.",
+  "waiting": {
+    "title": "Waiting to be let in ({n})",
+    "askedRole": "asked to be a {role}",
+    "approve": "Approve"
+  },
+  "add": {
+    "title": "Add an account",
+    "username": "username",
+    "name": "name",
+    "password": "password",
+    "importCsv": "Import CSV",
+    "csvColumns": "CSV columns: username,name,role,password"
+  },
+  "empty": "No accounts loaded.",
+  "table": {
+    "username": "Username",
+    "name": "Name",
+    "role": "Role",
+    "canSignIn": "Can sign in",
+    "mayRunAlone": "May run alone",
+    "active": "yes",
+    "waiting": "waiting",
+    "experiments_one": "{count} experiment",
+    "experiments_other": "{count} experiments",
+    "resetPassword": "reset password",
+    "newPasswordPrompt": "New password for {username}",
+    "deactivate": "deactivate",
+    "approve": "approve"
+  },
+  "self": {
+    "title": "{name} may run these on their own",
+    "all": "all",
+    "teacherHelp": "A teacher may also hold a class on any of these, and on nothing else.",
+    "studentHelp": "Outside a class this is everything they can run. In class they work on whatever their teacher started."
+  }
+}

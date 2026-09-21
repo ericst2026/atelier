@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { api } from "../lib/api";
 import { fmtTime } from "../lib/format";
 
@@ -6,6 +7,7 @@ const optVal = (o) => (typeof o === "object" ? o.value : o);
 const optLabel = (o) => (typeof o === "object" ? o.label || o.value : String(o));
 
 function RunPicker({ p, value, onChange }) {
+  const t = useT();
   const [runs, setRuns] = useState([]);
   useEffect(() => {
     const q = new URLSearchParams({ status: "succeeded", kind: "step", limit: "50" });
@@ -15,7 +17,7 @@ function RunPicker({ p, value, onChange }) {
   }, [p.experiment, p.step]);
   return (
     <select value={value ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
-      <option value="">— none —</option>
+      <option value="">{t("params.none")}</option>
       {runs.map((r) => (
         <option key={r.id} value={r.id}>
           #{r.id} · {r.label} · {r.username} · {fmtTime(r.created_at)}
@@ -30,6 +32,7 @@ const fmtBytes = (b) => (!b ? "" : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >
 /** A prepared model or dataset: one of the materials the experiment declares for this
  *  param (or, outside an experiment step, anything suitable under materials/). */
 function MaterialPicker({ p, value, onChange, disabled, experiment, step }) {
+  const t = useT();
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -47,14 +50,14 @@ function MaterialPicker({ p, value, onChange, disabled, experiment, step }) {
   }, [p.key, p.kind, (p.formats || []).join(","), (p.schemas || []).join(","), experiment, step]);
   const top = p.kind === "dataset" ? "materials/datasets/" : "materials/models/";
   if (items && items.length === 0)
-    return <div className="help">{error || (experiment ? `This experiment offers no prepared ${p.kind || "model"} here yet. A teacher adds one to the materials list in its experiment.yaml.` : `Nothing suitable under ${top} yet. Copy it there on the worker machine; the list refreshes within a few minutes.`)}</div>;
+    return <div className="help">{error || (experiment ? t("params.noMaterialInExperiment", { kind: t(p.kind === "dataset" ? "params.kind.dataset" : "params.kind.model") }) : t("params.noMaterialUnder", { dir: top }))}</div>;
   return (
     <select value={value ?? ""} disabled={disabled || !items} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">{items ? "— choose —" : "loading…"}</option>
+      <option value="">{items ? t("params.choose") : t("params.loading")}</option>
       {(items || []).map((m) => (
         <option key={m.path} value={m.path} disabled={!!m.problem}>
           {m.name}
-          {m.format ? ` · ${m.format === "hf" ? "HuggingFace" : "Atelier"}` : ""}
+          {m.format ? ` · ${m.format === "hf" ? "HuggingFace" : t("params.format.course")}` : ""}
           {m.schemas ? ` · ${(m.splits || []).join(", ") || m.schemas.join(", ")}` : ""}
           {m.bytes ? ` · ${fmtBytes(m.bytes)}` : ""}
           {m.problem ? ` · ${m.problem}` : ""}
@@ -77,6 +80,8 @@ const visible = (p, values, params) =>
 /** `locked` holds what a teacher fixed for the class: those fields are shown as
  *  they will run, and cannot be changed. */
 export default function ParamsForm({ params, values, onChange, disabled, experiment, step, locked }) {
+  // `t` is the field type below, so the translator is `tr` here
+  const tr = useT();
   const set = (k, v) => onChange({ ...values, [k]: v });
   return (
     <div className="stack" style={{ gap: 10 }}>
@@ -87,8 +92,8 @@ export default function ParamsForm({ params, values, onChange, disabled, experim
           return (
             <label key={p.key} className="field">
               <span>{p.label}</span>
-              <input type="text" value={describe(p, locked[p.key])} readOnly disabled />
-              <span className="help">Your teacher set this for the class.</span>
+              <input type="text" value={describe(p, locked[p.key], tr)} readOnly disabled />
+              <span className="help">{tr("params.lockedByTeacher")}</span>
             </label>
           );
         if (t === "material")
@@ -183,10 +188,10 @@ export default function ParamsForm({ params, values, onChange, disabled, experim
 }
 
 /** A fixed value, in words rather than as an id where we can manage it. */
-function describe(p, value) {
+function describe(p, value, t) {
   if (value === null || value === undefined || value === "") return "—";
   if (p.type === "material") return String(value).split("/").slice(-1)[0];
-  if (p.type === "run") return `run #${value}`;
+  if (p.type === "run") return t("params.runN", { id: value });
   const opt = (p.options || []).find((o) => (typeof o === "object" ? o.value : o) === value);
   return opt ? (typeof opt === "object" ? opt.label : opt) : String(value);
 }

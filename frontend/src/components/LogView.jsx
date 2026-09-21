@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
+import { useT } from "../i18n";
 
 export default function LogView({ lines, tall = false }) {
+  const t = useT();
   const ref = useRef(null);
   const stick = useRef(true);
   useEffect(() => {
@@ -12,7 +14,7 @@ export default function LogView({ lines, tall = false }) {
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   };
-  if (!lines || !lines.length) return <div className="log">{"(no output yet)"}</div>;
+  if (!lines || !lines.length) return <div className="log">{t("run.noOutput")}</div>;
   return (
     <div className={`log ${tall ? "tall" : ""}`} ref={ref} onScroll={onScroll}>
       {lines.map((l, i) => (

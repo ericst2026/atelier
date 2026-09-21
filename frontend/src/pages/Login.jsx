@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import Brand from "../components/Brand";
+import { LanguageSelect, useT } from "../i18n";
 import { useAuth } from "../lib/auth";
 
 export default function Login() {
   const { user, ready, login } = useAuth();
+  const t = useT();
   const nav = useNavigate();
   const loc = useLocation();
   const [username, setUsername] = useState("");
@@ -27,26 +30,27 @@ export default function Login() {
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20 }}>
       <form className="panel" onSubmit={submit} style={{ width: 360, display: "flex", flexDirection: "column", gap: 14 }}>
-        <div>
-          <div className="brand" style={{ fontSize: 26 }}>
-            Ate<b>lier</b>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Brand size={36} className="big" />
+            <div className="muted">{t("common.tagline")}</div>
           </div>
-          <div className="muted">LLM experiments on the classroom GPU node</div>
+          <LanguageSelect />
         </div>
         <label className="field">
-          <span>Username</span>
+          <span>{t("auth.username")}</span>
           <input type="text" value={username} autoFocus autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
         </label>
         <label className="field">
-          <span>Password</span>
+          <span>{t("auth.password")}</span>
           <input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
         </label>
         {error && <div style={{ color: "var(--dup)" }}>{error}</div>}
         <button className="btn primary" type="submit" disabled={busy || !username || !password}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? t("auth.signingIn") : t("auth.signIn")}
         </button>
         <div className="help">
-          No account? <Link to="/signup">Make one</Link>. Wall displays need no sign-in: /display/1 … /display/5.
+          {t("auth.noAccount")} <Link to="/signup">{t("auth.makeOne")}</Link>. {t("auth.wallNoSignIn")}
         </div>
       </form>
     </div>

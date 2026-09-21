@@ -1,15 +1,18 @@
 import React from "react";
+import { useT } from "../i18n";
 import { fmtDuration } from "../lib/format";
 
 export function StatusPill({ status }) {
+  const t = useT();
   return (
     <span className={`pill ${status}`}>
-      <i className="dot" /> {status}
+      <i className="dot" /> {status ? t(`common.status.${status}`) : status}
     </span>
   );
 }
 
 export default function RunStatus({ run, progress, onCancel }) {
+  const t = useT();
   if (!run) return null;
   const pct = progress?.pct ?? run.progress_pct ?? 0;
   const msg = progress?.msg ?? run.progress_msg ?? "";
@@ -20,12 +23,12 @@ export default function RunStatus({ run, progress, onCancel }) {
       <div className="row" style={{ gap: 10 }}>
         <StatusPill status={status} />
         <span className="muted small">
-          run {run.id} · {run.gpu_ids?.length ? `GPU ${run.gpu_ids.join(",")}` : run.gpus ? `${run.gpus} GPU` : "CPU"} · {status === "queued" ? "waiting for a slot" : fmtDuration(elapsed)}
+          {t("common.runN", { id: run.id })} · {run.gpu_ids?.length ? `GPU ${run.gpu_ids.join(",")}` : run.gpus ? `${run.gpus} GPU` : "CPU"} · {status === "queued" ? t("run.waiting") : fmtDuration(elapsed)}
         </span>
         <span className="spacer" />
         {(status === "queued" || status === "running") && onCancel && (
           <button className="btn sm danger" onClick={onCancel}>
-            Stop
+            {t("run.stop")}
           </button>
         )}
       </div>

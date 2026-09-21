@@ -1,0 +1,73 @@
+{
+  "title": "Teacher",
+  "subtitle": "The node, the class, the screens.",
+  "tabs": {
+    "class": "The class",
+    "history": "Past classes",
+    "displays": "The wall",
+    "runs": "Runs",
+    "live": "The node"
+  },
+  "modes": {
+    "grafana": "Hardware (Grafana)",
+    "live": "Live runs",
+    "progress": "Class progress",
+    "leaderboard": "Leaderboard",
+    "run": "A run's results",
+    "message": "Message"
+  },
+  "gpusFree_one": "{count} GPU · {free} free",
+  "gpusFree_other": "{count} GPUs · {free} free",
+  "node": {
+    "noGpus": "no GPUs",
+    "heartbeatLate": " · heartbeat late",
+    "reporting": " · reporting",
+    "notCheckedIn": " · not checked in",
+    "cpu": "CPU",
+    "runsOnProcessor": "runs on processor",
+    "gpu": "GPU {index} · {used}/{total} GB · {temp}°",
+    "free": "free"
+  },
+  "live": {
+    "waitingWorker": "Waiting for the worker…",
+    "running": "{n} running",
+    "queued": "{n} queued",
+    "nodes": "{n} nodes",
+    "workerOk": "worker ok",
+    "workerOffline": "worker offline",
+    "noWorker": "No worker has checked in.",
+    "col": {
+      "run": "Run",
+      "who": "Who",
+      "what": "What",
+      "gpus": "GPUs",
+      "status": "Status",
+      "progress": "Progress",
+      "elapsed": "Elapsed"
+    }
+  },
+  "runs": {
+    "confirmDelete": "Delete run {id} and its files?",
+    "filter": {
+      "all": "all statuses",
+      "active": "queued + running",
+      "succeeded": "succeeded",
+      "failed": "failed + cancelled"
+    },
+    "refresh": "Refresh",
+    "col": {
+      "user": "User",
+      "experiment": "Experiment",
+      "class": "Class",
+      "whoseClass": "Whose class",
+      "kind": "Kind",
+      "label": "Label",
+      "status": "Status",
+      "gpus": "GPUs",
+      "created": "Created"
+    },
+    "onTheirOwn": "on their own",
+    "stop": "stop",
+    "delete": "delete"
+  }
+}

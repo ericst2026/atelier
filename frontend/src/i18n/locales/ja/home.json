@@ -1,0 +1,28 @@
+{
+  "title": "実験",
+  "intro": "各実験は 4 ステップです。標準コードでサーバー上で実行するか、許可されたステップでは自分のコードを書いて実行できます。",
+  "signedInAs": "{name} としてサインイン中",
+  "someFailed": "読み込めなかった実験があります",
+  "own": {
+    "title": "各自で実行",
+    "admin_one": "{count} 件の実験 · 管理者のためすべて",
+    "admin_other": "{count} 件の実験 · 管理者のためすべて",
+    "granted_one": "許可された実験 {count} 件",
+    "granted_other": "許可された実験 {count} 件",
+    "noneLoaded": "実験が読み込まれていません。",
+    "noneGranted": "各自で実行できる実験はまだ管理者から許可されていません。授業中は教師が開始した実験に取り組みます。"
+  },
+  "section": {
+    "other": "その他",
+    "experiments_one": "{count} 件の実験",
+    "experiments_other": "{count} 件の実験",
+    "finished": "{n} 件完了"
+  },
+  "card": {
+    "stepsTitle": "4 ステップ中 {n} 完了",
+    "stepDone": "4 ステップ中 {n} 完了",
+    "notStarted": "未着手",
+    "submissions_one": "提出 {count} 件",
+    "submissions_other": "提出 {count} 件"
+  }
+}
