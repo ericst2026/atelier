@@ -93,11 +93,11 @@ The line starting `Answer:` is what the grader reads. The instruction the model 
 
 ### How long runs take
 
-| run | GPU | CPU-only server (1 slot, 3 GB) |
+| run | GPU (estimate) | CPU-only server (1 slot, 3 GB), measured here where a number is given |
 |---|---|---|
 | Step 1 Data (20 000 demonstrations) | seconds | about a minute |
 | Step 2 Baseline (300 questions × 3 formats) | 1–3 min | long; use 100 questions and one or two formats |
-| Step 3 Train, mini model, defaults (2 epochs, batch 24 = **1 666 steps**) | **about 5 min** (measured: 322 s) | about 2 h; use **0.25 epochs** (about 15 min) |
+| Step 3 Train, mini model, defaults (2 epochs, batch 24 = **1 666 steps**) | minutes | a ~1 M-parameter base: **about 5 min** (measured: 322 s); the tiny preset (6.5 M): about 2 h, so use **0.25 epochs** (about 15 min) |
 | Step 3 Train, SmolLM2-135M LoRA, defaults | minutes | about 18 h (hits the 3 h limit); use **0.05 epochs** (about 25 min) |
 | Step 4 Evaluate (300 questions, base and tuned) | 1–3 min | long; use 100 questions |
 
