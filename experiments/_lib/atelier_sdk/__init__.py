@@ -94,7 +94,25 @@ def progress(pct: Optional[float] = None, msg: Optional[str] = None, min_interva
         payload["msg"] = str(msg)
     if series:
         payload["series"] = {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v) for k, v in series.items()}
+    _end_bar_line()
     print("::progress " + json.dumps(payload), flush=True)
+
+
+def _end_bar_line() -> None:
+    """A progress bar (tqdm — HuggingFace's trainer, datasets, a student's own loop)
+    redraws its line in place and leaves it unfinished on stderr. Printed after it,
+    a ::progress line would land in the middle of that line, where it is not read
+    as progress, and its curves would be lost. So while a bar is open, its line is
+    ended first."""
+    tq = sys.modules.get("tqdm")
+    bars = getattr(getattr(tq, "tqdm", None), "_instances", None) if tq is not None else None
+    if not bars:
+        return
+    try:
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        pass
 
 
 # what a training log row carries that is not a curve: the x value, and running

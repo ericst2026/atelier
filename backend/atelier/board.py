@@ -330,7 +330,7 @@ def _readable_log(run_id: int, n: int = 40) -> list[str]:
         text = fh.read().decode("utf-8", errors="replace")
     lines = []
     for raw in text.split("\n")[-n * 4 :]:
-        line = raw.rstrip("\r").split("\r")[-1].rstrip()
+        line = raw.rstrip("\r").split("\r")[-1].split("::progress ")[0].rstrip()
         if line and not line.startswith("::"):
             lines.append(line if len(line) <= 240 else line[:240] + "…")
     return lines[-n:]

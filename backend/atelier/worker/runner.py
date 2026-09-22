@@ -195,7 +195,15 @@ def execute(run_id: int, gpu_ids: list[int], bus: SyncBus) -> None:
             assert proc.stdout is not None
             for line in proc.stdout:
                 logf.write(line.encode("utf-8", errors="replace"))
-                if line.startswith(PROGRESS_PREFIX):
+                # a progress bar can leave its line unfinished, and a progress report
+                # printed after it lands mid-line: it is read wherever it starts, and
+                # what came before it is kept as log
+                at = line.find(PROGRESS_PREFIX)
+                if at > 0:
+                    if line[:at].strip():
+                        buffer.append(line[:at].rstrip())
+                    line = line[at:]
+                if at >= 0:
                     try:
                         p = json.loads(line[len(PROGRESS_PREFIX):])
                     except ValueError:

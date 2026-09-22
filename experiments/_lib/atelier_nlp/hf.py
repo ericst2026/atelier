@@ -193,12 +193,29 @@ def format_reward(text: str) -> float:
 
 # --- training helpers --------------------------------------------------------
 class ProgressCallback:
-    """transformers TrainerCallback that turns trainer logs into ::progress lines."""
+    """transformers TrainerCallback that turns trainer logs into ::progress lines.
 
-    def __init__(self, total_steps: int, label: str = "train"):
+    The trainer logs every `logging_steps` steps. On a CPU one step can take most
+    of a minute, which would leave the live chart without a point for several
+    minutes, so a log is also asked for once `log_every` seconds have passed; and
+    between logs the progress line still moves on, with the time left."""
+
+    def __init__(self, total_steps: int, label: str = "train", log_every: float = 30.0):
         from transformers import TrainerCallback
 
         cb = self
+
+        def eta(step: int) -> str:
+            # total_steps is worked out before the trainer rounds its own, so the
+            # last step or two can pass it; there is nothing left to estimate then
+            if step <= 0 or step >= total_steps:
+                return ""
+            left = (time.time() - cb.t0) / step * (total_steps - step)
+            return f" · ~{left / 3600:.1f} h left" if left >= 5400 else f" · ~{left / 60:.0f} min left"
+
+        def message(step: int) -> str:
+            loss = f" · loss {cb.last_loss:.3f}" if cb.last_loss is not None else ""
+            return f"{label} step {step}/{total_steps}{loss}{eta(step)}"
 
         class _CB(TrainerCallback):
             def on_log(self, args, state, control, logs=None, **kw):
@@ -207,15 +224,28 @@ class ProgressCallback:
                 series = {k.replace("/", "_"): v for k, v in series.items()}
                 from atelier_sdk import progress
 
-                eta = ""
-                if state.global_step > 0:
-                    left = (time.time() - cb.t0) / state.global_step * (total_steps - state.global_step)
-                    eta = f" · ~{left / 3600:.1f} h left" if left >= 5400 else f" · ~{left / 60:.0f} min left"
-                progress(100.0 * state.global_step / max(1, total_steps), f"{label} step {state.global_step}/{total_steps}" + (f" · loss {logs['loss']:.3f}" if "loss" in logs else "") + eta, step=state.global_step, **series)
+                if isinstance(logs.get("loss"), (int, float)):
+                    cb.last_loss = float(logs["loss"])
+                cb.last_log = cb.last_report = time.time()
+                progress(100.0 * state.global_step / max(1, total_steps), message(state.global_step), step=state.global_step, **series)
                 cb.history.append({"step": state.global_step, **logs})
+
+            def on_step_end(self, args, state, control, **kw):
+                now = time.time()
+                if state.global_step > 0 and now - cb.last_log >= log_every:
+                    # the trainer logs at the end of this step, and on_log above draws it
+                    control.should_log = True
+                elif now - cb.last_report >= 5.0:
+                    from atelier_sdk import progress
+
+                    cb.last_report = now
+                    progress(100.0 * state.global_step / max(1, total_steps), message(state.global_step))
+                return control
 
         self.history: list[dict[str, Any]] = []
         self.t0 = time.time()
+        self.last_log = self.last_report = self.t0
+        self.last_loss: Optional[float] = None
         self.callback = _CB()
 
 
