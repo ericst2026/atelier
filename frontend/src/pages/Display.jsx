@@ -380,7 +380,7 @@ function RunningView({ data }) {
     <div className="stepwall one">
       <div className="panel code">
         {head}
-        <div className="running">
+        <div className="liverun">
           <div className="side">
             <div className="row" style={{ gap: 14, fontSize: 20 }}>
               <span className={`pill ${run.status}`} style={{ fontSize: 18 }}>
