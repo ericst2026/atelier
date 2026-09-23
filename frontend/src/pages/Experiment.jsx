@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Play } from "lucide-react";
 import ChartCard from "../components/ChartCard";
@@ -16,34 +16,33 @@ import { fmtTime } from "../lib/format";
 import { liveCharts, useRunStream } from "../lib/runs";
 
 
-function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession }) {
+/** One step's panel. `draft` is what this step looked like the last time it was
+ *  open, and `remember` keeps it that way: moving between the step tabs leaves
+ *  each step's settings, the run being read and an open editor as they were. */
+function StepPanel({ spec, step, runs, prevRuns, onStarted, locked, classSession, draft, remember }) {
   const { isTeacher } = useAuth();
   const t = useT();
   const defaults = useMemo(
     () => ({ ...Object.fromEntries((step.params || []).map((p) => [p.key, p.default])), ...(locked || {}) }),
     [step, locked]
   );
-  const [params, setParams] = useState(defaults);
-  const [parentId, setParentId] = useState(prevRuns[0]?.id || null);
-  const [gpus, setGpus] = useState(step.gpus);
-  const [selected, setSelected] = useState(runs[0]?.id || null);
+  const was = draft || {};
+  // whatever the class fixes wins over a remembered setting
+  const [params, setParams] = useState(() => ({ ...(was.params || defaults), ...(locked || {}) }));
+  const [parentId, setParentId] = useState(was.parentId ?? (prevRuns[0]?.id || null));
+  const [gpus, setGpus] = useState(was.gpus ?? step.gpus);
+  const [selected, setSelected] = useState(was.selected ?? (runs[0]?.id || null));
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [showLog, setShowLog] = useState(false);
+  const [showLog, setShowLog] = useState(was.showLog ?? false);
   // a step the student may re-implement: "standard" runs the shipped script, "own" their file
-  const [codeSource, setCodeSource] = useState("standard");
-  const [code, setCode] = useState(null);
-  const [codeSaved, setCodeSaved] = useState(true);
-  const [codeNote, setCodeNote] = useState("");
+  const [codeSource, setCodeSource] = useState(was.codeSource || "standard");
+  const [code, setCode] = useState(was.code ?? null);
+  const [codeSaved, setCodeSaved] = useState(was.codeSaved ?? true);
+  const [codeNote, setCodeNote] = useState(was.codeNote || "");
   useEffect(() => {
-    setParams(defaults);
-    setGpus(step.gpus);
-    setSelected(runs[0]?.id || null);
-    setError(null);
-    setCodeSource("standard");
-    setCode(null);
-    setCodeNote("");
-  }, [step.index]); // eslint-disable-line react-hooks/exhaustive-deps
+    remember({ params, parentId, gpus, selected, showLog, codeSource, code, codeSaved, codeNote });
+  });
   useEffect(() => {
     // the file, or the prototype to start from when there is none yet
     if (codeSource !== "own" || code !== null) return;
@@ -250,6 +249,8 @@ export default function Experiment() {
   const [runs, setRuns] = useState([]);
   const [cls, setCls] = useState(null);
   const [error, setError] = useState(null);
+  // what each step looked like when you last left it, while this page is open
+  const drafts = useRef(new Map());
   const loadRuns = useCallback(() => api(`/runs?experiment=${slug}&kind=step&mine=true&limit=300`).then(setRuns), [slug]);
   useEffect(() => {
     api(`/experiments/${slug}`).then(setSpec).catch((e) => setError(e.message));
@@ -294,6 +295,9 @@ export default function Experiment() {
   if (error) return <main className="page empty">{error}</main>;
   if (!spec) return <main className="page muted">{t("common.loading")}</main>;
   const step = spec.steps[stepNo - 1] || spec.steps[0];
+  // each step, in class and on your own, keeps its own settings while you are on
+  // this page: switching tabs is reading another step, not starting it over
+  const scope = `${step.index}-${inClass ? classId : "own"}`;
   return (
     <main className="page">
       <div className="hero">
@@ -335,7 +339,9 @@ export default function Experiment() {
       )}
       <Rail steps={spec.steps} state={railState} active={stepNo} onSelect={(n) => setSp(classId ? { step: String(n), class: String(classId) } : { step: String(n) })} />
       <StepPanel
-        key={`${step.index}-${inClass ? classId : "own"}`}
+        key={scope}
+        draft={drafts.current.get(scope)}
+        remember={(d) => drafts.current.set(scope, d)}
         spec={spec}
         step={step}
         runs={shownRuns.filter((r) => r.step === step.index)}
