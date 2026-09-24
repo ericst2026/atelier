@@ -265,6 +265,9 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const [who, setWho] = useState(payload.user_id || "");
   // the step's slide behind whatever the screen shows, instead of a plain background
   const [onSlide, setOnSlide] = useState(Boolean(payload.bg));
+  // how much of the slide to leave clear around what the screen shows
+  const [padTop, setPadTop] = useState(payload.pad_top ?? 192);
+  const [padSide, setPadSide] = useState(payload.pad_side ?? 24);
   // only this step's own_code decides whether there is anything to hand in
   const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
   // who has something to show for this step in this class: anyone with a finished
@@ -285,7 +288,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const union = [...who2.ran, ...who2.handed_in].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i);
   const people = show === "code" ? handed : show === "running" ? who2.running : union;
   const apply = () => {
-    const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step), ...(onSlide ? { bg: true } : {}) };
+    const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step), ...(onSlide ? { bg: true, pad_top: Number(padTop) || 0, pad_side: Number(padSide) || 0 } : {}) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
     if (show === "standard") return onPush(display.id, { mode: "standard", payload: base });
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
@@ -343,6 +346,18 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
             <input type="checkbox" checked={onSlide} onChange={(e) => setOnSlide(e.target.checked)} disabled={!canSet} />
             {t("class.wall.onSlide")}
           </label>
+          {onSlide && (
+            <div className="row small muted" style={{ gap: 10 }}>
+              <label className="row" style={{ gap: 5 }}>
+                {t("class.wall.spaceTop")}
+                <input type="number" min={0} max={600} step={8} value={padTop} onChange={(e) => setPadTop(e.target.value)} disabled={!canSet} style={{ width: 74 }} />
+              </label>
+              <label className="row" style={{ gap: 5 }}>
+                {t("class.wall.spaceSides")}
+                <input type="number" min={0} max={400} step={8} value={padSide} onChange={(e) => setPadSide(e.target.value)} disabled={!canSet} style={{ width: 74 }} />
+              </label>
+            </div>
+          )}
           <button className="btn sm primary" onClick={apply} disabled={!canSet || (needsPerson && !who)}>
             {t("class.wall.putItUp")}
           </button>

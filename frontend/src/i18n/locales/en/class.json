@@ -60,7 +60,9 @@
     "putItUp": "Put it up",
     "hardware": "Hardware",
     "leaderboard": "Leaderboard",
-    "onSlide": "the slide behind it"
+    "onSlide": "the slide behind it",
+    "spaceTop": "top",
+    "spaceSides": "sides"
   },
   "banner": {
     "noClass": "No class is running.",

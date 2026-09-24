@@ -60,7 +60,9 @@
     "putItUp": "表示する",
     "hardware": "ハードウェア",
     "leaderboard": "リーダーボード",
-    "onSlide": "スライドを背景に"
+    "onSlide": "スライドを背景に",
+    "spaceTop": "上",
+    "spaceSides": "左右"
   },
   "banner": {
     "noClass": "実施中のクラスはありません。",

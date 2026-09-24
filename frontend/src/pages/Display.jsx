@@ -302,15 +302,14 @@ function StepView({ data }) {
  *  when there are several, and the step's table beside them. A step whose result
  *  draws almost nothing — training draws one loss chart — shows the curves the run
  *  reported while it went instead. */
-function WallResult({ result, live, onSlide }) {
+function WallResult({ result, live, slideTop }) {
   const own = result.charts || [];
   // the curves it reported as it went, minus anything the result already draws
   const drawn = own.map((c) => `${c.id} ${c.title || ""}`.toLowerCase()).join(" ");
   const extra = buildLiveCharts(live, { timeline: false }).filter((c) => !drawn.includes(c.id.replace("live-", "")));
   const charts = own.length >= 2 ? own : [...own, ...extra].slice(0, 4);
   const tables = (result.tables || []).slice(0, 1);
-  const room = onSlide ? 30 : 0;
-  const height = (charts.length >= 3 ? 300 : charts.length === 2 ? 270 : 620) - room;
+  const height = chartRoom(charts.length >= 3 ? 300 : charts.length === 2 ? 270 : 620, charts.length >= 3 ? 2 : 1, slideTop);
   return (
     <div className="wallresult">
       <Kpis metrics={result.metrics} />
@@ -323,7 +322,7 @@ function WallResult({ result, live, onSlide }) {
         {tables.length > 0 && (
           <div className="wrtables">
             {tables.map((t) => (
-              <DataTable key={t.id} table={{ ...t, rows: (t.rows || []).slice(0, onSlide ? 7 : 9) }} />
+              <DataTable key={t.id} table={{ ...t, rows: (t.rows || []).slice(0, slideTop ? 7 : 9) }} />
             ))}
           </div>
         )}
@@ -334,7 +333,7 @@ function WallResult({ result, live, onSlide }) {
 
 /** One person's handed-in work: their figures against the standard code on the same
  *  settings, with the better one marked — or the code itself. */
-function StudentView({ data, onSlide }) {
+function StudentView({ data, slideTop }) {
   const t = useT();
   if (!data) return null;
   if (data.no_class)
@@ -346,7 +345,7 @@ function StudentView({ data, onSlide }) {
         </div>
       </div>
     );
-  if (data.show === "running") return <RunningView data={data} onSlide={onSlide} />;
+  if (data.show === "running") return <RunningView data={data} slideTop={slideTop} />;
   const rows = (data.compare || []).slice(0, 9);
   return (
     <div className="stepwall one">
@@ -379,7 +378,7 @@ function StudentView({ data, onSlide }) {
                 </tbody>
               </table>
             ) : (
-              <WallResult result={data.result} live={data.live} onSlide={onSlide} />
+              <WallResult result={data.result} live={data.live} slideTop={slideTop} />
             )}
             {rows.length > 0 && (data.result?.charts || []).length > 0 && (
               <div className="charts">
@@ -398,6 +397,13 @@ function StudentView({ data, onSlide }) {
   );
 }
 
+/** A chart's height, less whatever a slide behind the screen takes off the top,
+ *  shared out over the rows of charts so they all stay on the screen. */
+function chartRoom(height, rows, slideTop) {
+  const taken = slideTop ? Math.max(0, slideTop - 130) : 0;
+  return Math.max(150, Math.round(height - taken / rows));
+}
+
 /** Why a run stopped, in words a room can read, from how the process ended. */
 function whyItStopped(run, t) {
   if (run.exit_code === -9 || run.exit_code === 137) return t("display.run.outOfMemory");
@@ -408,7 +414,7 @@ function whyItStopped(run, t) {
 /** One student's newest run of the step, as it goes: how far along, the curves so
  *  far, and — when it fails — the error and the end of its log, which is where
  *  the reason is. */
-function RunningView({ data, onSlide }) {
+function RunningView({ data, slideTop }) {
   const t = useT();
   const run = data.run;
   const head = (
@@ -432,9 +438,7 @@ function RunningView({ data, onSlide }) {
   // a wall does not scroll: up to four charts, two abreast, fewer when the error
   // needs the room
   const charts = buildLiveCharts(data.live, { max: failed ? 2 : 4 });
-  // a slide behind it takes the top of the screen, so the charts give some back
-  const room = onSlide ? 22 : 0;
-  const chartHeight = (failed ? 250 : charts.length >= 3 ? 296 : charts.length === 2 ? 420 : 540) - room * (charts.length >= 3 ? 2 : 1);
+  const chartHeight = chartRoom(failed ? 250 : charts.length >= 3 ? 296 : charts.length === 2 ? 420 : 540, charts.length >= 3 ? 2 : 1, slideTop);
   return (
     <div className="stepwall one">
       <div className="panel code">
@@ -529,13 +533,24 @@ export default function Display() {
   const onStep = mode === "step" || mode === "student" || mode === "standard";
   const { src: slideSrc, ready: hasSlide } = useSlide(onStep ? state?.payload?.experiment || state?.data?.experiment : null, step || n);
   const behind = hasSlide && Boolean(state?.payload?.bg);
+  const pad = behind ? { top: Number(state?.payload?.pad_top), side: Number(state?.payload?.pad_side) } : null;
+  const slideTop = behind ? (Number.isFinite(pad.top) ? pad.top : 192) : 0;
   const slide = hasSlide && !behind && mode === "step";
   // behind the content: barely a veil where the slide carries its title, darker
   // below it so what the screen shows still reads
   return (
     <div
       className={`display ${slide ? "slideonly" : ""} ${behind ? "onslide" : ""}`}
-      style={behind ? { backgroundImage: `linear-gradient(rgba(9, 17, 31, 0.1) 0px, rgba(9, 17, 31, 0.14) 120px, rgba(9, 17, 31, 0.7) 230px, rgba(9, 17, 31, 0.78) 100%), url("${slideSrc}")` } : undefined}
+      style={
+        behind
+          ? {
+              backgroundImage: `linear-gradient(rgba(9, 17, 31, 0.1) 0px, rgba(9, 17, 31, 0.14) 120px, rgba(9, 17, 31, 0.7) 230px, rgba(9, 17, 31, 0.78) 100%), url("${slideSrc}")`,
+              paddingTop: Number.isFinite(pad.top) ? pad.top : undefined,
+              paddingLeft: Number.isFinite(pad.side) ? pad.side : undefined,
+              paddingRight: Number.isFinite(pad.side) ? pad.side : undefined,
+            }
+          : undefined
+      }
     >
       {mode !== "grafana" && !slide && !behind && (
         <div className="dhead">
@@ -550,7 +565,7 @@ export default function Display() {
       {mode === "leaderboard" && state.data && <Leaderboard data={state.data} />}
       {mode === "run" && <RunView data={state.data} />}
       {mode === "step" && (slide ? <div className="slide"><img src={slideSrc} alt="" /></div> : <StepView data={state.data} />)}
-      {mode === "student" && <StudentView data={state.data} onSlide={behind} />}
+      {mode === "student" && <StudentView data={state.data} slideTop={slideTop} />}
       {mode === "standard" && <StandardView data={state.data} />}
       {mode === "message" && (
         <div className="msg">
