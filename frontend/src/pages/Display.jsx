@@ -498,9 +498,11 @@ export default function Display() {
       : mode === "leaderboard"
         ? t("display.leaderboard")
         : state?.name || brandName(lang);
+  // a slide is the whole screen: no heading, no clock, no footer
+  const slide = mode === "step" && Boolean(state?.payload?.slide);
   return (
-    <div className="display">
-      {mode !== "grafana" && (
+    <div className={`display ${slide ? "slideonly" : ""}`}>
+      {mode !== "grafana" && !slide && (
         <div className="dhead">
           <h1>{title}</h1>
           <Clock />
@@ -523,9 +525,11 @@ export default function Display() {
           </div>
         </div>
       )}
-      <div className="foot">
-        {conn === "open" ? t("display.live") : t("display.reconnecting")} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
-      </div>
+      {!slide && (
+        <div className="foot">
+          {conn === "open" ? t("display.live") : t("display.reconnecting")} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
+        </div>
+      )}
     </div>
   );
 }
