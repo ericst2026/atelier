@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ChartCard from "../components/ChartCard";
 import Kpis from "../components/Kpi";
-import ResultsView from "../components/ResultsView";
+import { DataTable } from "../components/ResultsView";
 import Markdown from "../components/Markdown";
 import { brandName } from "../brand";
 import { useI18n, useT } from "../i18n";
@@ -298,6 +298,40 @@ function StepView({ data }) {
   );
 }
 
+/** What a run produced, laid out for a wall: the charts on the left, two abreast
+ *  when there are several, and the step's table beside them. A step whose result
+ *  draws almost nothing — training draws one loss chart — shows the curves the run
+ *  reported while it went instead. */
+function WallResult({ result, live, onSlide }) {
+  const own = result.charts || [];
+  // the curves it reported as it went, minus anything the result already draws
+  const drawn = own.map((c) => `${c.id} ${c.title || ""}`.toLowerCase()).join(" ");
+  const extra = buildLiveCharts(live, { timeline: false }).filter((c) => !drawn.includes(c.id.replace("live-", "")));
+  const charts = own.length >= 2 ? own : [...own, ...extra].slice(0, 4);
+  const tables = (result.tables || []).slice(0, 1);
+  const room = onSlide ? 30 : 0;
+  const height = (charts.length >= 3 ? 300 : charts.length === 2 ? 270 : 620) - room;
+  return (
+    <div className="wallresult">
+      <Kpis metrics={result.metrics} />
+      <div className={`wrbody ${tables.length ? "" : "wide"}`}>
+        <div className={`wrcharts ${charts.length >= 3 ? "two" : ""}`}>
+          {charts.slice(0, 4).map((c) => (
+            <ChartCard key={c.id} spec={c} height={height} allowStretch={false} />
+          ))}
+        </div>
+        {tables.length > 0 && (
+          <div className="wrtables">
+            {tables.map((t) => (
+              <DataTable key={t.id} table={{ ...t, rows: (t.rows || []).slice(0, onSlide ? 7 : 9) }} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** One person's handed-in work: their figures against the standard code on the same
  *  settings, with the better one marked — or the code itself. */
 function StudentView({ data, onSlide }) {
@@ -345,7 +379,7 @@ function StudentView({ data, onSlide }) {
                 </tbody>
               </table>
             ) : (
-              <ResultsView result={data.result} />
+              <WallResult result={data.result} live={data.live} onSlide={onSlide} />
             )}
             {rows.length > 0 && (data.result?.charts || []).length > 0 && (
               <div className="charts">

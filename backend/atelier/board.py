@@ -391,6 +391,17 @@ def _finished(db: Session, run_id: Optional[int]) -> Optional[Run]:
     return run if run is not None and run.status == "succeeded" else None
 
 
+def _thin_live(run_id: int, cap: int = 240) -> Optional[dict[str, Any]]:
+    """A run's live curves, at most `cap` points each: enough to read on a wall,
+    small enough to send with every refresh."""
+    live = storage.read_json(storage.run_dir(run_id) / "live.json", None)
+    series = (live or {}).get("series") or {}
+    if not series:
+        return None
+    out = {k: (pts[:: max(1, len(pts) // cap)] if len(pts) > cap else pts) for k, pts in series.items()}
+    return {"series": out, **({"x_label": live["x_label"]} if live.get("x_label") else {})}
+
+
 def _teacher_run(db: Session, session: ClassSession, step_no: int) -> Optional[dict[str, Any]]:
     """The class teacher's latest run of this step in this class, live: when they
     work through the experiment at the front, the step screen follows them."""
@@ -529,6 +540,10 @@ def student_view(db: Session, registry: Registry, payload: dict[str, Any]) -> di
         return out
     mine = _result_of(run.id)
     out["result"] = mine
+    # a step whose result draws almost nothing — training draws one loss chart —
+    # has the curves it reported as it went; thinned, they fill the screen beside it
+    if len(mine.get("charts") or []) < 2:
+        out["live"] = _thin_live(run.id)
     out["run"] = {"id": run.id, "own_code": (run.inputs or {}).get("code_source") == "own"}
     if own is not None:
         # their own code, beside the standard code on the same settings
