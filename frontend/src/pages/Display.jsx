@@ -300,7 +300,7 @@ function StepView({ data }) {
 
 /** One person's handed-in work: their figures against the standard code on the same
  *  settings, with the better one marked — or the code itself. */
-function StudentView({ data }) {
+function StudentView({ data, onSlide }) {
   const t = useT();
   if (!data) return null;
   if (data.no_class)
@@ -312,7 +312,7 @@ function StudentView({ data }) {
         </div>
       </div>
     );
-  if (data.show === "running") return <RunningView data={data} />;
+  if (data.show === "running") return <RunningView data={data} onSlide={onSlide} />;
   const rows = (data.compare || []).slice(0, 9);
   return (
     <div className="stepwall one">
@@ -374,7 +374,7 @@ function whyItStopped(run, t) {
 /** One student's newest run of the step, as it goes: how far along, the curves so
  *  far, and — when it fails — the error and the end of its log, which is where
  *  the reason is. */
-function RunningView({ data }) {
+function RunningView({ data, onSlide }) {
   const t = useT();
   const run = data.run;
   const head = (
@@ -398,7 +398,9 @@ function RunningView({ data }) {
   // a wall does not scroll: up to four charts, two abreast, fewer when the error
   // needs the room
   const charts = buildLiveCharts(data.live, { max: failed ? 2 : 4 });
-  const chartHeight = failed ? 250 : charts.length >= 3 ? 296 : charts.length === 2 ? 420 : 540;
+  // a slide behind it takes the top of the screen, so the charts give some back
+  const room = onSlide ? 22 : 0;
+  const chartHeight = (failed ? 250 : charts.length >= 3 ? 296 : charts.length === 2 ? 420 : 540) - room * (charts.length >= 3 ? 2 : 1);
   return (
     <div className="stepwall one">
       <div className="panel code">
@@ -494,10 +496,12 @@ export default function Display() {
   const { src: slideSrc, ready: hasSlide } = useSlide(onStep ? state?.payload?.experiment || state?.data?.experiment : null, step || n);
   const behind = hasSlide && Boolean(state?.payload?.bg);
   const slide = hasSlide && !behind && mode === "step";
+  // behind the content: barely a veil where the slide carries its title, darker
+  // below it so what the screen shows still reads
   return (
     <div
       className={`display ${slide ? "slideonly" : ""} ${behind ? "onslide" : ""}`}
-      style={behind ? { backgroundImage: `linear-gradient(rgba(9, 17, 31, 0.82), rgba(9, 17, 31, 0.82)), url("${slideSrc}")` } : undefined}
+      style={behind ? { backgroundImage: `linear-gradient(rgba(9, 17, 31, 0.1) 0px, rgba(9, 17, 31, 0.14) 120px, rgba(9, 17, 31, 0.7) 230px, rgba(9, 17, 31, 0.78) 100%), url("${slideSrc}")` } : undefined}
     >
       {mode !== "grafana" && !slide && !behind && (
         <div className="dhead">
@@ -512,7 +516,7 @@ export default function Display() {
       {mode === "leaderboard" && state.data && <Leaderboard data={state.data} />}
       {mode === "run" && <RunView data={state.data} />}
       {mode === "step" && (slide ? <div className="slide"><img src={slideSrc} alt="" /></div> : <StepView data={state.data} />)}
-      {mode === "student" && <StudentView data={state.data} />}
+      {mode === "student" && <StudentView data={state.data} onSlide={behind} />}
       {mode === "standard" && <StandardView data={state.data} />}
       {mode === "message" && (
         <div className="msg">
