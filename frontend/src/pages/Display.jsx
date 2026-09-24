@@ -212,6 +212,31 @@ function TeacherRun({ run }) {
   );
 }
 
+/** The slide for a step, from public/slides/<experiment>/step-<n>.png — "world-sft"
+ *  keeps its slides in "sft". The whole picture is shown, scaled to fit the screen
+ *  and never cropped. */
+export const slidePath = (experiment, step) => `/slides/${String(experiment || "").replace(/^world-/, "")}/step-${step}.png`;
+
+function SlideView({ payload, data }) {
+  const t = useT();
+  const experiment = payload?.experiment || data?.experiment;
+  const step = payload?.step || data?.step || 1;
+  const src = slidePath(experiment, step);
+  const [missing, setMissing] = useState(false);
+  useEffect(() => setMissing(false), [src]);
+  if (!experiment || missing)
+    return (
+      <div className="msg">
+        <p>{t("display.slide.missing", { path: src })}</p>
+      </div>
+    );
+  return (
+    <div className="slide">
+      <img src={src} alt="" onError={() => setMissing(true)} />
+    </div>
+  );
+}
+
 /** Displays 1-4 while a class runs: what the step is for, the picture that explains
  *  it, and what a student's own version of it has to do. */
 function StepView({ data }) {
@@ -487,7 +512,7 @@ export default function Display() {
       {mode === "progress" && state.data && <Progress data={state.data} />}
       {mode === "leaderboard" && state.data && <Leaderboard data={state.data} />}
       {mode === "run" && <RunView data={state.data} />}
-      {mode === "step" && <StepView data={state.data} />}
+      {mode === "step" && (state.payload?.slide ? <SlideView payload={state.payload} data={state.data} /> : <StepView data={state.data} />)}
       {mode === "student" && <StudentView data={state.data} />}
       {mode === "standard" && <StandardView data={state.data} />}
       {mode === "message" && (

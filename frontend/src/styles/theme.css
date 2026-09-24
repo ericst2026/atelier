@@ -310,6 +310,10 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .stepwall .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); min-height: 0; }
 .display .stepwall .split .side { padding: 16px; overflow: hidden; border-left: 1px solid var(--line); }
 
+/* a step's slide: the whole picture, scaled into whatever the header leaves */
+.display .slide { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.display .slide img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 12px; }
+
 /* the five wall screens side by side, as they hang on the wall */
 .wallrow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1300px) { .wallrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

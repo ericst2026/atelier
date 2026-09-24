@@ -43,14 +43,16 @@
       "standard": "the standard code",
       "step": "what the step is",
       "grafana": "hardware",
-      "leaderboard": "leaderboard"
+      "leaderboard": "leaderboard",
+      "slide": "the step's slide"
     },
     "show": {
       "explanation": "what the step is",
       "standard": "the standard code",
       "results": "a student's results",
       "code": "a student's code",
-      "running": "a student's run, live"
+      "running": "a student's run, live",
+      "slide": "the step's slide"
     },
     "who": "— who —",
     "nobodyHandedIn": "— nobody has handed this in —",

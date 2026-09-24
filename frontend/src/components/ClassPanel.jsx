@@ -261,7 +261,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const isStep = display.id <= 4;
   const payload = display.payload || {};
   const step = display.id; // screen 1 is step 1, and so on
-  const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : "explanation");
+  const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : payload.slide ? "slide" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
   // only this step's own_code decides whether there is anything to hand in
   const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
@@ -285,6 +285,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const apply = () => {
     const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
+    if (show === "slide") return onPush(display.id, { mode: "step", payload: { ...base, slide: true } });
     if (show === "standard") return onPush(display.id, { mode: "standard", payload: base });
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
   };
@@ -297,9 +298,11 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
         : payload.show === "code"
           ? t("class.wall.shown.code")
           : t("class.wall.shown.results")
-      : ["standard", "step", "grafana", "leaderboard"].includes(display.mode)
-        ? t(`class.wall.shown.${display.mode}`)
-        : display.mode;
+      : display.mode === "step" && payload.slide
+        ? t("class.wall.shown.slide")
+        : ["standard", "step", "grafana", "leaderboard"].includes(display.mode)
+          ? t(`class.wall.shown.${display.mode}`)
+          : display.mode;
   // the option can be left behind when the step changes under it
   useEffect(() => {
     if (!ownCode && show === "code") setShow("explanation");
@@ -319,6 +322,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
         <>
           <select value={show} onChange={(e) => setShow(e.target.value)} disabled={!canSet}>
             <option value="explanation">{t("class.wall.show.explanation")}</option>
+            <option value="slide">{t("class.wall.show.slide")}</option>
             <option value="standard">{t("class.wall.show.standard")}</option>
             <option value="results">{t("class.wall.show.results")}</option>
             {ownCode && <option value="code">{t("class.wall.show.code")}</option>}

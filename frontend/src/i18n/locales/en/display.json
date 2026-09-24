@@ -73,5 +73,8 @@
   },
   "standard": {
     "title": "The standard code"
+  },
+  "slide": {
+    "missing": "No slide for this step yet ({path})."
   }
 }
