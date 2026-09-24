@@ -217,24 +217,23 @@ function TeacherRun({ run }) {
  *  and never cropped. */
 export const slidePath = (experiment, step) => `/slides/${String(experiment || "").replace(/^world-/, "")}/step-${step}.png`;
 
-function SlideView({ payload, data }) {
-  const t = useT();
-  const experiment = payload?.experiment || data?.experiment;
-  const step = payload?.step || data?.step || 1;
-  const src = slidePath(experiment, step);
-  const [missing, setMissing] = useState(false);
-  useEffect(() => setMissing(false), [src]);
-  if (!experiment || missing)
-    return (
-      <div className="msg">
-        <p>{t("display.slide.missing", { path: src })}</p>
-      </div>
-    );
-  return (
-    <div className="slide">
-      <img src={src} alt="" onError={() => setMissing(true)} />
-    </div>
-  );
+function useSlide(experiment, step) {
+  const src = experiment ? slidePath(experiment, step) : null;
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(false);
+    if (!src) return undefined;
+    // ask for it first: the screen only turns into a slide once there is one
+    let live = true;
+    const img = new Image();
+    img.onload = () => live && setReady(true);
+    img.onerror = () => live && setReady(false);
+    img.src = src;
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  return { src, ready };
 }
 
 /** Displays 1-4 while a class runs: what the step is for, the picture that explains
@@ -498,8 +497,10 @@ export default function Display() {
       : mode === "leaderboard"
         ? t("display.leaderboard")
         : state?.name || brandName(lang);
-  // a slide is the whole screen: no heading, no clock, no footer
-  const slide = mode === "step" && Boolean(state?.payload?.slide);
+  // a step screen is its slide when the experiment has one, and the whole screen
+  // is the slide: no heading, no clock, no footer. Without one it says the step
+  // in words instead.
+  const { src: slideSrc, ready: slide } = useSlide(mode === "step" ? state?.payload?.experiment || state?.data?.experiment : null, step || n);
   return (
     <div className={`display ${slide ? "slideonly" : ""}`}>
       {mode !== "grafana" && !slide && (
@@ -514,7 +515,7 @@ export default function Display() {
       {mode === "progress" && state.data && <Progress data={state.data} />}
       {mode === "leaderboard" && state.data && <Leaderboard data={state.data} />}
       {mode === "run" && <RunView data={state.data} />}
-      {mode === "step" && (state.payload?.slide ? <SlideView payload={state.payload} data={state.data} /> : <StepView data={state.data} />)}
+      {mode === "step" && (slide ? <div className="slide"><img src={slideSrc} alt="" /></div> : <StepView data={state.data} />)}
       {mode === "student" && <StudentView data={state.data} />}
       {mode === "standard" && <StandardView data={state.data} />}
       {mode === "message" && (

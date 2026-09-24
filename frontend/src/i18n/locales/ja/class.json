@@ -43,16 +43,14 @@
       "standard": "標準コード",
       "step": "ステップの説明",
       "grafana": "ハードウェア",
-      "leaderboard": "リーダーボード",
-      "slide": "ステップのスライド"
+      "leaderboard": "リーダーボード"
     },
     "show": {
       "explanation": "ステップの説明",
       "standard": "標準コード",
       "results": "学生の結果",
       "code": "学生のコード",
-      "running": "学生の実行 (ライブ)",
-      "slide": "ステップのスライド"
+      "running": "学生の実行 (ライブ)"
     },
     "who": "— 学生を選択 —",
     "nobodyHandedIn": "— まだ誰も提出していません —",
