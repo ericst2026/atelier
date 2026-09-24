@@ -59,7 +59,8 @@
     "runningPct": "実行中 {pct}%",
     "putItUp": "表示する",
     "hardware": "ハードウェア",
-    "leaderboard": "リーダーボード"
+    "leaderboard": "リーダーボード",
+    "onSlide": "スライドを背景に"
   },
   "banner": {
     "noClass": "実施中のクラスはありません。",

@@ -59,7 +59,8 @@
     "runningPct": "running {pct}%",
     "putItUp": "Put it up",
     "hardware": "Hardware",
-    "leaderboard": "Leaderboard"
+    "leaderboard": "Leaderboard",
+    "onSlide": "the slide behind it"
   },
   "banner": {
     "noClass": "No class is running.",

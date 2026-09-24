@@ -263,6 +263,8 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const step = display.id; // screen 1 is step 1, and so on
   const [show, setShow] = useState(display.mode === "student" ? payload.show || "results" : display.mode === "standard" ? "standard" : "explanation");
   const [who, setWho] = useState(payload.user_id || "");
+  // the step's slide behind whatever the screen shows, instead of a plain background
+  const [onSlide, setOnSlide] = useState(Boolean(payload.bg));
   // only this step's own_code decides whether there is anything to hand in
   const ownCode = Boolean((spec?.steps || [])[Number(step) - 1]?.own_code);
   // who has something to show for this step in this class: anyone with a finished
@@ -283,7 +285,7 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
   const union = [...who2.ran, ...who2.handed_in].filter((x, i, a) => a.findIndex((y) => y.user_id === x.user_id) === i);
   const people = show === "code" ? handed : show === "running" ? who2.running : union;
   const apply = () => {
-    const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step) };
+    const base = { session_id: session?.id, experiment: session?.experiment, step: Number(step), ...(onSlide ? { bg: true } : {}) };
     if (show === "explanation") return onPush(display.id, { mode: "step", payload: base });
     if (show === "standard") return onPush(display.id, { mode: "standard", payload: base });
     onPush(display.id, { mode: "student", payload: { ...base, user_id: Number(who), show } });
@@ -337,6 +339,10 @@ function DisplayControl({ display, session, spec, onPush, canSet }) {
               ))}
             </select>
           )}
+          <label className="row small muted" style={{ gap: 6 }}>
+            <input type="checkbox" checked={onSlide} onChange={(e) => setOnSlide(e.target.checked)} disabled={!canSet} />
+            {t("class.wall.onSlide")}
+          </label>
           <button className="btn sm primary" onClick={apply} disabled={!canSet || (needsPerson && !who)}>
             {t("class.wall.putItUp")}
           </button>

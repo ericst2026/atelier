@@ -318,6 +318,10 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
    shape: the whole slide is there, whatever the screen */
 .display .slide img { width: 100%; height: 100%; object-fit: contain; border-radius: 12px; }
 .display.slideonly .slide img { border-radius: 0; }
+/* the slide behind what a screen shows: no heading, no clock, and the content
+   starts below where the slide's own title sits */
+.display.onslide { padding-top: 132px; background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed; }
+.display.onslide .panel, .display.onslide .inset, .display.onslide .kpi { background: rgba(11, 21, 38, 0.86); }
 
 /* the five wall screens side by side, as they hang on the wall */
 .wallrow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }

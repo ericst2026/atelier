@@ -488,10 +488,18 @@ export default function Display() {
   // a step screen is its slide when the experiment has one, and the whole screen
   // is the slide: no heading, no clock, no footer. Without one it says the step
   // in words instead.
-  const { src: slideSrc, ready: slide } = useSlide(mode === "step" ? state?.payload?.experiment || state?.data?.experiment : null, step || n);
+  // every screen that belongs to a step can carry that step's slide: on its own
+  // (a step screen), or behind what the screen shows when the wall asks for it
+  const onStep = mode === "step" || mode === "student" || mode === "standard";
+  const { src: slideSrc, ready: hasSlide } = useSlide(onStep ? state?.payload?.experiment || state?.data?.experiment : null, step || n);
+  const behind = hasSlide && Boolean(state?.payload?.bg);
+  const slide = hasSlide && !behind && mode === "step";
   return (
-    <div className={`display ${slide ? "slideonly" : ""}`}>
-      {mode !== "grafana" && !slide && (
+    <div
+      className={`display ${slide ? "slideonly" : ""} ${behind ? "onslide" : ""}`}
+      style={behind ? { backgroundImage: `linear-gradient(rgba(9, 17, 31, 0.82), rgba(9, 17, 31, 0.82)), url("${slideSrc}")` } : undefined}
+    >
+      {mode !== "grafana" && !slide && !behind && (
         <div className="dhead">
           <h1>{title}</h1>
           <Clock />
@@ -514,7 +522,7 @@ export default function Display() {
           </div>
         </div>
       )}
-      {!slide && (
+      {!slide && !behind && (
         <div className="foot">
           {conn === "open" ? t("display.live") : t("display.reconnecting")} · {state?.updated_at ? fmtTime(state.updated_at) : ""}
         </div>
