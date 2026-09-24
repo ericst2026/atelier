@@ -321,8 +321,18 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 /* the slide behind what a screen shows: no heading, no clock, and the content
    starts below where the slide's own title sits */
 .display.onslide { padding: 192px 24px 24px; background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed; }
-/* what the screen shows stays solid: the slide is the surround, not a watermark */
-.display.onslide .panel, .display.onslide .inset, .display.onslide .chartcard, .display.onslide .kpi { background: #101c30; }
+/* what the screen shows stays solid, and wears the slides' own dress: a lighter
+   card with a bright, thick edge, so the two look like one picture */
+.display.onslide .panel, .display.onslide .inset, .display.onslide .chartcard, .display.onslide .kpi {
+  background: #16263f;
+  border: 2px solid rgba(124, 196, 255, 0.45);
+  border-radius: 14px;
+  box-shadow: 0 0 22px rgba(60, 150, 255, 0.18);
+}
+.display.onslide .kpi { border-left-width: 5px; }
+.display.onslide .panel .bar { border-bottom: 2px solid rgba(124, 196, 255, 0.3); }
+.display.onslide table.data th { border-bottom: 2px solid rgba(124, 196, 255, 0.3); }
+.display.onslide .wrtables .tablewrap { background: #16263f; border: 2px solid rgba(124, 196, 255, 0.45); border-radius: 14px; box-shadow: 0 0 22px rgba(60, 150, 255, 0.18); overflow: hidden; }
 
 /* a student's results on the wall: the charts on the left, what the step produced
    in a table beside them; nothing scrolls, so a long table is cut off */

@@ -400,7 +400,7 @@ function StudentView({ data, slideTop }) {
 /** A chart's height, less whatever a slide behind the screen takes off the top,
  *  shared out over the rows of charts so they all stay on the screen. */
 function chartRoom(height, rows, slideTop) {
-  const taken = slideTop ? Math.max(0, slideTop - 130) : 0;
+  const taken = slideTop ? Math.max(0, slideTop - 96) : 0;
   return Math.max(150, Math.round(height - taken / rows));
 }
 
