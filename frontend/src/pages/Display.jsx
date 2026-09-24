@@ -315,7 +315,7 @@ function StudentView({ data }) {
   if (data.show === "running") return <RunningView data={data} />;
   const rows = (data.compare || []).slice(0, 9);
   return (
-    <div className={`stepwall ${data.own_code ? "" : "one"}`}>
+    <div className="stepwall one">
       <div className="panel code">
         <div className="bar">
           {data.name} · {t("display.stepN", { n: data.step })}
@@ -360,7 +360,6 @@ function StudentView({ data }) {
           </div>
         )}
       </div>
-      {data.own_code && <HandedIn list={data.handed_in} selected={data.user_id} />}
     </div>
   );
 }
@@ -399,7 +398,7 @@ function RunningView({ data }) {
   // a wall does not scroll: up to four charts, two abreast, fewer when the error
   // needs the room
   const charts = buildLiveCharts(data.live, { max: failed ? 2 : 4 });
-  const chartHeight = charts.length >= 3 ? 230 : charts.length === 2 ? (failed ? 230 : 360) : 420;
+  const chartHeight = failed ? 250 : charts.length >= 3 ? 296 : charts.length === 2 ? 420 : 540;
   return (
     <div className="stepwall one">
       <div className="panel code">
@@ -438,17 +437,6 @@ function RunningView({ data }) {
                 <ChartCard key={c.id} spec={c} height={chartHeight} allowStretch={false} />
               ))}
             </div>
-          </div>
-          <div className="log runlog">
-            {(data.log_tail || []).length === 0 ? (
-              <span className="sys">{t("display.run.logEmpty")}</span>
-            ) : (
-              data.log_tail.map((l, i) => (
-                <div key={i} className={/error|traceback|exception|killed|failed/i.test(l) ? "err" : ""}>
-                  {l}
-                </div>
-              ))
-            )}
           </div>
         </div>
       </div>

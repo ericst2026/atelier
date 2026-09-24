@@ -41,8 +41,7 @@
     "stopped": "Stopped",
     "failed": "It failed",
     "outOfMemory": "It was killed for using more memory than the machine allows.",
-    "timedOut": "It ran past its {n}-minute limit.",
-    "logEmpty": "nothing in the log yet"
+    "timedOut": "It ran past its {n}-minute limit."
   },
   "handedIn": {
     "title": "Handed in ({n})",

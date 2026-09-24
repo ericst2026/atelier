@@ -328,12 +328,11 @@ table.data tr:hover td { background: rgba(124, 196, 255, .04); }
 .display .teacherrun .progress { height: 12px; }
 /* a student's run, live: where it is and its curves on the left, its log on the
    right — the newest lines at the bottom, the oldest falling off the top */
-.display .stepwall .liverun { flex: 1; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; padding: 18px; min-height: 0; }
+.display .stepwall .liverun { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 18px; min-height: 0; }
 .display .stepwall .liverun .side { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden; }
 .display .stepwall .liverun .progress.big { height: 16px; }
 .display .stepwall .liverun .livecharts { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
 .display .stepwall .liverun .livecharts.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.display .stepwall .liverun .runlog { max-height: none; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; font-size: 15px; }
 .display .stepwall .liverun .failbox { border: 1px solid var(--dup); border-radius: 12px; padding: 12px 16px; font-size: 19px; display: flex; flex-direction: column; gap: 8px; }
 .display .stepwall .liverun .failbox b { color: var(--dup); font-size: 22px; }
 .display .stepwall .liverun .failbox pre { padding: 0; font-size: 14px; white-space: pre-wrap; word-break: break-word; overflow: hidden; }
